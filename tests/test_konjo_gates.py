@@ -107,3 +107,43 @@ def test_docs_only_skips_python_tools() -> None:
     flags = {"SCOPE_DOCS": True}
     r = cli.gate_repo_native("ruff", flags, ["README.md"], "main")
     assert r.status == cli.SKIP
+
+
+def test_one_way_gate_two_way_passes() -> None:
+    r = cli.gate_one_way_door(["notes.py"], "+# a harmless comment\n", "main")
+    assert r.status == cli.PASS
+
+
+def test_one_way_gate_unacknowledged_fails_and_acknowledged_passes(tmp_path: Path) -> None:
+    from lib import oneway
+
+    repo = _new_repo(tmp_path)
+    (repo / "VERSION").write_text("0.3.0\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "checkout", "-q", "-b", "feature")
+
+    changed = ["VERSION"]
+    diff = "-0.3.0\n+0.4.0\n"
+    fp = oneway.fingerprint(changed)
+
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(repo)
+        # A one-way change (release VERSION bump) with no ack: the gate fails and never
+        # touches stdin.
+        (repo / "VERSION").write_text("0.4.0\n")
+        _git(repo, "commit", "-aqm", "bump version")
+        unacked = cli.gate_one_way_door(changed, diff, "main")
+        assert unacked.status == cli.FAIL
+        assert fp in unacked.detail
+
+        # Add a commit carrying the acknowledgement trailer: the gate passes.
+        (repo / "note.txt").write_text("release prep\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", f"ack release\n\n{oneway.ack_trailer(fp)}")
+        acked = cli.gate_one_way_door(changed, diff, "main")
+        assert acked.status == cli.PASS
+    finally:
+        _os.chdir(cwd)

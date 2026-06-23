@@ -1,36 +1,71 @@
 #!/usr/bin/env python3
-"""konjo-oneway: one-way-door classifier CLI.
+"""konjo-oneway: one-way-door classifier and interactive confirm.
 
-STUB (phase 3). Classifies a proposed change as a one-way door (hard or costly to
-reverse: schema migrations, public API breaks, data deletes, key rotation) versus a
-two-way door (cheap to revert). One-way doors trigger an interactive confirm before the
-action proceeds; two-way doors pass straight through.
+  konjo-oneway classify --files F [F ...] [--diff PATH]
+      Emit {"door": "one-way"|"two-way", "reasons": [...], "confidence": 0-10}. Exit 0.
 
-Contract for the phase-3 implementation:
-  konjo-oneway classify --files <changed-files> [--diff <patch>]
-    - emit {"door": "one-way"|"two-way", "reasons": [...], "confidence": 0-10}
-    - exit 0 always; the confirm flow is a separate, interactive concern
-
-This stub deliberately does not implement the confirm flow (that is a non-goal this
-sprint, alongside the secrets-tier interactive confirms).
+  konjo-oneway confirm --files F [F ...] [--diff PATH] [--author NAME]
+      If the change is one-way, run the interactive confirm: state what is irreversible,
+      require an exact typed token plus a justification, log the acknowledgement to the
+      Ledger, and print the commit trailer CI checks for. Exit 0 on confirm, 2 on abort,
+      0 (no-op) if the change is two-way.
 """
 
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
 import sys
 
-TODO_PHASE = 3
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from lib import confirm, oneway  # noqa: E402
+
+
+def _read_diff(path: str | None) -> str:
+    if not path:
+        return ""
+    if path == "-":
+        return sys.stdin.read()
+    return pathlib.Path(path).read_text(encoding="utf-8")
 
 
 def main(argv: list[str]) -> int:
-    # TODO(phase-3): implement door classification over the changed-file set + diff.
-    raise NotImplementedError(
-        "konjo-oneway is a phase-3 stub; the door classifier is not built yet"
-    )
+    parser = argparse.ArgumentParser(prog="konjo-oneway")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    for name in ("classify", "confirm"):
+        p = sub.add_parser(name)
+        p.add_argument("--files", nargs="+", required=True)
+        p.add_argument("--diff", default=None, help="path to a diff, or - for stdin")
+        if name == "confirm":
+            p.add_argument("--author", default="unknown")
+    args = parser.parse_args(argv)
+
+    diff_text = _read_diff(args.diff)
+    cls = oneway.classify(args.files, diff_text)
+
+    if args.cmd == "classify":
+        print(json.dumps(
+            {"door": cls.door, "reasons": cls.reasons, "confidence": cls.confidence}
+        ))
+        return 0
+
+    # confirm
+    if not cls.is_one_way:
+        print("konjo-oneway: two-way door, no confirmation needed")
+        return 0
+    try:
+        from ledger.engine import Ledger
+        ack = confirm.confirm_one_way(cls, args.files, author=args.author, ledger=Ledger())
+    except confirm.ConfirmAborted as exc:
+        print(f"konjo-oneway: {exc}", file=sys.stderr)
+        return 2
+    print(f"konjo-oneway: acknowledged {ack.fingerprint} (ledger {ack.ledger_id})")
+    return 0
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main(sys.argv[1:]))
-    except NotImplementedError as e:
-        print(f"konjo-oneway: {e}", file=sys.stderr)
-        print("phase 3", file=sys.stderr)
-        raise SystemExit(0)
+    raise SystemExit(main(sys.argv[1:]))

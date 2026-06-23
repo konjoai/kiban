@@ -47,7 +47,7 @@ KIBAN_ROOT = _ensure_engine_on_path()
 import yaml  # type: ignore[import-untyped]  # noqa: E402
 
 from evals import cassettes, runner  # noqa: E402
-from lib import diff_scope, prose_lint, redact, review_log, specialist_stats  # noqa: E402
+from lib import diff_scope, oneway, prose_lint, redact, review_log, specialist_stats  # noqa: E402
 
 PASS, FAIL, WARN, SKIP, ERROR = "PASS", "FAIL", "WARN", "SKIP", "ERROR"
 _BLOCKING = {FAIL, ERROR}
@@ -171,6 +171,30 @@ def gate_secrets(diff_text: str) -> GateResult:
     return GateResult("secrets", PASS, "no net-new secrets")
 
 
+def gate_one_way_door(changed: list[str], diff_text: str, base: str) -> GateResult:
+    """One-way doors need an acknowledgement trailer in the PR; never prompts.
+
+    Two-way doors pass straight through. A one-way change is checked against the commit
+    messages in base..HEAD for `Konjo-Acknowledged-Oneway: <fingerprint>`. Absent, the
+    gate FAILs with guidance to run the interactive confirm (the session path). The gate
+    reads git only, never stdin, so it is safe in CI.
+    """
+    cls = oneway.classify(changed, diff_text)
+    if not cls.is_one_way:
+        return GateResult("one_way_door", PASS, "two-way door")
+    fp = oneway.fingerprint(changed)
+    messages = _git(["log", f"{base}..HEAD", "--format=%B"])
+    if oneway.find_ack(messages, fp):
+        return GateResult("one_way_door", PASS, f"acknowledged ({', '.join(cls.reasons)})")
+    return GateResult(
+        "one_way_door",
+        FAIL,
+        f"one-way door ({', '.join(cls.reasons)}); change id {fp}. Run "
+        f"`konjo-oneway confirm --files ...` and add the trailer "
+        f"'{oneway.ack_trailer(fp)}' to a commit",
+    )
+
+
 def gate_self_test(profile_path: str, mode: str) -> GateResult:
     """Run the meta-gate eval through the deterministic replay backend (no model)."""
     if not cassettes.cassettes_present():
@@ -270,6 +294,7 @@ def run_gates(
     results: list[GateResult] = [
         gate_prose(changed, base, article_globs),
         gate_secrets(diff_text),
+        gate_one_way_door(changed, diff_text, base),
     ]
     if self_test:
         results.append(gate_self_test(profile_path, mode))

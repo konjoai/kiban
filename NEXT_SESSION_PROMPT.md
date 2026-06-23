@@ -1,48 +1,48 @@
-# Next session: Phase 3
+# Next session: Phase 4
 
-## What Phase 2 built (0.3.0)
+## What Phase 3 built (0.4.0)
 
-The CI plane enforces. `konjo-gates` blocks a pull request, and the eval runs
-deterministically offline so it can be a CI gate.
+The safety layer for irreversible actions and credential-shaped findings, plus the
+release-tag discipline.
 
-- `packages/konjo-gates-py`: the orchestrator. Profile in, changed files routed through
-  `diff_scope`, kiban-native gates (prose net-new, secrets, self_test replay,
-  report-only specialist stats) plus repo-native gates wrapped in `konjo-newonly`. Imports
-  the real engine; reimplements nothing.
-- `evals/cassettes.py` + `konjo-eval record` / `run --replay`: deterministic offline eval.
-- `lib.redact.scan_paths` / `scan_diff`; root `pyproject.toml` ships the engine with the
-  entry point; `templates/repo-ci.yml` pinned to v0.3.0 with the replay eval.
-- C-B: `profiles/squish.yml` reconciled against the real repo, all UNVERIFIED markers gone.
+- `lib/oneway.py` + `bin/konjo-oneway`: classify a change as one-way or two-way.
+- `lib/confirm.py`: the typed-confirm flow (exact token, justification, Ledger ack, the
+  commit trailer CI reads). `bin/konjo-secrets`: HIGH blocks, MEDIUM confirms.
+- konjo-gates `one_way_door` gate: checks the commit-trailer acknowledgement; never prompts.
+- Release tags backfilled (v0.1.0..v0.3.0) and v0.4.0 cut; the template pins v0.4.0.
 
-Kill-test passes with no model and no network: clean diff passes; net-new prose and a
-HIGH secret block; self_test runs via replay.
+Kill-test passes: classify one-way vs two-way; confirm refuses a vague reply and logs on
+a valid one; CI fails an unacknowledged one-way change and passes the acknowledged one.
 
-## Immediate Phase 3 tasks
+## Tag and release discipline (now in force)
 
-1. **One-way-door confirm** (`bin/konjo-oneway`, still a stub). Classify hard-to-reverse
-   changes (schema migrations, public API breaks, data deletes, key rotation) and add the
-   interactive confirm. Wire it as a konjo-gates gate that requires confirmation, not just
-   a pass/fail.
-2. **MEDIUM-secret interactive confirm**. The secrets gate already surfaces MEDIUM
-   findings as a warn; add the human confirm flow on top of `lib.redact` (HIGH still
-   blocks outright).
-3. **The prove gate: 30-run paired Wilcoxon (p<0.05)**. With real benchmark data from a
-   consuming repo (squish has `benchmarks_v5_1_1` and `bench_thermal_h2h.py`), add the
-   statistical baseline comparison. This is perf regression, separate from the detection
-   self_test.
-4. **Grow the eval corpus and re-record cassettes**. One fixture per real bug class per
+- `release.yml` on main cuts a GitHub release and tag server-side whenever VERSION
+  changes. So a merged VERSION bump produces the tag; no hand-pushed tag is needed going
+  forward.
+- Every VERSION bump is a one-way door. Classify and confirm it with `konjo-oneway`, log
+  the release decision to the Ledger, and (for the repo's own history) the commit that
+  bumps VERSION carries the acknowledgement trailer.
+- Historical tags v0.1.0..v0.3.0 were backfilled locally this sprint. They could not be
+  pushed from the build environment (the git proxy rejects tag-ref pushes) and release.yml
+  does not backfill old versions, so they must be pushed or cut as releases by hand if the
+  historical pins need to resolve.
+
+## Immediate Phase 4 tasks
+
+1. **The prove gate: 30-run paired Wilcoxon (p<0.05)**. Use squish's real benchmark data
+   (`benchmarks_v5_1_1`, `bench_thermal_h2h.py`). Compare a change's runs against the
+   stored baseline; block on a statistically significant regression. This is perf, separate
+   from the detection self_test.
+2. **Grow the eval corpus and re-record cassettes**. One fixture per real bug class per
    specialist (memory, concurrency, api-surface), each with a clean control. Re-run
-   `konjo-eval record` so the replay gate covers them.
-5. **Propagate, repo by repo**. Build `konjo-gates-rs` (clippy + cargo-mutants) and
-   `konjo-gates-js` (eslint + tsc + stryker), then add profiles for the other repos one at
-   a time behind version pins. Never all at once.
+   `konjo-eval record`.
 
-## Carried notes
+## Later
 
-- The eval cassettes must be re-recorded (`konjo-eval record`, needs a model) whenever a
-  specialist prompt or a fixture changes, or `--replay` will hard-error on the stale key.
-  That hard error is intentional: a drifted prompt must not pass as zero findings.
-- squish reconcile was read-only against a clone; if squish's gates change, re-run C-B.
+- `konjo-gates-rs` (clippy + cargo-mutants) and `konjo-gates-js` (eslint + tsc + stryker),
+  then profiles for the other repos one at a time behind version pins.
+- The supply_chain universal gate (lockfile integrity, advisory scan) is a Phase 5
+  candidate; it stays stubbed for now.
 
 ## Still out, permanently
 
