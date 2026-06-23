@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 # Strip leading "path:line:col" location prefixes so the same finding on a shifted line
 # normalizes to one comparable string. Also collapse bare line/col numbers.
@@ -34,8 +36,8 @@ def _normalize(line: str) -> str:
     return line.strip()
 
 
-def _run(cmd: list[str]) -> str:
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+def _run(cmd: list[str], cwd: str | None = None) -> str:
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     return proc.stdout + proc.stderr
 
 
@@ -44,17 +46,40 @@ def _git(args: list[str]) -> str:
     return proc.stdout.strip()
 
 
-def _findings_at(ref: str | None, scanner: list[str]) -> set[str]:
-    """Run the scanner, optionally after checking out ref, return normalized findings.
+def _git_ok(args: list[str]) -> bool:
+    return subprocess.run(["git", *args], capture_output=True, text=True).returncode == 0
 
-    When ref is given we stash, check it out, scan, then restore. The caller is
-    responsible for a clean tree; we refuse to run with uncommitted changes that the
-    checkout would clobber.
+
+def _worktree_supported() -> bool:
+    return _git_ok(["worktree", "list"])
+
+
+def _findings_at_head(scanner: list[str]) -> set[str]:
+    """Scan the current working tree (HEAD plus any local changes) in place."""
+    out = _run(scanner)
+    return {_normalize(line) for line in out.splitlines() if line.strip()}
+
+
+def _findings_at_base(ref: str, scanner: list[str]) -> set[str]:
+    """Scan the base ref WITHOUT touching the user's working tree (C3).
+
+    Preferred path: check the ref out into a throwaway `git worktree` and run the
+    scanner there. The caller's tree is never modified, so this is safe even with
+    uncommitted changes. If worktrees are unavailable, the caller has already gated on
+    a clean tree, so this falls back to an in-place checkout-and-restore.
     """
-    if ref is None:
-        out = _run(scanner)
-        return {_normalize(line) for line in out.splitlines() if line.strip()}
+    if _worktree_supported():
+        tmp = tempfile.mkdtemp(prefix="konjo-newonly-")
+        try:
+            if not _git_ok(["worktree", "add", "--quiet", "--detach", tmp, ref]):
+                return set()
+            out = _run(scanner, cwd=tmp)
+            return {_normalize(line) for line in out.splitlines() if line.strip()}
+        finally:
+            _git(["worktree", "remove", "--force", tmp])
+            shutil.rmtree(tmp, ignore_errors=True)
 
+    # Fallback: in-place checkout. Only reached on a clean tree (gated in main).
     original = _git(["rev-parse", "--abbrev-ref", "HEAD"])
     if original == "HEAD":
         original = _git(["rev-parse", "HEAD"])
@@ -64,6 +89,10 @@ def _findings_at(ref: str | None, scanner: list[str]) -> set[str]:
         return {_normalize(line) for line in out.splitlines() if line.strip()}
     finally:
         _git(["checkout", "--quiet", original])
+
+
+def _tree_is_dirty() -> bool:
+    return bool(_git(["status", "--porcelain"]))
 
 
 def main(argv: list[str]) -> int:
@@ -85,8 +114,19 @@ def main(argv: list[str]) -> int:
         print(f"could not find merge-base of HEAD and {args.base}", file=sys.stderr)
         return 2
 
-    head_findings = _findings_at(None, scanner)
-    base_findings = _findings_at(merge_base, scanner)
+    # C3: the base scan must not clobber the user's tree. We use a git worktree when
+    # available. Only if worktrees are unavailable do we need a clean tree, since the
+    # fallback checks out in place; refuse there rather than risk losing work.
+    if not _worktree_supported() and _tree_is_dirty():
+        print(
+            "konjo-newonly: working tree is dirty and git worktree is unavailable.\n"
+            "Commit or stash your changes, or use a git version with worktree support.",
+            file=sys.stderr,
+        )
+        return 2
+
+    head_findings = _findings_at_head(scanner)
+    base_findings = _findings_at_base(merge_base, scanner)
 
     net_new = sorted(head_findings - base_findings)
     if not net_new:

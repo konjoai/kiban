@@ -3,6 +3,13 @@
 # disk during this scaffold, so fields that could not be verified against the repo are
 # marked UNVERIFIED rather than fabricated. A later sprint with squish checked out
 # should confirm and drop the markers.
+#
+# Phase 1 re-check (C1): squish was again NOT reachable on disk (no konjo_wall3_cc.sh,
+# verify_deps.py, pre-commit config, bench_thermal_h2h.py, or BENCHMARKS.md found). The
+# UNVERIFIED markers therefore remain. The specialist set below IS exercised by the
+# Phase 1 review engine and eval, so it is load-bearing; the linter set, the
+# squizd-format / http-api-surface gate names, the mutation tool, and the prove
+# baseline tag stay UNVERIFIED until squish is checked out alongside kiban.
 
 repo: squish
 

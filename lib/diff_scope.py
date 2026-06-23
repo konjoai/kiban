@@ -1,31 +1,104 @@
 """diff_scope: derive scope booleans from a changed-file list.
 
-STUB (phase 1). Given the set of files a change touches, emit booleans that tell the
-gate runner which specialist lanes and gates to activate, so a docs-only change does
-not pay for a mutation-testing run and a Rust change does not run the MLX numerics lane.
+Given the files a change touches, emit booleans that tell the engine which specialist
+lanes to run and tell CI when the prompt-eval gate must fire. A docs-only change should
+not pay for the numerics lane; a Rust change should not run the MLX lane.
 
-Contract for the phase-1 implementation:
-  scope(changed_files: list[str]) -> dict[str, bool] with keys:
-    SCOPE_RUST, SCOPE_MLX, SCOPE_MOJO, SCOPE_SWIFT, SCOPE_PROMPTS,
-    SCOPE_BENCH, SCOPE_DEPS, SCOPE_DOCS
-  Classification is by path/extension rules per profile. The runner ANDs these against
-  the profile's enabled gates to pick the minimal gate set for the change.
+Classification is by path and extension, plus a light content sniff for MLX (an `mx.`
+import or call) since MLX code lives in `.py` files. The engine ANDs these flags against
+the profile's specialist list to pick the minimal set per change.
 """
 
 from __future__ import annotations
+
+import re
 
 SCOPE_KEYS = (
     "SCOPE_RUST",
     "SCOPE_MLX",
     "SCOPE_MOJO",
     "SCOPE_SWIFT",
+    "SCOPE_PYTHON",
     "SCOPE_PROMPTS",
     "SCOPE_BENCH",
     "SCOPE_DEPS",
     "SCOPE_DOCS",
 )
 
+_EXT = {
+    ".rs": "SCOPE_RUST",
+    ".mojo": "SCOPE_MOJO",
+    ".🔥": "SCOPE_MOJO",
+    ".swift": "SCOPE_SWIFT",
+    ".py": "SCOPE_PYTHON",
+    ".pyi": "SCOPE_PYTHON",
+    ".md": "SCOPE_DOCS",
+    ".markdown": "SCOPE_DOCS",
+    ".rst": "SCOPE_DOCS",
+    ".txt": "SCOPE_DOCS",
+}
 
-def scope(changed_files: list[str]) -> dict[str, bool]:
-    # TODO(phase-1): map file paths/extensions to the scope booleans above.
-    raise NotImplementedError("diff_scope is a phase-1 stub")
+_DEP_FILES = {
+    "requirements.txt",
+    "pyproject.toml",
+    "poetry.lock",
+    "uv.lock",
+    "cargo.toml",
+    "cargo.lock",
+    "package.json",
+    "package-lock.json",
+    "go.mod",
+    "go.sum",
+}
+
+_PROMPT_HINT = re.compile(r"(prompt|specialist|skill|\.tmpl|/prompts?/)", re.IGNORECASE)
+_BENCH_HINT = re.compile(r"(bench|benchmark)", re.IGNORECASE)
+_MLX_HINT = re.compile(r"\bmx\.|\bimport mlx\b|from mlx\b")
+
+
+def _ext(path: str) -> str:
+    name = path.rsplit("/", 1)[-1]
+    dot = name.rfind(".")
+    return name[dot:].lower() if dot > 0 else ""
+
+
+def scope(changed_files: list[str], diff_text: str | None = None) -> dict[str, bool]:
+    """Map changed files to the scope booleans. Optional diff_text enables the MLX sniff."""
+    flags = dict.fromkeys(SCOPE_KEYS, False)
+
+    for path in changed_files:
+        lower = path.lower()
+        base = lower.rsplit("/", 1)[-1]
+
+        ext_scope = _EXT.get(_ext(path))
+        if ext_scope:
+            flags[ext_scope] = True
+
+        if base in _DEP_FILES:
+            flags["SCOPE_DEPS"] = True
+        if _PROMPT_HINT.search(lower):
+            flags["SCOPE_PROMPTS"] = True
+        if _BENCH_HINT.search(lower):
+            flags["SCOPE_BENCH"] = True
+        if "docs/" in lower:
+            flags["SCOPE_DOCS"] = True
+
+    # MLX lives in .py files; a content sniff promotes SCOPE_MLX when the diff touches it.
+    if diff_text and _MLX_HINT.search(diff_text):
+        flags["SCOPE_MLX"] = True
+
+    return flags
+
+
+CODE_SCOPES = (
+    "SCOPE_RUST",
+    "SCOPE_MLX",
+    "SCOPE_MOJO",
+    "SCOPE_SWIFT",
+    "SCOPE_PYTHON",
+)
+
+
+def has_code(flags: dict[str, bool]) -> bool:
+    """True if any code lane is in scope. Docs/deps/bench-only changes are not code."""
+    return any(flags.get(k) for k in CODE_SCOPES)

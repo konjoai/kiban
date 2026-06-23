@@ -46,14 +46,15 @@ universal_gates:
 
   self_test:
     enabled: true
-    stubbed: true
     description: >
-      The gates test themselves against the eval corpus (the meta-gate). TODO(phase-1):
-      konjo-eval + evals/runner.py + the 30-run paired Wilcoxon prove baseline.
+      The gates test themselves against the eval corpus (the meta-gate). Implemented in
+      Phase 1: konjo-eval + evals/runner.py run the real review_diff over the corpus and
+      fail on a missed CRITICAL or a control that fired. The 30-run paired Wilcoxon prove
+      baseline remains the next step (Phase 2).
 
   specialist_stats:
     enabled: true
-    stubbed: true
     description: >
-      Promote a review specialist to a blocking gate only when its hit rate and sample
-      size clear the threshold. TODO(phase-1): lib/specialist_stats.py.
+      Tag a review specialist by its record: ACTIVE, GATE_CANDIDATE (zero findings over
+      the sample floor), NEVER_GATE (insurance set), or INSUFFICIENT_DATA below the floor.
+      Implemented in Phase 1: lib/specialist_stats.py, fed by lib/review_log.py.

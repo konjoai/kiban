@@ -1,36 +1,69 @@
 #!/usr/bin/env python3
 """konjo-eval: the meta-gate eval harness CLI.
 
-STUB (phase 1). The harness runs the gate against the eval corpus in evals/fixtures,
-records detection_rate / false_positives / missed_bugs, and fails the build if the
-gate regresses below the prove baseline. This is how the gates test themselves: a gate
-that stops catching a known bug class is itself a defect.
+Runs the real review gate (lib/review.review_diff) against the planted-bug corpus and
+checks each fixture against its expectation. Records per-run detection plus the
+aggregate; never reports a single-run detection rate as final. Exits nonzero on any
+missed CRITICAL bug or any control that fired.
 
-Contract for the phase-1 implementation:
-  konjo-eval run [--profile PATH] [--corpus DIR]
-    - load each fixture (diff.patch + expect.json)
-    - apply the gate, compare against expect (must_flag / must_be_silent)
-    - emit a JSON report and exit nonzero on any regression vs the prove baseline
-
-See evals/runner.py for the harness internals (also stubbed).
+Usage:
+  konjo-eval [run] [--profile profiles/squish.yml] [--runs 3] [--mode daily|deep]
+             [--json] [--corpus DIR]
 """
 
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
 import sys
 
-TODO_PHASE = 1
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from evals import runner  # noqa: E402
+
+
+def _print_human(report: dict) -> None:
+    print(f"konjo-eval: {report['summary']['n_fixtures']} fixtures, "
+          f"runs={report['runs']}, mode={report['mode']}")
+    for fx in report["fixtures"]:
+        mark = "PASS" if fx["passed"] else "FAIL"
+        detail = (
+            f"detection_rate={fx['detection_rate']} per_run={fx['per_run_detected']}"
+            if fx["kind"] == "must_flag"
+            else f"silent_runs={fx['per_run_detected']} findings={fx['per_run_findings']}"
+        )
+        print(f"  [{mark}] {fx['name']} ({fx['kind']}) {detail}")
+    s = report["summary"]
+    if s["missed_bugs"]:
+        print(f"  missed bugs: {', '.join(s['missed_bugs'])}")
+    if s["false_positive_controls"]:
+        print(f"  controls that fired: {', '.join(s['false_positive_controls'])}")
+    print(f"konjo-eval: {'OK' if report['ok'] else 'REGRESSION'}")
 
 
 def main(argv: list[str]) -> int:
-    # TODO(phase-1): wire evals/runner.py and the prove baseline comparison.
-    raise NotImplementedError(
-        "konjo-eval is a phase-1 stub; the eval harness is not built yet"
-    )
+    parser = argparse.ArgumentParser(prog="konjo-eval")
+    parser.add_argument("cmd", nargs="?", default="run", choices=["run"])
+    parser.add_argument("--profile", default=str(_KIBAN_ROOT / "profiles" / "squish.yml"))
+    parser.add_argument("--runs", type=int, default=runner.DEFAULT_RUNS)
+    parser.add_argument("--mode", default="daily", choices=["daily", "deep"])
+    parser.add_argument("--corpus", default=None)
+    parser.add_argument("--json", action="store_true", help="emit the raw report as JSON")
+    args = parser.parse_args(argv)
+
+    corpus = pathlib.Path(args.corpus) if args.corpus else runner.FIXTURES_DIR
+    report = runner.run(args.profile, runs=args.runs, mode=args.mode, corpus_dir=corpus)
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        _print_human(report)
+
+    return 0 if report["ok"] else 1
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main(sys.argv[1:]))
-    except NotImplementedError as e:
-        print(f"konjo-eval: {e}", file=sys.stderr)
-        print("phase 1", file=sys.stderr)
-        raise SystemExit(0)
+    raise SystemExit(main(sys.argv[1:]))

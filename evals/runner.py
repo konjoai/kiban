@@ -1,27 +1,164 @@
-"""evals/runner.py: the meta-gate harness.
+"""The meta-gate harness: run the real review gate against the planted-bug corpus.
 
-STUB (phase 1). Reads each fixture (diff.patch + expect.json), runs the gate against the
-diff, compares the result to the expectation, and records detection_rate,
-false_positives, and missed_bugs. Fails the build if the gate regresses below the prove
-baseline.
+For each fixture (a dir with diff.patch and expect.json) the harness calls the SAME
+review_diff the live gate uses, `runs` times, and checks the result against the
+expectation:
 
-Contract for the phase-1 implementation:
-  run(corpus_dir, profile) -> Report
-    - for each fixture: apply the gate to diff.patch, compare to expect.json
-      (must_flag -> the gate must flag that category/severity;
-       must_be_silent -> the gate must produce no finding)
-    - aggregate detection_rate = caught / total must_flag
-                false_positives = flags on must_be_silent fixtures
-                missed_bugs = uncaught must_flag fixtures
-    - the prove gate compares against the baseline with a 30-run paired Wilcoxon
-      (p < 0.05); that statistical step is itself referenced as a stub this sprint.
+  must_flag {category, severity}  the gate must produce a matching finding.
+  must_be_silent: true            the gate must produce no finding above the gate.
+
+Detection from a single run is noise, so every fixture is run `runs` times (default 3)
+and per-run results are recorded alongside the aggregate. The exit policy is strict and
+documented in evaluate():
+  - a CRITICAL must_flag must be detected on EVERY run (detection_rate == 1.0),
+  - a non-CRITICAL must_flag must be detected on at least one run,
+  - a must_be_silent control must be silent on EVERY run.
+
+The 30-run paired Wilcoxon prove-baseline comparison is the next step (a later sprint);
+this harness records the detection metrics it will consume.
 """
 
 from __future__ import annotations
 
-TODO_PHASE = 1
+import json
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import yaml  # type: ignore[import-untyped]
+
+from lib import review
+from lib.review import ReviewBackend
+
+DEFAULT_RUNS = 3
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
-def run(corpus_dir: str, profile: str) -> object:
-    # TODO(phase-1): load fixtures, run the gate, aggregate the metrics.
-    raise NotImplementedError("evals/runner.py is a phase-1 stub")
+@dataclass
+class FixtureResult:
+    name: str
+    kind: str  # "must_flag" or "must_be_silent"
+    expect: dict[str, Any]
+    per_run_detected: list[bool] = field(default_factory=list)
+    per_run_findings: list[int] = field(default_factory=list)
+    latency: float = 0.0
+    model: str | None = None
+
+    @property
+    def detection_rate(self) -> float:
+        if not self.per_run_detected:
+            return 0.0
+        return sum(self.per_run_detected) / len(self.per_run_detected)
+
+    @property
+    def passed(self) -> bool:
+        if self.kind == "must_be_silent":
+            # Silent on every run: no finding above gate, ever.
+            return all(self.per_run_detected)
+        severity = str(self.expect.get("must_flag", {}).get("severity", "")).upper()
+        if severity == "CRITICAL":
+            return self.detection_rate >= 1.0
+        return self.detection_rate > 0.0
+
+
+def discover_fixtures(corpus_dir: Path = FIXTURES_DIR) -> list[Path]:
+    """Every dir under the corpus that has both diff.patch and expect.json."""
+    found: list[Path] = []
+    for expect in sorted(corpus_dir.rglob("expect.json")):
+        if (expect.parent / "diff.patch").exists():
+            found.append(expect.parent)
+    return found
+
+
+def _load_profile(profile_path: str | Path) -> dict[str, Any]:
+    with open(profile_path, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh)
+    return data if isinstance(data, dict) else {}
+
+
+def evaluate_fixture(
+    fixture_dir: Path,
+    profile: dict[str, Any],
+    *,
+    runs: int,
+    backend: ReviewBackend | None,
+    mode: str,
+) -> FixtureResult:
+    diff_text = (fixture_dir / "diff.patch").read_text(encoding="utf-8")
+    expect = json.loads((fixture_dir / "expect.json").read_text(encoding="utf-8"))
+    name = str(fixture_dir.relative_to(FIXTURES_DIR))
+
+    kind = "must_flag" if "must_flag" in expect else "must_be_silent"
+    fr = FixtureResult(name=name, kind=kind, expect=expect)
+
+    result = review.review_diff(diff_text, profile, runs=runs, backend=backend, mode=mode)
+    fr.model = next((r.model for r in result.specialist_reports), None)
+    fr.latency = sum(r.latency for r in result.specialist_reports)
+
+    for run_findings in result.per_run:
+        fr.per_run_findings.append(len(run_findings))
+        if kind == "must_flag":
+            want = expect["must_flag"]
+            detected = any(
+                f.category.lower() == str(want.get("category", "")).lower()
+                and f.severity.upper() == str(want.get("severity", "")).upper()
+                for f in run_findings
+            )
+            fr.per_run_detected.append(detected)
+        else:
+            # "detected" here means the desired outcome held: the run was silent.
+            fr.per_run_detected.append(len(run_findings) == 0)
+    return fr
+
+
+def run(
+    profile_path: str | Path,
+    *,
+    runs: int = DEFAULT_RUNS,
+    backend: ReviewBackend | None = None,
+    mode: str = "daily",
+    corpus_dir: Path = FIXTURES_DIR,
+) -> dict[str, Any]:
+    """Run the whole corpus and return an eval-store report dict."""
+    profile = _load_profile(profile_path)
+    results: list[FixtureResult] = []
+    for fixture in discover_fixtures(corpus_dir):
+        results.append(
+            evaluate_fixture(fixture, profile, runs=runs, backend=backend, mode=mode)
+        )
+
+    must_flag = [r for r in results if r.kind == "must_flag"]
+    controls = [r for r in results if r.kind == "must_be_silent"]
+    ok = all(r.passed for r in results)
+
+    return {
+        "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "runs": runs,
+        "mode": mode,
+        "ok": ok,
+        "summary": {
+            "n_fixtures": len(results),
+            "n_must_flag": len(must_flag),
+            "n_controls": len(controls),
+            "missed_bugs": [r.name for r in must_flag if not r.passed],
+            "false_positive_controls": [r.name for r in controls if not r.passed],
+        },
+        "fixtures": [
+            {
+                "name": r.name,
+                "kind": r.kind,
+                "expect": r.expect,
+                "passed": r.passed,
+                "per_run_detected": r.per_run_detected,
+                "per_run_findings": r.per_run_findings,
+                "detection_rate": round(r.detection_rate, 3),
+                "false_positive_rate": (
+                    round(1.0 - r.detection_rate, 3) if r.kind == "must_be_silent" else None
+                ),
+                "latency": round(r.latency, 3),
+                "model": r.model,
+            }
+            for r in results
+        ],
+    }

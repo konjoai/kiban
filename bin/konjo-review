@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""konjo-review: run the specialist review gate over the working diff.
+
+The live caller of lib/review.review_diff (the eval harness is the other). Reviews the
+diff between a base ref and the working tree, prints findings, and appends the run to the
+review log so specialist-stats has input.
+
+Usage:
+  konjo-review [--base origin/main] [--profile profiles/squish.yml]
+               [--mode daily|deep] [--runs 1] [--json] [--no-log]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import subprocess
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+import yaml  # type: ignore[import-untyped]  # noqa: E402
+
+from lib import review, review_log  # noqa: E402
+
+
+def _working_diff(base: str) -> str:
+    proc = subprocess.run(
+        ["git", "diff", f"{base}...HEAD"], capture_output=True, text=True
+    )
+    out = proc.stdout
+    # Include uncommitted changes too.
+    proc2 = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True)
+    return out + proc2.stdout
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="konjo-review")
+    parser.add_argument("--base", default="origin/main")
+    parser.add_argument("--profile", default=str(_KIBAN_ROOT / "profiles" / "squish.yml"))
+    parser.add_argument("--mode", default="daily", choices=["daily", "deep"])
+    parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument("--diff-file", default=None, help="review a diff from a file instead of git")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--no-log", action="store_true", help="do not append to the review log")
+    args = parser.parse_args(argv)
+
+    with open(args.profile, encoding="utf-8") as fh:
+        profile = yaml.safe_load(fh) or {}
+
+    if args.diff_file:
+        diff_text = pathlib.Path(args.diff_file).read_text(encoding="utf-8")
+    else:
+        diff_text = _working_diff(args.base)
+
+    if not diff_text.strip():
+        print("konjo-review: empty diff, nothing to review")
+        return 0
+
+    result = review.review_diff(diff_text, profile, runs=args.runs, mode=args.mode)
+
+    if not args.no_log:
+        review_log.record(result, label="konjo-review")
+
+    if args.json:
+        print(json.dumps([f.to_record() for f in result.findings], indent=2))
+    else:
+        print(f"konjo-review: {len(result.findings)} finding(s) "
+              f"(mode={result.mode}, threshold={result.threshold}, "
+              f"specialists={','.join(result.selected) or 'none'})")
+        for f in result.findings:
+            who = ",".join(f.specialists)
+            print(f"  [{f.severity} {f.confidence}/10] {f.category}: {f.summary} "
+                  f"({f.path}:{f.line}) <{who}>")
+            if f.fix:
+                print(f"      fix: {f.fix}")
+
+    # Blocking: any CRITICAL or HIGH finding fails the gate.
+    blocking = [f for f in result.findings if f.severity.upper() in ("CRITICAL", "HIGH")]
+    return 1 if blocking else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
