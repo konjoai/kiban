@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""konjo-decision: the Konjo Ledger CLI.
+
+Subcommands:
+  decide      log a durable decision (decision, rationale, alternatives, confidence)
+  supersede   replace an existing decision by id
+  redact      retire a decision by id (history preserved)
+  search      keyword search, active-first, supersede chains visible
+
+Examples:
+  konjo-decision decide --scope org \\
+    --decision "Use gstack-style distribution" \\
+    --rationale "Marketplace adds a cache layer we do not control" \\
+    --alt "plugin marketplace" --alt "git submodule" --confidence 8 --author wes
+  konjo-decision search "distribution"
+  konjo-decision supersede <id> --decision "..." --rationale "..."
+  konjo-decision redact <id> --reason "obsolete"
+"""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from ledger.engine import Decision, Ledger  # noqa: E402
+from lib import jsonl_store  # noqa: E402
+
+
+def _print_decision(d: Decision) -> None:
+    status = "ACTIVE" if d.active else ("REDACTED" if d.redacted else "SUPERSEDED")
+    print(f"[{status}] {d.id}  ({d.scope}, confidence {d.confidence}/10, {d.date})")
+    print(f"  decision : {d.decision}")
+    print(f"  rationale: {d.rationale}")
+    if d.alternatives_considered:
+        print(f"  rejected : {', '.join(d.alternatives_considered)}")
+    if d.superseded_by:
+        print(f"  -> superseded by {d.superseded_by}")
+    if d.chain:
+        print(f"  chain    : {' -> '.join(d.chain + [d.id])}")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="konjo-decision", description="Konjo Ledger CLI")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    d = sub.add_parser("decide", help="log a durable decision")
+    d.add_argument("--decision", required=True)
+    d.add_argument("--rationale", required=True)
+    d.add_argument("--scope", default="org")
+    d.add_argument("--alt", action="append", default=[], dest="alternatives")
+    d.add_argument("--confidence", type=int, default=5)
+    d.add_argument("--author", default="unknown")
+
+    s = sub.add_parser("supersede", help="replace a decision by id")
+    s.add_argument("target_id")
+    s.add_argument("--decision", required=True)
+    s.add_argument("--rationale", required=True)
+    s.add_argument("--alt", action="append", default=[], dest="alternatives")
+    s.add_argument("--confidence", type=int, default=5)
+    s.add_argument("--author", default="unknown")
+
+    r = sub.add_parser("redact", help="retire a decision by id")
+    r.add_argument("target_id")
+    r.add_argument("--reason", required=True)
+    r.add_argument("--author", default="unknown")
+
+    q = sub.add_parser("search", help="keyword search, active-first")
+    q.add_argument("query", nargs="?", default="")
+    q.add_argument("--scope", default=None)
+    q.add_argument("--all", action="store_true", help="include inactive in plain list")
+
+    return p
+
+
+def main(argv: list[str]) -> int:
+    args = _build_parser().parse_args(argv)
+    ledger = Ledger()
+
+    try:
+        if args.cmd == "decide":
+            did = ledger.decide(
+                args.decision,
+                args.rationale,
+                scope=args.scope,
+                alternatives_considered=args.alternatives,
+                confidence=args.confidence,
+                author=args.author,
+            )
+            print(f"logged decision {did}")
+            return 0
+
+        if args.cmd == "supersede":
+            new_id = ledger.supersede(
+                args.target_id,
+                args.decision,
+                args.rationale,
+                alternatives_considered=args.alternatives,
+                confidence=args.confidence,
+                author=args.author,
+            )
+            print(f"superseded {args.target_id} -> {new_id}")
+            return 0
+
+        if args.cmd == "redact":
+            ledger.redact_decision(args.target_id, args.reason, author=args.author)
+            print(f"redacted {args.target_id}")
+            return 0
+
+        if args.cmd == "search":
+            results = ledger.search(args.query, scope=args.scope)
+            if not args.all:
+                results = [d for d in results if d.active]
+            if not results:
+                print("no matching decisions")
+                return 0
+            for d in results:
+                _print_decision(d)
+                print()
+            return 0
+
+    except jsonl_store.SecretRejected as e:
+        print(f"blocked: {e}", file=sys.stderr)
+        return 3
+    except jsonl_store.InjectionRejected as e:
+        print(f"blocked: {e}", file=sys.stderr)
+        return 3
+    except (KeyError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

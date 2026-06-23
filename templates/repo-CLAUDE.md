@@ -1,0 +1,27 @@
+# CLAUDE.md (consuming-repo template)
+
+Drop this into a consuming repo's root. It imports the org rules from the global kiban
+clone (the session plane) and then adds repo-specific rules below.
+
+## Org rules (imported from kiban)
+
+@~/.konjo/kiban/plugins/konjo/skills/konjo/SKILL.md
+
+The org ethos applies here: ship over optimize, kill-test first, statistical rigor,
+honest negative results, evidence first, token-efficient context.
+
+Editorial rules: no em dashes, no AI-tell vocabulary. The prose lint enforces it; run
+`konjo-prose` on docs before pushing.
+
+Log durable decisions with `konjo-decision decide` at `repo:<this-repo>` scope. Search
+with `konjo-decision search` before reopening a settled call.
+
+## Pinning
+
+This repo pins a kiban ref in `.konjo/kiban.ref` (and `KIBAN_REF` in CI). The session
+plane checks out that ref on self-update instead of pulling main, so kiban changes land
+here on a deliberate schedule.
+
+## Repo-specific rules
+
+<!-- Add rules unique to this repo below. Keep them plain. -->

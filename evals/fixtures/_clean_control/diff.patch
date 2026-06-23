@@ -1,0 +1,13 @@
+diff --git a/squish/util.py b/squish/util.py
+index 3333333..4444444 100644
+--- a/squish/util.py
++++ b/squish/util.py
+@@ -3,5 +3,7 @@ def clamp(x, lo, hi):
+     return max(lo, min(hi, x))
+
+
+-def describe(n):
+-    return f"count={n}"
++def describe(n, label="count"):
++    # Add an optional label. Behavior unchanged when label is omitted.
++    return f"{label}={n}"

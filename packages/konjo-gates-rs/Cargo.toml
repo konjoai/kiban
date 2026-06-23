@@ -1,0 +1,13 @@
+# konjo-gates-rs (phase-1 stub)
+# Cargo crate skeleton for the CI-plane gate runner on Konjo Rust repos. The working
+# version shells out to clippy and cargo-mutants per the repo profile. README spec only
+# this sprint; no working logic.
+
+[package]
+name = "konjo-gates-rs"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "CI-plane gate runner for Konjo Rust repos (phase-1 stub)"
+
+[dependencies]

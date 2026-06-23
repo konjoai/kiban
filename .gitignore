@@ -1,0 +1,21 @@
+# local scratch and temp work
+scratch/
+*.tmp
+*.log
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+build/
+dist/
+
+# local state (the Ledger lives in ~/.konjo/state, never in the repo)
+.konjo/
+state/
+
+# editor/OS noise
+.DS_Store

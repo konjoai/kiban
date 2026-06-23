@@ -1,0 +1,11 @@
+{
+  "name": "@konjoai/konjo-gates-js",
+  "version": "0.1.0",
+  "description": "CI-plane gate runner for Konjo JS/TS repos (phase-1 stub)",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "konjo-gates-js": "./bin/konjo-gates-js.js"
+  },
+  "comment": "Phase-1 stub. The working runner shells out to eslint, tsc, and stryker per the repo profile. The CI plane never reads ~/.konjo; the gate logic is this pinned package."
+}

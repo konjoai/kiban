@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "konjo-gates-py"
+version = "0.1.0"
+description = "CI-plane gate runner for Konjo Python and ML repos (phase-1 stub)"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+# Spec: the working version installs the same lib/ engine shipped by kiban and runs the
+# consuming repo's profile gates in CI. The CI plane never reads ~/.konjo; the gate logic
+# is pinned and installed here. This stub only proves the entry point wiring.
+
+[project.scripts]
+konjo-gates = "konjo_gates_py.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

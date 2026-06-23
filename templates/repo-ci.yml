@@ -1,0 +1,34 @@
+# templates/repo-ci.yml
+# The thin per-repo GitHub Actions workflow a consuming repo drops in. The CI plane
+# installs a pinned konjo-gates package and runs it against the repo's profile. CI never
+# reads ~/.konjo; the gate logic comes from the installed, version-pinned package.
+#
+# Pin KIBAN_REF to a tag or sha so a kiban change rolls out to this repo on a deliberate
+# schedule, not all repos at once.
+
+name: konjo-gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  KIBAN_REF: "v0.1.0"   # the pinned kiban ref for this repo; bump deliberately
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned konjo-gates (Python/ML repos)
+        run: pip install "konjo-gates-py @ git+https://github.com/konjoai/kiban.git@${KIBAN_REF}#subdirectory=packages/konjo-gates-py"
+
+      - name: Run gates against the repo profile
+        run: konjo-gates --profile .konjo/profile.yml

@@ -1,0 +1,39 @@
+# profiles/squish.yml
+# Seeded from real squish state where reachable. The squish KCQF scripts were NOT on
+# disk during this scaffold, so fields that could not be verified against the repo are
+# marked UNVERIFIED rather than fabricated. A later sprint with squish checked out
+# should confirm and drop the markers.
+
+repo: squish
+
+stack:
+  - mlx
+  - python
+  - swift
+
+format_lint:
+  - ruff            # UNVERIFIED: exact linter set not confirmed against squish on disk
+  - shellcheck      # UNVERIFIED
+
+contract_gates:
+  - dtype                 # fp16/fp32 KV-cache promotion class (see evals fixture)
+  - shape                 # tensor shape contracts
+  - squizd-format         # UNVERIFIED: squish on-disk format gate name not confirmed
+  - http-api-surface      # UNVERIFIED: API-surface gate not confirmed against repo
+
+mutation: "none-with-reason: UNVERIFIED; mutation tool for squish not confirmed on disk"
+
+specialists:
+  - numerics
+  - memory-bandwidth
+  - concurrency
+  - api-surface
+
+prove:
+  enabled: true
+  baseline: "thermal-h2h"   # UNVERIFIED: baseline tag inferred from bench_thermal_h2h.py
+                            # naming; confirm the exact tag against BENCHMARKS.md
+
+killtest: true
+
+overrides: {}
