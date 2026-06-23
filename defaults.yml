@@ -27,10 +27,13 @@ universal_gates:
 
   one_way_door:
     enabled: true
-    stubbed: true
     description: >
-      Classify hard-to-reverse changes and require an interactive confirm. TODO(phase-3):
-      bin/konjo-oneway classifier and the confirm flow.
+      Classify hard-to-reverse changes (schema/migration, public-API removal, data
+      delete, key rotation, release actions) and require an explicit acknowledgement.
+      Implemented in Phase 3: lib/oneway.py + bin/konjo-oneway classify the change; the
+      interactive confirm (lib/confirm.py) requires a typed token and logs to the Ledger;
+      the CI one_way_door gate in konjo-gates checks for the commit-trailer acknowledgement
+      and never prompts.
 
   net_new_only:
     enabled: true

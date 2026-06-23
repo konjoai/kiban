@@ -73,9 +73,21 @@ each pin, never all repos at once.
   stats) plus the profile's repo-native gates, each wrapped in `konjo-newonly`. The eval
   runs deterministically offline via recorded cassettes (`konjo-eval record` /
   `run --replay`). Working and tested; the kill-test passes with no model and no network.
-- **Phase 3+**: the one-way-door confirm flow, the MEDIUM-secret interactive confirm, the
-  30-run paired Wilcoxon prove baseline, and `konjo-gates-rs`/`-js`. Stubbed with their
-  contracts in place. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 3 (this release, 0.4.0)**: the safety layer. The one-way-door classifier
+  (`lib/oneway.py`, `konjo-oneway`), the typed-confirm flow (`lib/confirm.py`) that logs
+  an acknowledgement and emits a commit trailer, the MEDIUM-secret confirm
+  (`konjo-secrets`), and the CI `one_way_door` gate that checks the trailer without
+  prompting. Plus the release-tag discipline. Working and tested; the kill-test passes.
+- **Phase 4+**: the 30-run paired Wilcoxon prove baseline, eval corpus growth, and
+  `konjo-gates-rs`/`-js`. See `NEXT_SESSION_PROMPT.md`.
+
+## Irreversible changes
+
+A one-way door (schema migration, public-API removal, data delete, key rotation, a
+release) needs an explicit acknowledgement, not an automatic block. Run
+`konjo-oneway confirm --files ...`: it states what is irreversible, requires a typed
+confirmation and a justification, logs the call to the Ledger, and prints a commit
+trailer. The CI `one_way_door` gate checks for that trailer and never prompts.
 
 ## Gates in CI
 

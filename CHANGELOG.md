@@ -4,6 +4,50 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-23
+
+Phase 3: the safety layer for decisions a pass/fail gate should not make alone. A
+one-way-door classifier, a reusable typed-confirm flow, the MEDIUM-secret confirm, and
+the release-tag discipline. Scoped to the safety confirms plus the tags.
+
+### Added
+
+- `lib/oneway.py` + `bin/konjo-oneway` (was a stub): classify a change as one-way
+  (schema/migration, public-API removal, data delete, key rotation, release actions) or
+  two-way. Errs toward one-way on a sensitive surface. A stable fingerprint over the
+  changed-file set ties a confirmation to the change.
+- `lib/confirm.py`: a reusable interactive confirm that states what is irreversible,
+  requires an exact typed token (never a bare yes), requires a justification, logs an
+  acknowledgement to the Ledger, and returns the commit trailer CI reads.
+- `bin/konjo-secrets`: the session secret gate. HIGH blocks; MEDIUM routes to the confirm.
+- konjo-gates `one_way_door` gate: classifies the change and, for a one-way door, checks
+  the commit messages in base..HEAD for `Konjo-Acknowledged-Oneway: <fingerprint>`.
+  Absent, it FAILs with guidance; present, it PASSes. It reads git only, never stdin, so
+  it is safe in CI.
+
+### Changed
+
+- `defaults.yml`: the one_way_door universal gate is no longer stubbed.
+- `templates/repo-ci.yml`: pin bumped to v0.4.0.
+- Release-tag discipline (C-A): annotated tags backfilled for v0.1.0, v0.2.0, v0.3.0 at
+  the VERSION-bump commits, and v0.4.0 for this sprint. With the release.yml workflow now
+  on main, a VERSION bump cuts the release and tag server-side; the historical tags are
+  the backfill. Every VERSION bump is a one-way door: classify and confirm it, log the
+  release to the Ledger.
+
+### Kill-test
+
+- konjo-oneway classifies a public-API break and a data delete as one-way and a comment
+  change as two-way; the confirm refuses a vague reply and logs on a valid typed token;
+  the CI gate fails an unacknowledged one-way change and passes the acknowledged one. See
+  `tests/test_oneway_killtest.sh`.
+
+### Still deferred
+
+- The 30-run paired Wilcoxon prove gate (Phase 4), eval corpus growth and cassette
+  re-record (Phase 4/5), `konjo-gates-rs`/`-js` and other-repo profiles (propagation,
+  later), and the supply_chain universal gate (Phase 5 candidate).
+
 ## [0.3.0] - 2026-06-23
 
 Phase 2: the CI plane enforces. A real konjo-gates orchestrator blocks a pull request,
@@ -144,6 +188,7 @@ Phase 0: the foundation substrate plus the squish pilot, with specified Phase 1+
 - `evals/runner.py`.
 - `packages/konjo-gates-py`, `-rs`, `-js`.
 
+[0.4.0]: https://github.com/konjoai/kiban/releases/tag/v0.4.0
 [0.3.0]: https://github.com/konjoai/kiban/releases/tag/v0.3.0
 [0.2.0]: https://github.com/konjoai/kiban/releases/tag/v0.2.0
 [0.1.0]: https://github.com/konjoai/kiban/releases/tag/v0.1.0
