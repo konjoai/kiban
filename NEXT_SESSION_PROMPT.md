@@ -1,44 +1,51 @@
-# Next session: Phase 1
+# Next session: Phase 2
 
-## What Phase 0 built (0.1.0)
+## What Phase 1 built (0.2.0)
 
-The foundation substrate and the squish pilot, all working and tested:
+The meta-gate: a parallel specialist review engine plus the eval harness that
+regression-tests it.
 
-- `lib/jsonl_store.py`, `lib/redact.py`, `lib/prose_lint.py`.
-- `ledger/engine.py` + `bin/konjo-decision`, with `ledger/schema.md`.
-- `bin/konjo-prose`, `bin/konjo-newonly`.
-- `install.sh`, `lib/self_update.sh`, the skill-preamble hook, the `konjo`/`decide`/
-  `recall` skills.
-- Profiles (`_schema.yml`, `squish.yml`, `_template.yml`), `defaults.yml`, templates.
-- The eval fixtures (`dtype_promotion`, `_clean_control`).
-- Docs (`README.md`, `docs/DISTRIBUTION.md`).
+- `lib/review.py`: the keystone `review_diff(diff, profile, specialists=None, *, runs=1)`.
+  One path for the live gate and the eval. Stable fingerprint, dedup, confidence gate
+  (daily 8 / deep 2), pluggable backend (Claude CLI in production, scripted in tests).
+- `lib/specialists/`: numerics, memory-bandwidth, concurrency, api-surface, red-team.
+  Parallel; red-team last with the others' findings.
+- `lib/diff_scope.py`, `lib/review_log.py`, `lib/specialist_stats.py`.
+- `evals/runner.py`, `bin/konjo-eval`, `bin/konjo-review`, `bin/konjo-stats`.
+- Phase 0 corrections C1 through C4 (squish re-check, self_update detached-HEAD reattach,
+  konjo-newonly worktree, narrowed fetch).
 
-The kill-test passes: a fresh shell runs `install.sh`, then `konjo-prose` and
-`konjo-decision` work from any directory with no further setup.
+Kill-test passes: konjo-eval flags squish/dtype_promotion at numerics/CRITICAL on every
+run and stays silent on _clean_control on every run.
 
-## Immediate Phase 1 tasks
+## Immediate Phase 2 tasks
 
-Each has a stub with its contract already written; fill the logic.
+1. **One-way-door confirm flow** (`bin/konjo-oneway`, still a stub). Classify
+   hard-to-reverse changes (schema migrations, public API breaks, data deletes, key
+   rotation) and add the interactive confirm. Two-way doors pass straight through.
+2. **MEDIUM-secret interactive confirm**. Build the confirm flow on top of
+   `lib/redact.py` for MEDIUM-tier findings (HIGH already blocks, LOW already surfaces).
+3. **CI packages** (`packages/konjo-gates-py`/`-rs`/`-js`, still stubs). Make
+   `konjo-gates-py` load a profile, select gates via `lib/diff_scope.py`, run the review
+   gate and the eval self-test, and fail on regression. Wire `templates/repo-ci.yml` to
+   run `konjo-eval` when SCOPE_PROMPTS is true.
+4. **The prove gate: 30-run paired Wilcoxon (p<0.05)**. Add the statistical baseline
+   comparison the eval metrics feed. This is where detection-rate deltas become a
+   pass/fail signal against a stored baseline, not a single-run read.
+5. **Grow the eval corpus**. One fixture per real bug class per specialist (memory,
+   concurrency, api-surface), each with a clean control, so detection and false-positive
+   rates are measured per lane.
 
-1. **Eval harness** (`evals/runner.py`, `bin/konjo-eval`). Read each fixture, apply the
-   gate to `diff.patch`, compare to `expect.json`, record detection_rate /
-   false_positives / missed_bugs. Add the 30-run paired Wilcoxon (p < 0.05) prove
-   baseline comparison.
-2. **Parallel specialist engine** + `lib/specialist_stats.py`. Run the review lanes
-   (numerics, memory-bandwidth, concurrency, api-surface), fold the review log into
-   per-specialist hit rates, tag GATE_CANDIDATE / NEVER_GATE with a sample-size floor.
-3. **One-way-door confirm flow** (`bin/konjo-oneway`). Classify hard-to-reverse changes
-   and add the interactive confirm. This was a Phase 0 non-goal; build it here.
-4. **Secrets interactive confirms**. Wire the MEDIUM-tier confirm flow on top of
-   `lib/redact.py` (HIGH already blocks).
-5. **Per-stack CI packages**. Make `konjo-gates-py` load a profile, select gates via
-   `lib/diff_scope.py`, run them, and fail on regression. Then `konjo-gates-rs`
-   (clippy + cargo-mutants) and `konjo-gates-js` (eslint + tsc + stryker).
-6. **`lib/diff_scope.py`**. Map a changed-file list to the SCOPE_* booleans so the
-   runner picks the minimal gate set per change.
+## Carried risks
 
-## Not yet, still out
+- LLM specialist non-determinism. Mitigated by `runs` repetition and the stable
+  fingerprint, but watch the eval for flaky fixtures and record honest negative results
+  rather than tuning a fixture to flatter the gate.
+- squish is still not reachable on disk; `profiles/squish.yml` keeps its UNVERIFIED
+  markers until squish is checked out alongside kiban.
 
-The Machine Room hub, cross-model review, web/design/iOS/browser tooling, and profiles
-for the other eight repos (lopi, kohaku, kyro, kairu, toki, miru, vectro, squash,
-@konjoai/ui). Roll those out repo by repo behind version pins, never all at once.
+## Still out, permanently
+
+The Machine Room hub, cross-model review, web/design/iOS/browser tooling, profiles for
+the other eight repos, psychographic/profile-tuning behavior, completeness-toward-10
+defaults, and the plugin marketplace.

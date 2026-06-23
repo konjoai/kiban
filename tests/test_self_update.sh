@@ -74,4 +74,18 @@ echo "$first_sha" > "$CONSUMER/.konjo/kiban.ref"
 [ "$(git -C "$KIBAN_DIR" rev-parse HEAD)" = "$first_sha" ] || fail "pin should checkout the pinned ref"
 pass "pinned ref honored over main"
 
+# 6. C2: unpin-then-update transition. The clone is now detached at first_sha (from the
+#    pin above). With the pin removed, an unpinned update must reattach to the default
+#    branch and fast-forward, not silently no-op forever in detached HEAD.
+#    Make origin/HEAD resolve to the default branch, then advance the remote.
+git -C "$KIBAN_DIR" remote set-head origin main >/dev/null 2>&1 || \
+  git -C "$KIBAN_DIR" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main >/dev/null 2>&1 || true
+echo four > "$SEED/f"; git_quiet "$SEED" commit -am four; git_quiet "$SEED" push origin HEAD:main
+detached_before="$(git -C "$KIBAN_DIR" rev-parse HEAD)"
+git -C "$KIBAN_DIR" symbolic-ref --quiet HEAD >/dev/null 2>&1 && fail "precondition: HEAD should be detached after pin"
+( cd "$WORK" && KONJO_UPDATE_INTERVAL=0 bash "$SELF_UPDATE" ) || fail "unpin update must exit 0"
+git -C "$KIBAN_DIR" symbolic-ref --quiet HEAD >/dev/null 2>&1 || fail "unpin update should reattach HEAD to a branch"
+[ "$(git -C "$KIBAN_DIR" rev-parse HEAD)" != "$detached_before" ] || fail "unpin update should fast-forward off the detached pin"
+pass "unpin-then-update reattaches and fast-forwards"
+
 echo "ALL self_update tests passed"

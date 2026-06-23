@@ -33,7 +33,19 @@ The gate must stay silent. A flag here is a false positive.
 - The runner records `detection_rate`, `false_positives`, and `missed_bugs` and fails
   the build if the gate regresses below the prove baseline.
 
+## Running it
+
+```bash
+konjo-eval --runs 3                  # default profile is squish
+konjo-eval --runs 3 --json           # raw report
+```
+
+The harness calls the same `review_diff` the live gate uses, `runs` times (default 3),
+and records per-run detection plus the aggregate. It exits nonzero on a missed CRITICAL
+bug or a control that fired. A single-run detection rate is never treated as final.
+
 ## Status
 
-`runner.py` is a Phase-1 stub. The fixtures are real and in place so the Phase-1 harness
-has a corpus to run on day one.
+Working as of 0.2.0. The kill-test passes: konjo-eval flags squish/dtype_promotion at
+numerics/CRITICAL on every run and stays silent on _clean_control on every run. The
+30-run paired Wilcoxon prove baseline is the next step (Phase 2).

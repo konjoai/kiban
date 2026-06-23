@@ -59,6 +59,29 @@ def test_net_new_finding_blocks(tmp_path: Path) -> None:
     assert "PREEXISTING" not in result.stdout
 
 
+def test_dirty_tree_is_not_clobbered(tmp_path: Path) -> None:
+    # C3: a base scan must not touch the working tree. With an uncommitted change to a
+    # tracked file present, konjo-newonly must still report the net-new finding AND
+    # leave the dirty change intact (the worktree path scans the base out-of-place).
+    repo, base = _make_repo(tmp_path)
+    (repo / "findings.txt").write_text(
+        "file.py:12:1 PREEXISTING bad thing\nother.py:5:1 NEWLY introduced bug\n"
+    )
+    _git(repo, "commit", "-qam", "add new finding")
+    # Introduce an uncommitted edit to a tracked file.
+    sentinel = repo / "tracked.py"
+    sentinel.write_text("# committed\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add tracked file")
+    sentinel.write_text("# committed\n# UNCOMMITTED LOCAL EDIT\n")
+
+    result = _run(repo, base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "NEWLY introduced bug" in result.stdout
+    # The dirty edit survived untouched.
+    assert "UNCOMMITTED LOCAL EDIT" in sentinel.read_text()
+
+
 def test_no_new_finding_passes(tmp_path: Path) -> None:
     repo, base = _make_repo(tmp_path)
     # HEAD only shifts the line of the pre-existing finding; nothing new.

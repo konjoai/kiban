@@ -60,13 +60,24 @@ each pin, never all repos at once.
 
 ## Phase map
 
-- **Phase 0 (this release, 0.1.0)**: the substrate (`jsonl_store`, `redact`,
-  `prose_lint`), the Ledger engine and `konjo-decision`, `konjo-prose`, `konjo-newonly`,
-  install and self-update, the skills and hooks, profiles, templates, and the eval
-  fixtures. Working and tested.
-- **Phase 1+**: the eval harness runner, the parallel specialist engine, the
-  one-way-door confirm flow, the secrets interactive confirms, and the working per-stack
-  CI gate packages. Stubbed with their contracts in place. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 0 (0.1.0)**: the substrate (`jsonl_store`, `redact`, `prose_lint`), the Ledger
+  engine and `konjo-decision`, `konjo-prose`, `konjo-newonly`, install and self-update,
+  the skills and hooks, profiles, templates, and the eval fixtures.
+- **Phase 1 (this release, 0.2.0)**: the meta-gate. The keystone `review_diff` interface,
+  the parallel specialist engine (`lib/specialists/`), `diff_scope`, the review log,
+  specialist-stats, and the eval harness that regression-tests the gate
+  (`konjo-eval`, `konjo-review`, `konjo-stats`). Working and tested; the kill-test passes.
+- **Phase 2+**: the one-way-door confirm flow, the MEDIUM-secret interactive confirm, the
+  per-stack CI gate packages, and the 30-run paired Wilcoxon prove baseline. Stubbed with
+  their contracts in place. See `NEXT_SESSION_PROMPT.md`.
+
+## Reviewing a diff
+
+```bash
+konjo-review --base origin/main              # review the working diff, log the run
+konjo-eval --runs 3                          # regression-test the gate against the corpus
+konjo-stats --branch <branch>                # per-specialist gate verdicts
+```
 
 ## Ethos
 
