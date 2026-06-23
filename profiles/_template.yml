@@ -1,0 +1,28 @@
+# profiles/_template.yml
+# The empty profile the other Konjo repos copy into their own .konjo/profile.yml.
+# Fill every field. Use UNVERIFIED on anything you have not confirmed against the repo
+# rather than guessing. Do not create profiles for other repos in this kiban repo.
+
+repo: "<repo-name>"
+
+stack:
+  - "<language-or-runtime>"
+
+format_lint:
+  - "<formatter-or-linter>"
+
+contract_gates:
+  - "<blocking-correctness-contract>"
+
+mutation: "<tool>"   # or "none-with-reason: <reason>"
+
+specialists:
+  - "<review-lane>"
+
+prove:
+  enabled: false
+  baseline: "<baseline-tag>"
+
+killtest: true
+
+overrides: {}

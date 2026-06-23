@@ -1,0 +1,31 @@
+# profiles/_schema.yml
+# The profile schema every consuming repo fills. A profile tells the CI-plane runner
+# which gates and specialist lanes apply to that repo's stack. The runner reads the
+# repo's own .konjo/profile.yml; it never reads ~/.konjo.
+#
+# This file documents the shape. It is not itself a profile.
+
+repo: string                # the repo name, e.g. "squish"
+
+stack:                      # languages/runtimes present, drives lane selection
+  - string                  # e.g. mlx, python, swift, rust, mojo, ts
+
+format_lint:                # formatters and linters run on every change
+  - string                  # e.g. ruff, black, shellcheck, clippy, eslint
+
+contract_gates:             # the blocking correctness contracts for this repo
+  - string                  # e.g. dtype, shape, squizd-format, http-api-surface
+
+mutation: string            # mutation-testing tool, or "none-with-reason: <reason>"
+
+specialists:                # review lanes (advisory until promoted by specialist_stats)
+  - string                  # e.g. numerics, memory-bandwidth, concurrency, api-surface
+
+prove:                      # the perf/quality prove gate
+  enabled: bool             # true to run the prove gate
+  baseline: string          # baseline tag the 30-run paired Wilcoxon compares against
+
+killtest: bool              # require a kill-test before a sprint starts
+
+overrides:                  # per-repo escape hatches, each with a reason
+  map: any                  # key -> { value, reason }

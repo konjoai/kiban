@@ -1,0 +1,59 @@
+# defaults.yml
+# Org-default universal gates. Every consuming repo inherits these unless its profile
+# overrides a specific one with a reason. Gates marked (stubbed) have their contract
+# specified but no working logic this sprint; they are Phase 1+.
+
+universal_gates:
+
+  secrets_redact:
+    enabled: true
+    description: >
+      Three-tier secret scan (lib/redact.py) on every Ledger write and on the
+      cross-machine state sync before push. HIGH blocks, MEDIUM flags for confirm,
+      LOW surfaces. No MEDIUM-to-HIGH promotion.
+
+  supply_chain:
+    enabled: true
+    stubbed: true
+    description: >
+      Dependency and provenance checks (lockfile integrity, advisory scan). TODO(phase-1):
+      wire the per-stack runners in packages/.
+
+  decision_logging:
+    enabled: true
+    description: >
+      Durable decisions go to the Konjo Ledger (ledger/engine.py) via konjo-decision.
+      Append-only, event-sourced, redact-scanned.
+
+  one_way_door:
+    enabled: true
+    stubbed: true
+    description: >
+      Classify hard-to-reverse changes and require an interactive confirm. TODO(phase-1):
+      bin/konjo-oneway classifier and the confirm flow.
+
+  net_new_only:
+    enabled: true
+    description: >
+      Strict gates report only net-new findings versus the base ref (bin/konjo-newonly),
+      so gates stay on against an existing codebase without blocking on legacy findings.
+
+  prose_lint:
+    enabled: true
+    description: >
+      Editorial gate (lib/prose_lint.py): no em dashes, no AI-tell vocabulary. Blocking
+      on article branches, --warn on general docs.
+
+  self_test:
+    enabled: true
+    stubbed: true
+    description: >
+      The gates test themselves against the eval corpus (the meta-gate). TODO(phase-1):
+      konjo-eval + evals/runner.py + the 30-run paired Wilcoxon prove baseline.
+
+  specialist_stats:
+    enabled: true
+    stubbed: true
+    description: >
+      Promote a review specialist to a blocking gate only when its hit rate and sample
+      size clear the threshold. TODO(phase-1): lib/specialist_stats.py.

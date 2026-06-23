@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""konjo-prose: editorial lint over files and globs.
+
+Default mode blocks (exit 1) on any finding. --warn prints but exits 0, for
+non-blocking use on docs. Reports file:line:col with the offending token.
+
+Usage:
+  konjo-prose FILE [FILE ...]
+  konjo-prose --warn docs/**/*.md
+"""
+
+from __future__ import annotations
+
+import glob
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from lib import prose_lint  # noqa: E402
+
+
+def _expand(args: list[str]) -> list[str]:
+    files: list[str] = []
+    for a in args:
+        matches = glob.glob(a, recursive=True)
+        files.extend(matches if matches else [a])
+    return files
+
+
+def main(argv: list[str]) -> int:
+    warn = False
+    rest: list[str] = []
+    for a in argv:
+        if a in ("--warn", "-w"):
+            warn = True
+        elif a in ("-h", "--help"):
+            print(__doc__)
+            return 0
+        else:
+            rest.append(a)
+
+    if not rest:
+        print("usage: konjo-prose [--warn] FILE [FILE ...]", file=sys.stderr)
+        return 2
+
+    findings = []
+    for path in _expand(rest):
+        p = pathlib.Path(path)
+        if p.is_dir():
+            continue
+        findings.extend(prose_lint.lint_file(p))
+
+    for f in findings:
+        print(f.format())
+
+    if not findings:
+        return 0
+    if warn:
+        print(f"prose-lint: {len(findings)} finding(s) (warn mode, not blocking)")
+        return 0
+    print(f"prose-lint: {len(findings)} finding(s)", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

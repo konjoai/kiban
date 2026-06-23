@@ -1,0 +1,29 @@
+# .pre-commit-config.yaml
+# Gates this repo runs on itself: shellcheck on every shell script, ruff and mypy on the
+# Python engine. Dogfooded; kiban holds itself to the bar it sets for consuming repos.
+
+repos:
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        additional_dependencies: []
+        files: ^(lib|ledger|bin|evals|packages)/
+
+  - repo: local
+    hooks:
+      - id: konjo-prose
+        name: konjo-prose (editorial lint, warn mode)
+        entry: bin/konjo-prose --warn
+        language: system
+        files: \.(md|markdown)$

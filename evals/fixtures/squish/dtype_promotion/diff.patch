@@ -1,0 +1,14 @@
+diff --git a/squish/kv_cache.py b/squish/kv_cache.py
+index 1111111..2222222 100644
+--- a/squish/kv_cache.py
++++ b/squish/kv_cache.py
+@@ -14,8 +14,8 @@ class KVCache:
+     def append(self, keys, values):
+         # keys/values arrive as fp16 from the attention block.
+-        self.k = mx.concatenate([self.k, keys], axis=2)
+-        self.v = mx.concatenate([self.v, values], axis=2)
++        # BUG: astype(fp32) silently promotes the cache, doubling memory and
++        # diverging numerics from the fp16 reference path.
++        self.k = mx.concatenate([self.k, keys.astype(mx.float32)], axis=2)
++        self.v = mx.concatenate([self.v, values.astype(mx.float32)], axis=2)
+         return self.k, self.v

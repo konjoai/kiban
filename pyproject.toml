@@ -1,0 +1,20 @@
+# Tooling config for the kiban engine. kiban itself is not a pip package; the CI-plane
+# packages under packages/ are. This file configures ruff and mypy for the repo.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["packages/konjo-gates-rs", "packages/konjo-gates-js"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "."
+ignore_missing_imports = true
+warn_unused_ignores = false
+exclude = ['packages/']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

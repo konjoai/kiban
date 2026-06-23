@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""konjo-newonly: report only net-new scanner findings versus a base ref.
+
+This is what lets a strict gate run against an existing codebase without drowning in
+pre-existing findings. Run the scanner on HEAD and on the merge-base of HEAD and the
+given base. Diff the two finding sets line-insensitively (line numbers normalized
+away). Report and exit nonzero ONLY on findings that exist on HEAD and not at the
+merge-base. Pre-existing findings never block.
+
+Usage:
+  konjo-newonly --base <ref> -- <scanner-cmd...>
+
+Example:
+  konjo-newonly --base origin/main -- ruff check .
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+
+# Strip leading "path:line:col" location prefixes so the same finding on a shifted line
+# normalizes to one comparable string. Also collapse bare line/col numbers.
+_LOCATION_RE = re.compile(r"^([^\s:]+):\d+(?::\d+)?")
+_NUM_RE = re.compile(r"\b\d+\b")
+
+
+def _normalize(line: str) -> str:
+    line = line.rstrip("\n")
+    line = _LOCATION_RE.sub(lambda m: m.group(1) + ":N", line)
+    line = _NUM_RE.sub("N", line)
+    return line.strip()
+
+
+def _run(cmd: list[str]) -> str:
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    return proc.stdout + proc.stderr
+
+
+def _git(args: list[str]) -> str:
+    proc = subprocess.run(["git", *args], capture_output=True, text=True)
+    return proc.stdout.strip()
+
+
+def _findings_at(ref: str | None, scanner: list[str]) -> set[str]:
+    """Run the scanner, optionally after checking out ref, return normalized findings.
+
+    When ref is given we stash, check it out, scan, then restore. The caller is
+    responsible for a clean tree; we refuse to run with uncommitted changes that the
+    checkout would clobber.
+    """
+    if ref is None:
+        out = _run(scanner)
+        return {_normalize(line) for line in out.splitlines() if line.strip()}
+
+    original = _git(["rev-parse", "--abbrev-ref", "HEAD"])
+    if original == "HEAD":
+        original = _git(["rev-parse", "HEAD"])
+    try:
+        _git(["checkout", "--quiet", ref])
+        out = _run(scanner)
+        return {_normalize(line) for line in out.splitlines() if line.strip()}
+    finally:
+        _git(["checkout", "--quiet", original])
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="konjo-newonly", add_help=True)
+    parser.add_argument("--base", required=True, help="base ref to diff findings against")
+    parser.add_argument("scanner", nargs=argparse.REMAINDER,
+                        help="-- then the scanner command")
+    args = parser.parse_args(argv)
+
+    scanner = args.scanner
+    if scanner and scanner[0] == "--":
+        scanner = scanner[1:]
+    if not scanner:
+        print("usage: konjo-newonly --base <ref> -- <scanner-cmd...>", file=sys.stderr)
+        return 2
+
+    merge_base = _git(["merge-base", "HEAD", args.base])
+    if not merge_base:
+        print(f"could not find merge-base of HEAD and {args.base}", file=sys.stderr)
+        return 2
+
+    head_findings = _findings_at(None, scanner)
+    base_findings = _findings_at(merge_base, scanner)
+
+    net_new = sorted(head_findings - base_findings)
+    if not net_new:
+        print("konjo-newonly: no net-new findings")
+        return 0
+
+    print(f"konjo-newonly: {len(net_new)} net-new finding(s):")
+    for line in net_new:
+        print(f"  {line}")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

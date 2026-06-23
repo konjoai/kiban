@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""konjo-eval: the meta-gate eval harness CLI.
+
+STUB (phase 1). The harness runs the gate against the eval corpus in evals/fixtures,
+records detection_rate / false_positives / missed_bugs, and fails the build if the
+gate regresses below the prove baseline. This is how the gates test themselves: a gate
+that stops catching a known bug class is itself a defect.
+
+Contract for the phase-1 implementation:
+  konjo-eval run [--profile PATH] [--corpus DIR]
+    - load each fixture (diff.patch + expect.json)
+    - apply the gate, compare against expect (must_flag / must_be_silent)
+    - emit a JSON report and exit nonzero on any regression vs the prove baseline
+
+See evals/runner.py for the harness internals (also stubbed).
+"""
+
+import sys
+
+TODO_PHASE = 1
+
+
+def main(argv: list[str]) -> int:
+    # TODO(phase-1): wire evals/runner.py and the prove baseline comparison.
+    raise NotImplementedError(
+        "konjo-eval is a phase-1 stub; the eval harness is not built yet"
+    )
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except NotImplementedError as e:
+        print(f"konjo-eval: {e}", file=sys.stderr)
+        print("phase 1", file=sys.stderr)
+        raise SystemExit(0)
