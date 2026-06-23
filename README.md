@@ -78,8 +78,22 @@ each pin, never all repos at once.
   an acknowledgement and emits a commit trailer, the MEDIUM-secret confirm
   (`konjo-secrets`), and the CI `one_way_door` gate that checks the trailer without
   prompting. Plus the release-tag discipline. Working and tested; the kill-test passes.
-- **Phase 4+**: the 30-run paired Wilcoxon prove baseline, eval corpus growth, and
-  `konjo-gates-rs`/`-js`. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 4 (this release, 0.5.0)**: the prove gate. A 30-run paired Wilcoxon signed-rank
+  perf test (`lib/prove.py`, `konjo-prove`) that renders MERGE / NOISE / REGRESSION, where
+  significance alone never merges. It runs locally on the bench hardware and records a
+  MERGE trailer; the CI `prove` gate checks the trailer and runs no benchmark. Working and
+  tested; the kill-test passes.
+- **Phase 5+**: propagation (`konjo-gates-rs`/`-js`, a second repo profile behind pins),
+  eval corpus growth, and the supply_chain gate. See `NEXT_SESSION_PROMPT.md`.
+
+## Proving a perf change
+
+A perf claim needs a verdict, not a vibe. On the bench hardware, produce a paired
+measurement artifact with the repo's benchmark, then run
+`konjo-prove run --results <artifact> --profile <profile>`. It computes the paired
+Wilcoxon test and renders MERGE only when the result is significant AND the median
+improvement clears the minimum effect size. A MERGE prints a commit trailer; the CI
+`prove` gate checks for it on a perf-labeled change and never runs the benchmark itself.
 
 ## Irreversible changes
 

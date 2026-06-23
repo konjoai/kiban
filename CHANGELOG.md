@@ -4,6 +4,55 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-23
+
+Phase 4: the prove gate. A 30-run paired Wilcoxon signed-rank perf test that turns a
+perf claim into a MERGE / NOISE / REGRESSION verdict, with the house rule that
+significance alone never merges. Scoped to the prove gate; squish profile wiring is
+deferred (the repo was not reachable this sprint).
+
+### Added
+
+- `lib/prove.py`: a pure-Python paired Wilcoxon signed-rank test (normal approximation,
+  tie and continuity corrections, zero-difference handling, an n floor defaulting to 30),
+  and the verdict rule. MERGE requires p<0.05 AND a median improvement at or above
+  min_effect in the correct direction. A significant but sub-threshold effect is NOISE; a
+  significant wrong-direction effect beyond min_effect is REGRESSION. No scipy dependency,
+  so no stats can leak toward CI.
+- `bin/konjo-prove`: runs locally on the bench hardware. Ingests a paired measurement
+  artifact (it does not run the benchmark), renders the verdict, appends to BENCHMARKS.md
+  and prove.jsonl, logs a Ledger ack, and on MERGE emits the commit trailer CI checks.
+  `konjo-prove baseline capture` records a tagged golden baseline.
+- konjo-gates `prove` gate: on a perf-labeled change (SCOPE_BENCH or a profile perf glob)
+  it checks the commit messages for the MERGE trailer, reusing the Phase 3 record-and-check
+  path. No MERGE record FAILs with guidance; the gate imports no stats and runs no benchmark.
+- The profile schema gains the prove fields (metric, unit, lower_is_better, min_effect /
+  min_effect_pct, run_floor, perf_globs, bench_cmd).
+
+### Changed
+
+- `defaults.yml`: the prove universal gate is documented.
+- `templates/repo-ci.yml`: pin bumped to v0.5.0.
+
+### Deferred
+
+- squish prove wiring: squish was unreachable this sprint (the proxy scoped to kiban
+  only). The metric, unit, and direction in `profiles/squish.yml` are from the Phase 2
+  read; the load-bearing min_effect and the bench command are left as TODO rather than
+  guessed, to be confirmed against bench_thermal_h2h.py when squish is reachable.
+
+### Kill-test
+
+- konjo-prove renders MERGE / NOISE (sub-threshold) / NOISE (non-significant) / REGRESSION
+  from synthetic paired data, emitting a MERGE trailer only on MERGE; the CI prove gate
+  fails a perf change with no MERGE record and passes one with it. See
+  `tests/test_prove_killtest.sh`.
+
+### Still deferred (Phase 5)
+
+- konjo-gates-rs / -js, other-repo profiles (propagation behind pins), eval corpus growth
+  and cassette re-record, and the supply_chain universal gate.
+
 ## [0.4.0] - 2026-06-23
 
 Phase 3: the safety layer for decisions a pass/fail gate should not make alone. A
@@ -188,6 +237,7 @@ Phase 0: the foundation substrate plus the squish pilot, with specified Phase 1+
 - `evals/runner.py`.
 - `packages/konjo-gates-py`, `-rs`, `-js`.
 
+[0.5.0]: https://github.com/konjoai/kiban/releases/tag/v0.5.0
 [0.4.0]: https://github.com/konjoai/kiban/releases/tag/v0.4.0
 [0.3.0]: https://github.com/konjoai/kiban/releases/tag/v0.3.0
 [0.2.0]: https://github.com/konjoai/kiban/releases/tag/v0.2.0

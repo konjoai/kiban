@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""konjo-prove: the local prove gate. Runs on the bench hardware, never in CI.
+
+It INGESTS a paired measurement artifact the repo's own benchmark produced; it does not
+run the benchmark. It computes the paired Wilcoxon verdict, prints it, appends to
+BENCHMARKS.md and prove.jsonl, logs a Ledger acknowledgement, and on MERGE emits the
+commit trailer konjo-gates checks in CI.
+
+Artifact schema (JSON):
+  {
+    "metric": "e2e_response_s",
+    "unit": "s",
+    "lower_is_better": true,
+    "hardware": "Apple M3 16GB",
+    "thermal_controlled": true,
+    "baseline": [<floats>],     # paired with candidate, run for run
+    "candidate": [<floats>]
+  }
+
+Commands:
+  konjo-prove run --results A.json [--baseline TAG] [--profile P] [--base REF]
+                  [--min-effect X | --min-effect-pct P] [--author NAME]
+  konjo-prove baseline capture --tag NAME --results A.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import subprocess
+import sys
+from datetime import UTC, datetime
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+import yaml  # type: ignore[import-untyped]  # noqa: E402
+
+from lib import oneway, prove  # noqa: E402
+
+BASELINE_DIR = pathlib.Path("prove/baselines")
+PROVE_JSONL = pathlib.Path("prove/prove.jsonl")
+BENCHMARKS_MD = pathlib.Path("BENCHMARKS.md")
+
+
+def _git(args: list[str]) -> str:
+    return subprocess.run(["git", *args], capture_output=True, text=True).stdout
+
+
+def _changed_files(base: str) -> list[str]:
+    names: list[str] = []
+    for cmd in (["diff", "--name-only", f"{base}...HEAD"], ["diff", "--name-only", "HEAD"]):
+        names.extend(line for line in _git(cmd).splitlines() if line.strip())
+    seen: set[str] = set()
+    out: list[str] = []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
+def _load_artifact(path: str) -> dict:
+    return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+
+
+def _load_profile_prove(profile_path: str | None) -> dict:
+    if not profile_path:
+        return {}
+    with open(profile_path, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    pv = data.get("prove", {})
+    return pv if isinstance(pv, dict) else {}
+
+
+def _resolve_min_effect(args: argparse.Namespace, prof: dict, baseline: list[float]) -> float:
+    if args.min_effect is not None:
+        return float(args.min_effect)
+    if args.min_effect_pct is not None:
+        return prove.min_effect_from_percent(float(args.min_effect_pct), baseline)
+    if prof.get("min_effect") is not None:
+        return float(prof["min_effect"])
+    if prof.get("min_effect_pct") is not None:
+        return prove.min_effect_from_percent(float(prof["min_effect_pct"]), baseline)
+    raise SystemExit("konjo-prove: no min_effect given (flag or profile prove.min_effect[_pct])")
+
+
+def _append_benchmarks_md(metric: str, v: prove.Verdict, tag: str) -> None:
+    row = (
+        f"\n- {datetime.now(UTC).strftime('%Y-%m-%d')} `{metric}` vs `{tag}`: "
+        f"**{v.label}** (p={v.result.p_value:.3g}, median improvement "
+        f"{v.result.median_improvement:+.4g}, {v.result.percent_change:+.2f}%, "
+        f"n={v.result.n}). {v.reason}\n"
+    )
+    with BENCHMARKS_MD.open("a", encoding="utf-8") as fh:
+        if BENCHMARKS_MD.stat().st_size == 0:
+            fh.write("# Benchmarks\n\nProve-gate verdicts (paired Wilcoxon, p<0.05 and a real effect).\n")
+        fh.write(row)
+
+
+def _append_prove_jsonl(record: dict) -> None:
+    PROVE_JSONL.parent.mkdir(parents=True, exist_ok=True)
+    with PROVE_JSONL.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, separators=(",", ":")) + "\n")
+
+
+def _log_ledger(v: prove.Verdict, fp: str, metric: str, author: str) -> str | None:
+    try:
+        from ledger.engine import Ledger
+        return Ledger().decide(
+            f"PROVE-{v.label} {fp}",
+            f"{metric}: {v.reason}",
+            scope="org",
+            confidence=min(10, max(0, int(round(v.result.z)))) if v.result.z else 5,
+            author=author,
+        )
+    except Exception as exc:  # noqa: BLE001  provenance must not break the verdict
+        print(f"konjo-prove: warning, Ledger log failed: {exc}", file=sys.stderr)
+        return None
+
+
+def cmd_baseline_capture(args: argparse.Namespace) -> int:
+    art = _load_artifact(args.results)
+    measurements = art.get("candidate") or art.get("baseline")
+    if not measurements:
+        raise SystemExit("konjo-prove: artifact has no candidate/baseline measurements")
+    BASELINE_DIR.mkdir(parents=True, exist_ok=True)
+    out = BASELINE_DIR / f"{args.tag}.json"
+    out.write_text(json.dumps({
+        "tag": args.tag,
+        "metric": art.get("metric"),
+        "unit": art.get("unit"),
+        "lower_is_better": art.get("lower_is_better", True),
+        "hardware": art.get("hardware"),
+        "thermal_controlled": art.get("thermal_controlled"),
+        "measurements": measurements,
+    }, indent=2) + "\n", encoding="utf-8")
+    print(f"konjo-prove: captured baseline '{args.tag}' ({len(measurements)} runs) -> {out}")
+    return 0
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    art = _load_artifact(args.results)
+    prof = _load_profile_prove(args.profile)
+    lower_is_better = bool(art.get("lower_is_better", prof.get("lower_is_better", True)))
+    metric = str(art.get("metric", prof.get("metric", "metric")))
+
+    candidate = [float(x) for x in art["candidate"]]
+    tag = args.baseline or prof.get("baseline") or "artifact"
+    if args.baseline:
+        golden = json.loads((BASELINE_DIR / f"{args.baseline}.json").read_text(encoding="utf-8"))
+        baseline = [float(x) for x in golden["measurements"]]
+    else:
+        baseline = [float(x) for x in art["baseline"]]
+
+    run_floor = int(prof.get("run_floor", prove.DEFAULT_RUN_FLOOR))
+    min_effect = _resolve_min_effect(args, prof, baseline)
+
+    try:
+        result = prove.paired_wilcoxon(
+            baseline, candidate, run_floor=run_floor, lower_is_better=lower_is_better
+        )
+    except prove.InsufficientRuns as exc:
+        print(f"konjo-prove: {exc}", file=sys.stderr)
+        return 2
+
+    v = prove.verdict(result, min_effect=min_effect, lower_is_better=lower_is_better)
+    fp = oneway.fingerprint(_changed_files(args.base))
+
+    print(f"konjo-prove: {v.label} for {metric} vs {tag}")
+    print(f"  {v.reason}")
+    print(f"  p={result.p_value:.4g}  median improvement={result.median_improvement:+.4g} "
+          f"({result.percent_change:+.2f}%)  n={result.n} (nonzero {result.n_nonzero})")
+
+    _append_benchmarks_md(metric, v, tag)
+    ledger_id = _log_ledger(v, fp, metric, args.author)
+    _append_prove_jsonl({
+        "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "verdict": v.label,
+        "metric": metric,
+        "baseline_tag": tag,
+        "fingerprint": fp,
+        "p_value": result.p_value,
+        "median_improvement": result.median_improvement,
+        "percent_change": result.percent_change,
+        "min_effect": min_effect,
+        "n": result.n,
+        "hardware": art.get("hardware"),
+        "thermal_controlled": art.get("thermal_controlled"),
+        "ledger_id": ledger_id,
+    })
+
+    if v.is_merge:
+        print("Add this trailer to a commit so CI can see the MERGE verdict:")
+        print(f"  {prove.prove_trailer(fp)}")
+        return 0
+    # NOISE and REGRESSION are recorded but do NOT emit a MERGE trailer.
+    print(f"No MERGE trailer emitted ({v.label}); this change cannot pass the perf gate.")
+    return 0 if v.label == prove.NOISE else 1
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="konjo-prove")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    r = sub.add_parser("run", help="ingest an artifact and render the verdict")
+    r.add_argument("--results", required=True)
+    r.add_argument("--baseline", default=None, help="tagged golden baseline to compare against")
+    r.add_argument("--profile", default=None)
+    r.add_argument("--base", default="origin/main")
+    r.add_argument("--min-effect", type=float, default=None)
+    r.add_argument("--min-effect-pct", type=float, default=None)
+    r.add_argument("--author", default="unknown")
+    r.set_defaults(func=cmd_run)
+
+    b = sub.add_parser("baseline", help="capture a tagged golden baseline")
+    bsub = b.add_subparsers(dest="bcmd", required=True)
+    c = bsub.add_parser("capture")
+    c.add_argument("--tag", required=True)
+    c.add_argument("--results", required=True)
+    c.set_defaults(func=cmd_baseline_capture)
+
+    args = parser.parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

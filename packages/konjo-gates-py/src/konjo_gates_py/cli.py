@@ -195,6 +195,34 @@ def gate_one_way_door(changed: list[str], diff_text: str, base: str) -> GateResu
     )
 
 
+def gate_prove(changed: list[str], flags: dict[str, bool], profile: dict, base: str) -> GateResult:
+    """Perf changes need a recorded MERGE verdict; this gate never runs the benchmark.
+
+    It applies only to a perf-labeled change (SCOPE_BENCH, or a profile-declared perf
+    path). For such a change it checks the commit messages in base..HEAD for the prove
+    MERGE trailer, reusing the one-way record-and-check path. No MERGE record -> FAIL with
+    guidance to run konjo-prove on the bench hardware. The gate imports no stats and runs
+    no benchmark, so the CI runner stays clean.
+    """
+    perf_globs = list(profile.get("prove", {}).get("perf_globs", []))
+    is_perf = flags.get("SCOPE_BENCH", False) or any(
+        any(Path(c).match(g) for g in perf_globs) for c in changed
+    )
+    if not is_perf:
+        return GateResult("prove", SKIP, "not a perf change")
+    fp = oneway.fingerprint(changed)
+    messages = _git(["log", f"{base}..HEAD", "--format=%B"])
+    if oneway.find_trailer(messages, oneway.PROVE_MERGE_TRAILER, fp):
+        return GateResult("prove", PASS, f"MERGE verdict recorded (change id {fp})")
+    return GateResult(
+        "prove",
+        FAIL,
+        f"perf change with no MERGE verdict (change id {fp}). Run "
+        f"`konjo-prove run --results <artifact> --profile <profile>` on the bench "
+        f"hardware and add the 'Konjo-Prove-Merge: {fp}' trailer to a commit",
+    )
+
+
 def gate_self_test(profile_path: str, mode: str) -> GateResult:
     """Run the meta-gate eval through the deterministic replay backend (no model)."""
     if not cassettes.cassettes_present():
@@ -295,6 +323,7 @@ def run_gates(
         gate_prose(changed, base, article_globs),
         gate_secrets(diff_text),
         gate_one_way_door(changed, diff_text, base),
+        gate_prove(changed, flags, profile, base),
     ]
     if self_test:
         results.append(gate_self_test(profile_path, mode))
