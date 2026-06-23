@@ -119,6 +119,40 @@ def has_high(text: str) -> bool:
     return any(f.tier is Tier.HIGH for f in scan(text))
 
 
+def scan_paths(paths: list[str]) -> dict[str, list[Finding]]:
+    """Scan each readable file and return path -> findings (reusing scan()).
+
+    Unreadable or binary files are skipped silently. Used by the CI secrets gate over
+    the set of changed files.
+    """
+    out: dict[str, list[Finding]] = {}
+    for p in paths:
+        try:
+            with open(p, encoding="utf-8") as fh:
+                text = fh.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        findings = scan(text)
+        if findings:
+            out[p] = findings
+    return out
+
+
+def scan_diff(diff_text: str) -> list[Finding]:
+    """Scan only the ADDED lines of a unified diff (reusing scan()).
+
+    A secret already present in the base (a context or removed line) is not the change
+    under review, so only '+' lines are scanned. This makes the secrets gate net-new by
+    construction. The '+++' file headers are excluded.
+    """
+    added: list[str] = []
+    for line in diff_text.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            added.append(line[1:])
+    return scan("\n".join(added))
+
+
+
 def redact(text: str) -> str:
     """Replace every HIGH span with a placeholder. MEDIUM and LOW are left intact."""
     high_spans = sorted(

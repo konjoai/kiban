@@ -67,9 +67,22 @@ each pin, never all repos at once.
   the parallel specialist engine (`lib/specialists/`), `diff_scope`, the review log,
   specialist-stats, and the eval harness that regression-tests the gate
   (`konjo-eval`, `konjo-review`, `konjo-stats`). Working and tested; the kill-test passes.
-- **Phase 2+**: the one-way-door confirm flow, the MEDIUM-secret interactive confirm, the
-  per-stack CI gate packages, and the 30-run paired Wilcoxon prove baseline. Stubbed with
-  their contracts in place. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 2 (this release, 0.3.0)**: the CI plane enforces. The `konjo-gates` orchestrator
+  (`packages/konjo-gates-py`) routes changed files through `diff_scope` and runs the
+  kiban-native gates (prose, secrets, the self_test replay eval, report-only specialist
+  stats) plus the profile's repo-native gates, each wrapped in `konjo-newonly`. The eval
+  runs deterministically offline via recorded cassettes (`konjo-eval record` /
+  `run --replay`). Working and tested; the kill-test passes with no model and no network.
+- **Phase 3+**: the one-way-door confirm flow, the MEDIUM-secret interactive confirm, the
+  30-run paired Wilcoxon prove baseline, and `konjo-gates-rs`/`-js`. Stubbed with their
+  contracts in place. See `NEXT_SESSION_PROMPT.md`.
+
+## Gates in CI
+
+A consuming repo installs the pinned kiban distribution and runs `konjo-gates` against
+its `.konjo/profile.yml` (see `templates/repo-ci.yml`). The CI plane never reads
+`~/.konjo`; the gate logic and eval cassettes ship with the pinned package, so CI needs
+no model and no network.
 
 ## Reviewing a diff
 

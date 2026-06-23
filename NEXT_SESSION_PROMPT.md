@@ -1,51 +1,51 @@
-# Next session: Phase 2
+# Next session: Phase 3
 
-## What Phase 1 built (0.2.0)
+## What Phase 2 built (0.3.0)
 
-The meta-gate: a parallel specialist review engine plus the eval harness that
-regression-tests it.
+The CI plane enforces. `konjo-gates` blocks a pull request, and the eval runs
+deterministically offline so it can be a CI gate.
 
-- `lib/review.py`: the keystone `review_diff(diff, profile, specialists=None, *, runs=1)`.
-  One path for the live gate and the eval. Stable fingerprint, dedup, confidence gate
-  (daily 8 / deep 2), pluggable backend (Claude CLI in production, scripted in tests).
-- `lib/specialists/`: numerics, memory-bandwidth, concurrency, api-surface, red-team.
-  Parallel; red-team last with the others' findings.
-- `lib/diff_scope.py`, `lib/review_log.py`, `lib/specialist_stats.py`.
-- `evals/runner.py`, `bin/konjo-eval`, `bin/konjo-review`, `bin/konjo-stats`.
-- Phase 0 corrections C1 through C4 (squish re-check, self_update detached-HEAD reattach,
-  konjo-newonly worktree, narrowed fetch).
+- `packages/konjo-gates-py`: the orchestrator. Profile in, changed files routed through
+  `diff_scope`, kiban-native gates (prose net-new, secrets, self_test replay,
+  report-only specialist stats) plus repo-native gates wrapped in `konjo-newonly`. Imports
+  the real engine; reimplements nothing.
+- `evals/cassettes.py` + `konjo-eval record` / `run --replay`: deterministic offline eval.
+- `lib.redact.scan_paths` / `scan_diff`; root `pyproject.toml` ships the engine with the
+  entry point; `templates/repo-ci.yml` pinned to v0.3.0 with the replay eval.
+- C-B: `profiles/squish.yml` reconciled against the real repo, all UNVERIFIED markers gone.
 
-Kill-test passes: konjo-eval flags squish/dtype_promotion at numerics/CRITICAL on every
-run and stays silent on _clean_control on every run.
+Kill-test passes with no model and no network: clean diff passes; net-new prose and a
+HIGH secret block; self_test runs via replay.
 
-## Immediate Phase 2 tasks
+## Immediate Phase 3 tasks
 
-1. **One-way-door confirm flow** (`bin/konjo-oneway`, still a stub). Classify
-   hard-to-reverse changes (schema migrations, public API breaks, data deletes, key
-   rotation) and add the interactive confirm. Two-way doors pass straight through.
-2. **MEDIUM-secret interactive confirm**. Build the confirm flow on top of
-   `lib/redact.py` for MEDIUM-tier findings (HIGH already blocks, LOW already surfaces).
-3. **CI packages** (`packages/konjo-gates-py`/`-rs`/`-js`, still stubs). Make
-   `konjo-gates-py` load a profile, select gates via `lib/diff_scope.py`, run the review
-   gate and the eval self-test, and fail on regression. Wire `templates/repo-ci.yml` to
-   run `konjo-eval` when SCOPE_PROMPTS is true.
-4. **The prove gate: 30-run paired Wilcoxon (p<0.05)**. Add the statistical baseline
-   comparison the eval metrics feed. This is where detection-rate deltas become a
-   pass/fail signal against a stored baseline, not a single-run read.
-5. **Grow the eval corpus**. One fixture per real bug class per specialist (memory,
-   concurrency, api-surface), each with a clean control, so detection and false-positive
-   rates are measured per lane.
+1. **One-way-door confirm** (`bin/konjo-oneway`, still a stub). Classify hard-to-reverse
+   changes (schema migrations, public API breaks, data deletes, key rotation) and add the
+   interactive confirm. Wire it as a konjo-gates gate that requires confirmation, not just
+   a pass/fail.
+2. **MEDIUM-secret interactive confirm**. The secrets gate already surfaces MEDIUM
+   findings as a warn; add the human confirm flow on top of `lib.redact` (HIGH still
+   blocks outright).
+3. **The prove gate: 30-run paired Wilcoxon (p<0.05)**. With real benchmark data from a
+   consuming repo (squish has `benchmarks_v5_1_1` and `bench_thermal_h2h.py`), add the
+   statistical baseline comparison. This is perf regression, separate from the detection
+   self_test.
+4. **Grow the eval corpus and re-record cassettes**. One fixture per real bug class per
+   specialist (memory, concurrency, api-surface), each with a clean control. Re-run
+   `konjo-eval record` so the replay gate covers them.
+5. **Propagate, repo by repo**. Build `konjo-gates-rs` (clippy + cargo-mutants) and
+   `konjo-gates-js` (eslint + tsc + stryker), then add profiles for the other repos one at
+   a time behind version pins. Never all at once.
 
-## Carried risks
+## Carried notes
 
-- LLM specialist non-determinism. Mitigated by `runs` repetition and the stable
-  fingerprint, but watch the eval for flaky fixtures and record honest negative results
-  rather than tuning a fixture to flatter the gate.
-- squish is still not reachable on disk; `profiles/squish.yml` keeps its UNVERIFIED
-  markers until squish is checked out alongside kiban.
+- The eval cassettes must be re-recorded (`konjo-eval record`, needs a model) whenever a
+  specialist prompt or a fixture changes, or `--replay` will hard-error on the stale key.
+  That hard error is intentional: a drifted prompt must not pass as zero findings.
+- squish reconcile was read-only against a clone; if squish's gates change, re-run C-B.
 
 ## Still out, permanently
 
-The Machine Room hub, cross-model review, web/design/iOS/browser tooling, profiles for
-the other eight repos, psychographic/profile-tuning behavior, completeness-toward-10
-defaults, and the plugin marketplace.
+The Machine Room hub, cross-model review, web/design/iOS/browser tooling,
+psychographic/profile-tuning behavior, completeness-toward-10 defaults, and the plugin
+marketplace.
