@@ -1,48 +1,48 @@
-# Next session: Phase 4
+# Next session: Phase 5 (propagation)
 
-## What Phase 3 built (0.4.0)
+## What Phase 4 built (0.5.0)
 
-The safety layer for irreversible actions and credential-shaped findings, plus the
-release-tag discipline.
+The prove gate: a 30-run paired Wilcoxon signed-rank perf test with the rule that
+significance alone never merges.
 
-- `lib/oneway.py` + `bin/konjo-oneway`: classify a change as one-way or two-way.
-- `lib/confirm.py`: the typed-confirm flow (exact token, justification, Ledger ack, the
-  commit trailer CI reads). `bin/konjo-secrets`: HIGH blocks, MEDIUM confirms.
-- konjo-gates `one_way_door` gate: checks the commit-trailer acknowledgement; never prompts.
-- Release tags backfilled (v0.1.0..v0.3.0) and v0.4.0 cut; the template pins v0.4.0.
+- `lib/prove.py`: pure-Python paired Wilcoxon (tie/continuity corrections, zero-diff
+  handling, n floor 30) and the MERGE / NOISE / REGRESSION verdict.
+- `bin/konjo-prove`: runs locally, ingests a paired artifact, records the verdict
+  (BENCHMARKS.md, prove.jsonl, Ledger ack, MERGE trailer). `baseline capture` for goldens.
+- konjo-gates `prove` gate: checks the MERGE trailer on a perf change; runs no benchmark,
+  imports no stats (reuses the Phase 3 record-and-check path).
 
-Kill-test passes: classify one-way vs two-way; confirm refuses a vague reply and logs on
-a valid one; CI fails an unacknowledged one-way change and passes the acknowledged one.
+Kill-test passes: MERGE / NOISE (sub-threshold) / NOISE (non-sig) / REGRESSION from
+synthetic data; CI fails a perf change without a MERGE record and passes one with it.
 
-## Tag and release discipline (now in force)
+## Carried debt: squish prove wiring (do this first when squish is reachable)
 
-- `release.yml` on main cuts a GitHub release and tag server-side whenever VERSION
-  changes. So a merged VERSION bump produces the tag; no hand-pushed tag is needed going
-  forward.
-- Every VERSION bump is a one-way door. Classify and confirm it with `konjo-oneway`, log
-  the release decision to the Ledger, and (for the repo's own history) the commit that
-  bumps VERSION carries the acknowledgement trailer.
-- Historical tags v0.1.0..v0.3.0 were backfilled locally this sprint. They could not be
-  pushed from the build environment (the git proxy rejects tag-ref pushes) and release.yml
-  does not backfill old versions, so they must be pushed or cut as releases by hand if the
-  historical pins need to resolve.
+squish was unreachable this sprint (the build proxy scoped to kiban only). The squish
+prove block has the metric/unit/direction from the Phase 2 read but leaves `min_effect_pct`
+and `bench_cmd` as TODO. When squish is back in scope:
+- Read `benchmarks/ollama_vs_squish/bench_thermal_h2h.py` for the exact output fields and
+  confirm the metric name.
+- Set `min_effect_pct` from the squish perf policy (the threshold below which a win is
+  NOISE) and `bench_cmd` (the command that produces the paired artifact).
+- Document the adapter from the bench output to the konjo-prove artifact schema.
 
-## Immediate Phase 4 tasks
+## Phase 5 tasks (propagation, behind pins)
 
-1. **The prove gate: 30-run paired Wilcoxon (p<0.05)**. Use squish's real benchmark data
-   (`benchmarks_v5_1_1`, `bench_thermal_h2h.py`). Compare a change's runs against the
-   stored baseline; block on a statistically significant regression. This is perf, separate
-   from the detection self_test.
-2. **Grow the eval corpus and re-record cassettes**. One fixture per real bug class per
-   specialist (memory, concurrency, api-surface), each with a clean control. Re-run
-   `konjo-eval record`.
+1. `konjo-gates-rs` (clippy + cargo-mutants) and `konjo-gates-js` (eslint + tsc + stryker),
+   mirroring konjo-gates-py: profile in, scope routing, repo-native gates wrapped in
+   net-new, the record-and-check gates (one_way_door, prove) checked the same way.
+2. A second repo profile (one of the other Konjo repos), added behind a version pin, to
+   prove the profile schema generalizes past squish.
+3. Grow the eval corpus: one fixture per real bug class per specialist (memory,
+   concurrency, api-surface), each with a clean control; re-run `konjo-eval record`.
+4. The supply_chain universal gate (lockfile integrity, advisory scan), still stubbed.
 
-## Later
+## Tag and release discipline (in force)
 
-- `konjo-gates-rs` (clippy + cargo-mutants) and `konjo-gates-js` (eslint + tsc + stryker),
-  then profiles for the other repos one at a time behind version pins.
-- The supply_chain universal gate (lockfile integrity, advisory scan) is a Phase 5
-  candidate; it stays stubbed for now.
+`release.yml` cuts the release and tag server-side on a VERSION change on main. Every
+VERSION bump is a one-way door: classify and confirm it with konjo-oneway and log it. The
+historical tags v0.1.0..v0.4.0 exist locally; they could not be pushed from the build
+environment (the proxy rejects tag-ref pushes).
 
 ## Still out, permanently
 

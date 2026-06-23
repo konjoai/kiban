@@ -55,6 +55,16 @@ universal_gates:
       the deterministic replay backend (konjo-eval run --replay), so it runs in CI with no
       model and no network. The 30-run paired Wilcoxon prove baseline remains Phase 3.
 
+  prove:
+    enabled: true
+    description: >
+      The perf prove gate (Phase 4). A 30-run paired Wilcoxon signed-rank test renders a
+      MERGE / NOISE / REGRESSION verdict; MERGE requires p<0.05 AND a median improvement at
+      or above the minimum effect size, so significance alone never merges. konjo-prove
+      runs locally on the bench hardware and records the verdict (BENCHMARKS.md, prove.jsonl,
+      a Ledger ack, and a MERGE commit trailer). The CI prove gate checks for the MERGE
+      trailer on a perf-labeled change and never runs the benchmark.
+
   specialist_stats:
     enabled: true
     description: >

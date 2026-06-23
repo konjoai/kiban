@@ -55,6 +55,23 @@ specialists:
 prove:
   enabled: true
   baseline: "benchmarks_v5_1_1"
+  # Phase 4 note: the squish repo was NOT reachable this sprint (the build proxy scoped to
+  # kiban only), so the full prove wiring is DEFERRED. The metric, unit, and direction
+  # below are from the Phase 2 read of squish BENCHMARKS.md (end-to-end response time in
+  # seconds, lower is better, Apple M3, five-run medians). The load-bearing min_effect and
+  # the exact bench command must be confirmed against bench_thermal_h2h.py before this gate
+  # is switched on for squish; they are left as TODO rather than guessed.
+  metric: "e2e_response_s"   # Phase 2 evidence; re-confirm field name vs bench_thermal_h2h.py
+  unit: "s"
+  lower_is_better: true
+  run_floor: 30
+  perf_globs:
+    - "benchmarks/**"
+  # TODO(squish-reachable): set min_effect_pct from the squish perf policy, and bench_cmd
+  # from benchmarks/ollama_vs_squish/bench_thermal_h2h.py. Until then the squish prove gate
+  # is wired in schema but not threshold-complete.
+  min_effect_pct: null
+  bench_cmd: null
 
 killtest: true
 

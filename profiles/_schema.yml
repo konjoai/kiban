@@ -21,9 +21,18 @@ mutation: string            # mutation-testing tool, or "none-with-reason: <reas
 specialists:                # review lanes (advisory until promoted by specialist_stats)
   - string                  # e.g. numerics, memory-bandwidth, concurrency, api-surface
 
-prove:                      # the perf/quality prove gate
+prove:                      # the perf prove gate (runs locally on bench hardware)
   enabled: bool             # true to run the prove gate
-  baseline: string          # baseline tag the 30-run paired Wilcoxon compares against
+  baseline: string          # tagged golden baseline konjo-prove compares against
+  metric: string            # the measured metric name, e.g. e2e_response_s
+  unit: string              # the metric unit, e.g. s
+  lower_is_better: bool     # true for latency/time, false for throughput
+  min_effect: float         # minimum absolute median improvement to MERGE (metric units)
+  min_effect_pct: float     # OR the minimum effect as a percent of the baseline median
+  run_floor: int            # minimum paired runs before a verdict (default 30)
+  perf_globs:               # paths that mark a change as perf-labeled for the CI gate
+    - string                # e.g. "benchmarks/**"
+  bench_cmd: string         # the command a maintainer runs to produce the paired artifact
 
 killtest: bool              # require a kill-test before a sprint starts
 

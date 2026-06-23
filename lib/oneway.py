@@ -22,6 +22,9 @@ import re
 from dataclasses import dataclass, field
 
 ACK_TRAILER = "Konjo-Acknowledged-Oneway"
+# The prove MERGE trailer label lives here, with the other record-and-check labels, so the
+# CI prove gate can check for it via find_trailer without importing the stats engine.
+PROVE_MERGE_TRAILER = "Konjo-Prove-Merge"
 
 
 @dataclass
@@ -92,10 +95,24 @@ def classify(changed_files: list[str], diff_text: str = "") -> Classification:
 
 def ack_trailer(fp: str) -> str:
     """The commit-trailer line a confirmed one-way door carries for CI to read."""
-    return f"{ACK_TRAILER}: {fp}"
+    return make_trailer(ACK_TRAILER, fp)
 
 
 def find_ack(messages: str, fp: str) -> bool:
     """True if any commit message carries the acknowledgement trailer for this change."""
-    pat = re.compile(rf"^{re.escape(ACK_TRAILER)}:\s*{re.escape(fp)}\b", re.MULTILINE)
+    return find_trailer(messages, ACK_TRAILER, fp)
+
+
+def make_trailer(label: str, fp: str) -> str:
+    """Generic record-and-check trailer: `<Label>: <fingerprint>`.
+
+    Shared by the one-way-door acknowledgement and the Phase 4 prove MERGE record so
+    there is one record-and-check code path, not two.
+    """
+    return f"{label}: {fp}"
+
+
+def find_trailer(messages: str, label: str, fp: str) -> bool:
+    """True if any commit message carries `<label>: <fp>`."""
+    pat = re.compile(rf"^{re.escape(label)}:\s*{re.escape(fp)}\b", re.MULTILINE)
     return bool(pat.search(messages))
