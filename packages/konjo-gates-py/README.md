@@ -1,20 +1,23 @@
 # konjo-gates-py
 
-CI-plane gate runner for Konjo Python and ML repos. **Phase-1 stub.**
+CI-plane gate orchestrator for Konjo Python and ML repos.
 
-This is the pip-installable package a consuming repo's CI pins and installs. It runs the
-repo's profile gates in CI using the same `lib/` engine kiban ships. The CI plane is
-self-contained: it never reads `~/.konjo`. The gate logic is the pinned package.
+`konjo-gates` reads a repo profile, routes changed files through `lib.diff_scope`, and
+runs the kiban-native gates (prose net-new, secrets, the self_test replay eval,
+report-only specialist stats) plus the profile's repo-native gates, each wrapped in
+`konjo-newonly` so only net-new findings block. It imports the real `lib`/`evals` engine
+and reimplements none of it. The CI plane never reads `~/.konjo`.
+
+This package's code lives here, but it is built and shipped as part of the root kiban
+distribution, because it imports the sibling engine and a subdirectory-only install
+cannot reach those packages without duplicating them.
 
 ## Install (in a consuming repo's CI)
 
 ```bash
-pip install "konjo-gates-py @ git+https://github.com/konjoai/kiban.git@v0.1.0#subdirectory=packages/konjo-gates-py"
-konjo-gates --profile .konjo/profile.yml
+pip install "kiban @ git+https://github.com/konjoai/kiban.git@v0.3.0"
+konjo-gates --profile .konjo/profile.yml --base origin/main
 ```
 
-## Status
-
-The `konjo-gates` entry point currently prints `phase 1` and exits 0. The working runner
-(profile load, scope-based gate selection, prove baseline, meta-gate self-test) lands in
-Phase 1.
+The self_test gate runs the eval through the deterministic replay backend, so CI needs
+no model and no network. See `templates/repo-ci.yml` for the full workflow.

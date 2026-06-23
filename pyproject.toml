@@ -1,10 +1,41 @@
-# Tooling config for the kiban engine. kiban itself is not a pip package; the CI-plane
-# packages under packages/ are. This file configures ruff and mypy for the repo.
+# Root distribution and tooling config for kiban.
+#
+# Phase 2 supersedes the earlier "kiban is not a pip package" stance. The CI plane needs
+# konjo-gates to import the real engine (lib, ledger, evals), and a subdirectory-only
+# install of packages/konjo-gates-py cannot reach those sibling packages without
+# duplicating them, which would break single-source-of-truth. So the whole repo is the
+# installable distribution: it ships the engine together with the konjo-gates entry point
+# and its eval cassettes. Consuming repos install this at a pinned ref (see
+# templates/repo-ci.yml). The konjo-gates-rs / -js packages stay separate stubs.
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kiban"
+version = "0.3.0"
+description = "Konjo foundation: quality gates and the decision ledger (CI plane)"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+konjo-gates = "konjo_gates_py.cli:main"
+
+[tool.setuptools]
+packages = ["lib", "lib.specialists", "ledger", "evals", "konjo_gates_py"]
+
+[tool.setuptools.package-dir]
+konjo_gates_py = "packages/konjo-gates-py/src/konjo_gates_py"
+
+[tool.setuptools.package-data]
+evals = ["fixtures/**/*", "cassettes/*.json"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["packages/konjo-gates-rs", "packages/konjo-gates-js"]
+extend-exclude = ["packages/konjo-gates-rs", "packages/konjo-gates-js", "scratch"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B"]
@@ -14,7 +45,7 @@ python_version = "3.11"
 mypy_path = "."
 ignore_missing_imports = true
 warn_unused_ignores = false
-exclude = ['packages/']
+exclude = ['packages/konjo-gates-rs', 'packages/konjo-gates-js', 'scratch']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

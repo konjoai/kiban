@@ -1,21 +1,16 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+# konjo-gates-py is the Python/ML CI-plane orchestrator. Its code lives here, but it is
+# built and shipped as part of the root kiban distribution (see the repo-root
+# pyproject.toml), because it imports the real lib/ and evals/ engine and a
+# subdirectory-only install cannot reach those siblings without duplicating them. This
+# file documents the package and lets it be developed in place; the installable
+# distribution is the repo root, installed at a pinned ref by consuming repos.
 
 [project]
 name = "konjo-gates-py"
-version = "0.1.0"
-description = "CI-plane gate runner for Konjo Python and ML repos (phase-1 stub)"
+version = "0.3.0"
+description = "CI-plane gate orchestrator for Konjo Python and ML repos"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = []
-
-# Spec: the working version installs the same lib/ engine shipped by kiban and runs the
-# consuming repo's profile gates in CI. The CI plane never reads ~/.konjo; the gate logic
-# is pinned and installed here. This stub only proves the entry point wiring.
 
 [project.scripts]
 konjo-gates = "konjo_gates_py.cli:main"
-
-[tool.setuptools.packages.find]
-where = ["src"]

@@ -22,7 +22,8 @@ _KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_KIBAN_ROOT) not in sys.path:
     sys.path.insert(0, str(_KIBAN_ROOT))
 
-from evals import runner  # noqa: E402
+from evals import cassettes, runner  # noqa: E402
+from lib.review import ReviewBackend  # noqa: E402
 
 
 def _print_human(report: dict) -> None:
@@ -46,20 +47,43 @@ def _print_human(report: dict) -> None:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="konjo-eval")
-    parser.add_argument("cmd", nargs="?", default="run", choices=["run"])
+    parser.add_argument("cmd", nargs="?", default="run", choices=["run", "record"])
     parser.add_argument("--profile", default=str(_KIBAN_ROOT / "profiles" / "squish.yml"))
     parser.add_argument("--runs", type=int, default=runner.DEFAULT_RUNS)
     parser.add_argument("--mode", default="daily", choices=["daily", "deep"])
     parser.add_argument("--corpus", default=None)
+    parser.add_argument("--replay", action="store_true",
+                        help="force the deterministic replay backend (the CI path)")
+    parser.add_argument("--live", action="store_true",
+                        help="force the live Claude CLI backend")
     parser.add_argument("--json", action="store_true", help="emit the raw report as JSON")
     args = parser.parse_args(argv)
 
     corpus = pathlib.Path(args.corpus) if args.corpus else runner.FIXTURES_DIR
-    report = runner.run(args.profile, runs=args.runs, mode=args.mode, corpus_dir=corpus)
+
+    if args.cmd == "record":
+        written = runner.record_cassettes(args.profile, mode=args.mode, corpus_dir=corpus)
+        for p in written:
+            print(f"recorded {p}")
+        return 0
+
+    # Default behavior: deterministic replay when cassettes exist; live only when there
+    # are no cassettes or --live is given. --replay forces replay (errors if missing).
+    backend: ReviewBackend | None
+    use_replay = args.replay or (not args.live and cassettes.cassettes_present())
+    if use_replay:
+        backend = cassettes.ReplayBackend(cassettes.load_cassettes())
+    else:
+        backend = None  # runner builds the live ClaudeCLIBackend
+
+    report = runner.run(
+        args.profile, runs=args.runs, backend=backend, mode=args.mode, corpus_dir=corpus
+    )
 
     if args.json:
         print(json.dumps(report, indent=2))
     else:
+        print(f"konjo-eval: backend={'replay' if use_replay else 'live'}")
         _print_human(report)
 
     return 0 if report["ok"] else 1

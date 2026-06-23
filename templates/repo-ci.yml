@@ -1,7 +1,9 @@
 # templates/repo-ci.yml
 # The thin per-repo GitHub Actions workflow a consuming repo drops in. The CI plane
-# installs a pinned konjo-gates package and runs it against the repo's profile. CI never
-# reads ~/.konjo; the gate logic comes from the installed, version-pinned package.
+# installs the pinned kiban distribution and runs konjo-gates against the repo's profile.
+# CI never reads ~/.konjo; the gate logic and the eval cassettes come from the installed,
+# version-pinned package. The self_test gate runs the eval through the deterministic
+# replay backend, so CI needs no model and no network for it.
 #
 # Pin KIBAN_REF to a tag or sha so a kiban change rolls out to this repo on a deliberate
 # schedule, not all repos at once.
@@ -14,21 +16,26 @@ on:
     branches: [main]
 
 env:
-  KIBAN_REF: "v0.1.0"   # the pinned kiban ref for this repo; bump deliberately
+  KIBAN_REF: "v0.3.0"   # the pinned kiban ref for this repo; bump deliberately
 
 jobs:
   gates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # konjo-gates diffs against the base ref
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install pinned konjo-gates (Python/ML repos)
-        run: pip install "konjo-gates-py @ git+https://github.com/konjoai/kiban.git@${KIBAN_REF}#subdirectory=packages/konjo-gates-py"
+      # Install the whole kiban distribution at the pin. It ships the real engine
+      # (lib, evals) with the konjo-gates entry point and the eval cassettes, so the
+      # orchestrator imports one source of truth and the replay eval needs no model.
+      - name: Install pinned kiban
+        run: pip install "kiban @ git+https://github.com/konjoai/kiban.git@${KIBAN_REF}"
 
       - name: Run gates against the repo profile
-        run: konjo-gates --profile .konjo/profile.yml
+        run: konjo-gates --profile .konjo/profile.yml --base "origin/${{ github.base_ref || 'main' }}"

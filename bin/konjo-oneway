@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """konjo-oneway: one-way-door classifier CLI.
 
-STUB (phase 1). Classifies a proposed change as a one-way door (hard or costly to
+STUB (phase 3). Classifies a proposed change as a one-way door (hard or costly to
 reverse: schema migrations, public API breaks, data deletes, key rotation) versus a
 two-way door (cheap to revert). One-way doors trigger an interactive confirm before the
 action proceeds; two-way doors pass straight through.
 
-Contract for the phase-1 implementation:
+Contract for the phase-3 implementation:
   konjo-oneway classify --files <changed-files> [--diff <patch>]
     - emit {"door": "one-way"|"two-way", "reasons": [...], "confidence": 0-10}
     - exit 0 always; the confirm flow is a separate, interactive concern
@@ -17,13 +17,13 @@ sprint, alongside the secrets-tier interactive confirms).
 
 import sys
 
-TODO_PHASE = 1
+TODO_PHASE = 3
 
 
 def main(argv: list[str]) -> int:
-    # TODO(phase-1): implement door classification over the changed-file set + diff.
+    # TODO(phase-3): implement door classification over the changed-file set + diff.
     raise NotImplementedError(
-        "konjo-oneway is a phase-1 stub; the door classifier is not built yet"
+        "konjo-oneway is a phase-3 stub; the door classifier is not built yet"
     )
 
 
@@ -32,5 +32,5 @@ if __name__ == "__main__":
         raise SystemExit(main(sys.argv[1:]))
     except NotImplementedError as e:
         print(f"konjo-oneway: {e}", file=sys.stderr)
-        print("phase 1", file=sys.stderr)
+        print("phase 3", file=sys.stderr)
         raise SystemExit(0)

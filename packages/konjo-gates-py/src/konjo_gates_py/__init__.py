@@ -1,3 +1,3 @@
-"""konjo-gates-py: CI-plane gate runner for Konjo Python and ML repos (phase-1 stub)."""
+"""konjo-gates-py: CI-plane gate orchestrator for Konjo Python and ML repos."""
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"

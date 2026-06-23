@@ -1,45 +1,60 @@
 # profiles/squish.yml
-# Seeded from real squish state where reachable. The squish KCQF scripts were NOT on
-# disk during this scaffold, so fields that could not be verified against the repo are
-# marked UNVERIFIED rather than fabricated. A later sprint with squish checked out
-# should confirm and drop the markers.
-#
-# Phase 1 re-check (C1): squish was again NOT reachable on disk (no konjo_wall3_cc.sh,
-# verify_deps.py, pre-commit config, bench_thermal_h2h.py, or BENCHMARKS.md found). The
-# UNVERIFIED markers therefore remain. The specialist set below IS exercised by the
-# Phase 1 review engine and eval, so it is load-bearing; the linter set, the
-# squizd-format / http-api-surface gate names, the mutation tool, and the prove
-# baseline tag stay UNVERIFIED until squish is checked out alongside kiban.
+# Reconciled against the real squish repo in Phase 2 (C-B): konjoai/squish was cloned
+# read-only and its actual KCQF state was read (.konjo/hooks/pre-commit,
+# .konjo/scripts/konjo_review.py, .github/workflows/konjo-gate.yml, BENCHMARKS.md,
+# benchmarks/ollama_vs_squish/bench_thermal_h2h.py, pyproject.toml, requirements.txt).
+# The squish checkout was not modified. Fields below are confirmed against that state
+# unless marked UNVERIFIED.
 
 repo: squish
 
+# Confirmed: requirements.txt and pyproject.toml declare mlx and mlx-lm (Apple-Silicon
+# gated). There is no Cargo.toml, pixi.toml, or Package.swift, so the Phase 0 "swift"
+# guess was wrong and is dropped.
 stack:
-  - mlx
   - python
-  - swift
+  - mlx
 
+# Confirmed from .konjo/hooks/pre-commit (ruff lint + ruff format + mypy) and
+# .github/workflows/konjo-gate.yml G1 static analysis (vulture for dead code, bandit
+# for security).
 format_lint:
-  - ruff            # UNVERIFIED: exact linter set not confirmed against squish on disk
-  - shellcheck      # UNVERIFIED
+  - ruff
+  - ruff-format
+  - mypy
+  - vulture
+  - bandit
 
+# Confirmed from konjo-gate.yml Wall 2 gates G2 and G4. These are the blocking
+# correctness contracts squish enforces in CI.
 contract_gates:
-  - dtype                 # fp16/fp32 KV-cache promotion class (see evals fixture)
-  - shape                 # tensor shape contracts
-  - squizd-format         # UNVERIFIED: squish on-disk format gate name not confirmed
-  - http-api-surface      # UNVERIFIED: API-surface gate not confirmed against repo
+  - coverage-80          # G2: pytest coverage gate, fails under 80 percent
+  - complexity-radon     # G4: radon complexity gate
+  - file-size-500        # G4 and pre-commit: hard limit 500 lines per source file
+  - dry                  # G4 and pre-commit: dry_check.py duplicate-block gate
+  - docs-interrogate-80  # G4: interrogate docstring coverage, target 80 percent
 
-mutation: "none-with-reason: UNVERIFIED; mutation tool for squish not confirmed on disk"
+# Confirmed: konjo-gate.yml G3 runs `mutmut run`.
+mutation: mutmut
 
+# kiban-native review lanes for this stack. These drive the kiban specialist engine
+# (lib/specialists), not squish's own reviewer. squish's repo-native review is a single
+# 10-question adversarial critic (.konjo/scripts/konjo_review.py, Wall 3, critic model
+# claude-opus, disabled in CI). numerics and memory-bandwidth map to the MLX inference
+# core; api-surface maps to the public squish API; concurrency is retained as a standard
+# lane though squish's hot path is single-threaded GEMV.
 specialists:
   - numerics
   - memory-bandwidth
   - concurrency
   - api-surface
 
+# Confirmed from BENCHMARKS.md: the headline baseline is "bench v5.1.1" with raw
+# artifacts in results/benchmarks_v5_1_1/ (Apple M3, five-run medians). The thermal
+# head-to-head bench is benchmarks/ollama_vs_squish/bench_thermal_h2h.py.
 prove:
   enabled: true
-  baseline: "thermal-h2h"   # UNVERIFIED: baseline tag inferred from bench_thermal_h2h.py
-                            # naming; confirm the exact tag against BENCHMARKS.md
+  baseline: "benchmarks_v5_1_1"
 
 killtest: true
 

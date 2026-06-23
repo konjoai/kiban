@@ -16,7 +16,7 @@ universal_gates:
     enabled: true
     stubbed: true
     description: >
-      Dependency and provenance checks (lockfile integrity, advisory scan). TODO(phase-1):
+      Dependency and provenance checks (lockfile integrity, advisory scan). TODO(phase-3):
       wire the per-stack runners in packages/.
 
   decision_logging:
@@ -29,7 +29,7 @@ universal_gates:
     enabled: true
     stubbed: true
     description: >
-      Classify hard-to-reverse changes and require an interactive confirm. TODO(phase-1):
+      Classify hard-to-reverse changes and require an interactive confirm. TODO(phase-3):
       bin/konjo-oneway classifier and the confirm flow.
 
   net_new_only:
@@ -48,9 +48,9 @@ universal_gates:
     enabled: true
     description: >
       The gates test themselves against the eval corpus (the meta-gate). Implemented in
-      Phase 1: konjo-eval + evals/runner.py run the real review_diff over the corpus and
-      fail on a missed CRITICAL or a control that fired. The 30-run paired Wilcoxon prove
-      baseline remains the next step (Phase 2).
+      Phase 1 (konjo-eval + evals/runner.py) and wired into the CI plane in Phase 2 via
+      the deterministic replay backend (konjo-eval run --replay), so it runs in CI with no
+      model and no network. The 30-run paired Wilcoxon prove baseline remains Phase 3.
 
   specialist_stats:
     enabled: true

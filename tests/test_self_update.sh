@@ -19,10 +19,15 @@ git_quiet() { git -C "$1" "${@:2}" >/dev/null 2>&1; }
 REMOTE="$WORK/remote.git"
 SEED="$WORK/seed"
 git init --quiet --bare "$REMOTE"
-git clone --quiet "$REMOTE" "$SEED"
+git -C "$REMOTE" symbolic-ref HEAD refs/heads/main
+# Seed the bare remote with an initial main before cloning, so neither clone below
+# warns about an empty repository or a nonexistent HEAD ref.
+git init --quiet "$SEED"
 git -C "$SEED" config user.email t@t && git -C "$SEED" config user.name t
+git -C "$SEED" checkout --quiet -b main
 echo one > "$SEED/f"; git_quiet "$SEED" add f; git_quiet "$SEED" commit -m one
-git_quiet "$SEED" push origin HEAD:main
+git -C "$SEED" remote add origin "$REMOTE"
+git_quiet "$SEED" push -u origin main
 
 export KONJO_HOME="$WORK/home"
 export KIBAN_DIR="$KONJO_HOME/kiban"
@@ -65,6 +70,7 @@ pass "fetch failure is swallowed, no error"
 # 5. Pinning: a .konjo/kiban.ref pins to the first commit instead of main.
 #    Rebuild a working remote so fetch succeeds, then pin to the first commit's sha.
 git init --quiet --bare "$REMOTE"
+git -C "$REMOTE" symbolic-ref HEAD refs/heads/main
 git_quiet "$SEED" push origin HEAD:main
 first_sha="$(git -C "$SEED" rev-list --max-parents=0 HEAD)"
 CONSUMER="$WORK/consumer"

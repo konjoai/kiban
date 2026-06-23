@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""konjo-gates: CI-plane gate orchestrator (checkout entry point).
+
+Thin launcher so `konjo-gates` works from a source checkout with no install. The real
+logic lives in the konjo_gates_py package, which is also exposed as a console_scripts
+entry point when the kiban distribution is pip-installed in CI.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_PKG_SRC = _KIBAN_ROOT / "packages" / "konjo-gates-py" / "src"
+for p in (str(_KIBAN_ROOT), str(_PKG_SRC)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+from konjo_gates_py.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    raise SystemExit(main())

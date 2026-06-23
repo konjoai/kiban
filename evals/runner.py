@@ -112,6 +112,31 @@ def evaluate_fixture(
     return fr
 
 
+def record_cassettes(
+    profile_path: str | Path,
+    *,
+    mode: str = "daily",
+    corpus_dir: Path = FIXTURES_DIR,
+) -> list[Path]:
+    """Run the live backend once over each fixture and write a cassette per fixture.
+
+    This is the explicit, online path. It uses the real ClaudeCLIBackend, so it needs a
+    model and network. The replay path (the CI gate) never does.
+    """
+    from evals import cassettes
+
+    profile = _load_profile(profile_path)
+    written: list[Path] = []
+    for fixture in discover_fixtures(corpus_dir):
+        diff_text = (fixture / "diff.patch").read_text(encoding="utf-8")
+        name = str(fixture.relative_to(corpus_dir))
+        recorder = cassettes.RecordingBackend(review.ClaudeCLIBackend())
+        # One run is enough to capture every (specialist, prompt) reply for replay.
+        review.review_diff(diff_text, profile, runs=1, backend=recorder, mode=mode)
+        written.append(cassettes.save_cassette(name, recorder.data))
+    return written
+
+
 def run(
     profile_path: str | Path,
     *,
