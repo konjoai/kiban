@@ -75,6 +75,10 @@ def _load_profile_prove(profile_path: str | None) -> dict:
     return pv if isinstance(pv, dict) else {}
 
 
+class NotActivated(Exception):
+    """The prove gate is wired but not yet activated (threshold PENDING)."""
+
+
 def _resolve_min_effect(args: argparse.Namespace, prof: dict, baseline: list[float]) -> float:
     if args.min_effect is not None:
         return float(args.min_effect)
@@ -84,7 +88,13 @@ def _resolve_min_effect(args: argparse.Namespace, prof: dict, baseline: list[flo
         return float(prof["min_effect"])
     if prof.get("min_effect_pct") is not None:
         return prove.min_effect_from_percent(float(prof["min_effect_pct"]), baseline)
-    raise SystemExit("konjo-prove: no min_effect given (flag or profile prove.min_effect[_pct])")
+    # Wired but inert: the threshold is PENDING. Refuse to render a verdict rather than
+    # invent an effect size or pass silently.
+    raise NotActivated(
+        "prove gate not yet activated: min_effect_pct is PENDING for this profile. "
+        "Complete the activation checklist (capture a baseline, measure run-to-run "
+        "jitter, set min_effect_pct above the noise floor) or pass --min-effect[-pct]."
+    )
 
 
 def _append_benchmarks_md(metric: str, v: prove.Verdict, tag: str) -> None:
@@ -156,7 +166,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         baseline = [float(x) for x in art["baseline"]]
 
     run_floor = int(prof.get("run_floor", prove.DEFAULT_RUN_FLOOR))
-    min_effect = _resolve_min_effect(args, prof, baseline)
+    try:
+        min_effect = _resolve_min_effect(args, prof, baseline)
+    except NotActivated as exc:
+        print(f"konjo-prove: NOT ACTIVATED for {metric}", file=sys.stderr)
+        print(f"  {exc}", file=sys.stderr)
+        return 3
 
     try:
         result = prove.paired_wilcoxon(
@@ -201,6 +216,30 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0 if v.label == prove.NOISE else 1
 
 
+def cmd_adapt(args: argparse.Namespace) -> int:
+    """Map one or more squish thermal bench JSON files to a konjo-prove artifact."""
+    from lib import bench_squish
+
+    try:
+        artifact = bench_squish.build_artifact(
+            args.bench,
+            config_id=args.config,
+            phase=args.phase,
+            metric=args.metric,
+            baseline_bench_paths=args.baseline_bench or None,
+        )
+    except bench_squish.BenchFormatError as exc:
+        print(f"konjo-prove adapt: {exc}", file=sys.stderr)
+        return 2
+    pathlib.Path(args.out).write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+    n = len(artifact["candidate"])
+    print(f"konjo-prove adapt: wrote {args.out} ({n} candidate runs, metric {args.metric})")
+    if n < prove.DEFAULT_RUN_FLOOR:
+        print(f"  note: {n} runs is below the prove floor of {prove.DEFAULT_RUN_FLOOR}; "
+              "concatenate more bench files with repeated --bench before proving")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="konjo-prove")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -221,6 +260,15 @@ def main(argv: list[str]) -> int:
     c.add_argument("--tag", required=True)
     c.add_argument("--results", required=True)
     c.set_defaults(func=cmd_baseline_capture)
+
+    a = sub.add_parser("adapt", help="map squish thermal bench JSON to a prove artifact")
+    a.add_argument("--bench", nargs="+", required=True, help="bench JSON file(s)")
+    a.add_argument("--config", required=True, help="config_id in the bench (the squish config)")
+    a.add_argument("--phase", default="p4000")
+    a.add_argument("--metric", default="e2e_200tok_s")
+    a.add_argument("--baseline-bench", nargs="*", default=[], help="baseline bench JSON file(s)")
+    a.add_argument("--out", required=True)
+    a.set_defaults(func=cmd_adapt)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

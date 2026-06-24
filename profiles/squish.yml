@@ -55,23 +55,40 @@ specialists:
 prove:
   enabled: true
   baseline: "benchmarks_v5_1_1"
-  # Phase 4 note: the squish repo was NOT reachable this sprint (the build proxy scoped to
-  # kiban only), so the full prove wiring is DEFERRED. The metric, unit, and direction
-  # below are from the Phase 2 read of squish BENCHMARKS.md (end-to-end response time in
-  # seconds, lower is better, Apple M3, five-run medians). The load-bearing min_effect and
-  # the exact bench command must be confirmed against bench_thermal_h2h.py before this gate
-  # is switched on for squish; they are left as TODO rather than guessed.
-  metric: "e2e_response_s"   # Phase 2 evidence; re-confirm field name vs bench_thermal_h2h.py
+  # Phase 5: wired against the real squish bench, read over HTTPS from
+  # github.com/konjoai/squish (benchmarks/ollama_vs_squish/bench_thermal_h2h.py and
+  # bench_v5_1.py). The bench takes no argparse args; it is env-var driven and writes
+  # results/benchmarks_v5_1_1/thermal/<UTC>.json. Per-run e2e measurements live under
+  # configs[<id>].phases[<phase>].e2e_runs with the key total_s (end-to-end wall clock,
+  # seconds, lower is better). The metric we prove is e2e_200tok_s at the p4000 phase.
+  metric: "e2e_200tok_s"
   unit: "s"
   lower_is_better: true
   run_floor: 30
   perf_globs:
     - "benchmarks/**"
-  # TODO(squish-reachable): set min_effect_pct from the squish perf policy, and bench_cmd
-  # from benchmarks/ollama_vs_squish/bench_thermal_h2h.py. Until then the squish prove gate
-  # is wired in schema but not threshold-complete.
-  min_effect_pct: null
-  bench_cmd: null
+    - "squish/**"
+  bench_cmd: "python benchmarks/ollama_vs_squish/bench_thermal_h2h.py"
+  # The adapter maps the bench JSON to the konjo-prove artifact:
+  #   konjo-prove adapt --bench <thermal/*.json ...> --config <squish_config_id> \
+  #     --phase p4000 --metric e2e_200tok_s --out candidate.json
+  bench_adapter: "konjo-prove adapt (lib/bench_squish.py)"
+
+  # min_effect_pct is PENDING USER CONFIRMATION. It is the "what counts as a real win"
+  # threshold and must NOT be invented. bench_v5_1.RUNS == 5, so one thermal run yields
+  # only 5 paired measurements, below the 30-run floor; and the run-to-run jitter that
+  # sets the noise floor must be measured on the M3 bench hardware (unavailable in the
+  # build environment). Until activated, konjo-prove run refuses a verdict (exit 3,
+  # "NOT ACTIVATED") and the CI prove gate keeps blocking perf changes; it never passes
+  # a perf change silently while inert.
+  min_effect_pct: null   # PENDING: derive per the checklist below, then confirm
+  activation_checklist:
+    - "On the M3 bench hardware, run bench_cmd at least 6 times under thermal control so >= 30 paired runs accumulate (RUNS=5 per file)."
+    - "Use the bench's own DRIFT CHECK (ollama first vs last) to confirm thermal fairness for each capture."
+    - "Adapt the runs: konjo-prove adapt --bench thermal/*.json --config <squish_config_id> --phase p4000 --out baseline.json"
+    - "Measure run-to-run jitter on baseline.json (coefficient of variation, or MAD as a percent of the median of total_s)."
+    - "Set min_effect_pct above that noise floor (a win must exceed the bench's own jitter), then confirm the number here."
+    - "Capture the golden: konjo-prove baseline capture --tag benchmarks_v5_1_1 --results baseline.json"
 
 killtest: true
 

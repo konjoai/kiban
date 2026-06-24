@@ -1,0 +1,11 @@
+diff --git a/squish/attention.py b/squish/attention.py
+index 7777777..8888888 100644
+--- a/squish/attention.py
++++ b/squish/attention.py
+@@ -22,7 +22,8 @@ class PagedAttention:
+     def decode_step(self, q):
+-        # q: [batch, n_heads, 1, head_dim]; self.v is the fp16 paged value cache.
++        # q has shape [batch, n_heads, 1, head_dim]. self.v is the fp16 paged value
++        # cache. Stream it straight into the matmul with no materialization.
+         attn = mx.softmax(self.scores, axis=-1) @ self.v
+         return attn

@@ -1,0 +1,12 @@
+diff --git a/squish/http_api.py b/squish/http_api.py
+index 5555555..6666666 100644
+--- a/squish/http_api.py
++++ b/squish/http_api.py
+@@ -71,8 +71,9 @@ async def completions(request):
+     text, reason = await engine.generate(prompt, max_tokens)
+-    # OpenAI-compatible response contract that every client depends on.
+-    return {"choices": [{"text": text, "finish_reason": reason}]}
++    # BUG: rename two public response fields with no API version bump. This breaks
++    # the OpenAI-compatible contract: "choices" -> "results" and "finish_reason" ->
++    # "stop_reason". Every existing client parsing the response will break silently.
++    return {"results": [{"text": text, "stop_reason": reason}]}

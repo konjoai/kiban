@@ -1,0 +1,15 @@
+diff --git a/squish/attention.py b/squish/attention.py
+index 1111111..2222222 100644
+--- a/squish/attention.py
++++ b/squish/attention.py
+@@ -22,9 +22,11 @@ class PagedAttention:
+     def decode_step(self, q):
+         # q: [batch, n_heads, 1, head_dim]; self.v is the fp16 paged value cache.
+-        # Stream the value cache straight into the matmul; no materialization.
+-        attn = mx.softmax(self.scores, axis=-1) @ self.v
++        # BUG: tile the entire value cache into a dense fp16 copy on every decode
++        # step before the matmul. This materializes a full extra copy of the KV
++        # cache each token, doubling memory traffic on the attention hot path.
++        v_full = mx.tile(self.v, (1, self.n_heads, 1, 1))
++        attn = mx.softmax(self.scores, axis=-1) @ v_full
+         return attn

@@ -4,6 +4,58 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-06-24
+
+Phase 5: complete the squish pilot so it is trustworthy before any propagation. The eval
+corpus now covers all four squish specialists, and the squish prove gate is wired against
+the real benchmark and honestly inert until its threshold is confirmed.
+
+### Added
+
+- Eval corpus grown to all four squish specialists. New fixtures, each a planted bug with
+  a clean control where useful:
+  - `squish/memory_bandwidth_copy`: an MLX `mx.tile` that materializes a full value-cache
+    copy every decode step, doubling bandwidth on the hot path (memory-bandwidth).
+  - `squish/concurrency_race`: a removed lock leaving shared status/counter state raced
+    across worker threads (concurrency).
+  - `squish/api_contract_break`: renamed OpenAI-compatible response fields with no version
+    bump (api-surface).
+  - `_clean_control_mlx`: a comment-only MLX change, a silence control.
+  All four specialists flagged their planted bug on the first try at CRITICAL; no prompt
+  needed improving and no fixture was weakened. Cassettes re-recorded so `--replay` covers
+  all six fixtures deterministically.
+- `lib/bench_squish.py`: the adapter from squish's thermal bench JSON
+  (`configs[id].phases[p4000].e2e_runs[].total_s`) to the konjo-prove artifact, with
+  `konjo-prove adapt` to build an artifact from one or more bench files.
+
+### Changed
+
+- `profiles/squish.yml` prove block wired against the real bench (read over HTTPS from
+  konjoai/squish): `bench_cmd`, metric `e2e_200tok_s`, the adapter, `run_floor` 30. The
+  honest finding that `bench_v5_1.RUNS == 5` (below the floor) is documented in the
+  activation checklist.
+- `bin/konjo-prove`: a PENDING `min_effect_pct` now yields `NOT ACTIVATED` (exit 3)
+  instead of a verdict, so the gate never passes a perf change silently while inert.
+- Template pinned to v0.6.0.
+
+### Pending (not invented)
+
+- `min_effect_pct` for squish stays PENDING USER CONFIRMATION. It must be derived from
+  run-to-run jitter measured on the M3 bench hardware (unavailable in the build
+  environment). The activation checklist in `profiles/squish.yml` is the procedure.
+
+### Kill-test
+
+- `konjo-eval run --replay` flags all four bug classes at the right category and CRITICAL
+  and stays silent on both controls, deterministic across three runs. The squish prove
+  path produces a verdict when a threshold is supplied and reports NOT ACTIVATED while
+  PENDING. See `tests/test_prove_killtest.sh`.
+
+### Still deferred (Phase 6+)
+
+- konjo-gates-rs / -js, the second repo profile (propagation behind pins), and the
+  supply_chain universal gate.
+
 ## [0.5.0] - 2026-06-23
 
 Phase 4: the prove gate. A 30-run paired Wilcoxon signed-rank perf test that turns a
@@ -237,6 +289,7 @@ Phase 0: the foundation substrate plus the squish pilot, with specified Phase 1+
 - `evals/runner.py`.
 - `packages/konjo-gates-py`, `-rs`, `-js`.
 
+[0.6.0]: https://github.com/konjoai/kiban/releases/tag/v0.6.0
 [0.5.0]: https://github.com/konjoai/kiban/releases/tag/v0.5.0
 [0.4.0]: https://github.com/konjoai/kiban/releases/tag/v0.4.0
 [0.3.0]: https://github.com/konjoai/kiban/releases/tag/v0.3.0

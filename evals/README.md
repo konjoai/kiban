@@ -46,6 +46,8 @@ bug or a control that fired. A single-run detection rate is never treated as fin
 
 ## Status
 
-Working as of 0.2.0. The kill-test passes: konjo-eval flags squish/dtype_promotion at
-numerics/CRITICAL on every run and stays silent on _clean_control on every run. The
-30-run paired Wilcoxon prove baseline is the next step (Phase 2).
+The corpus covers all four squish specialists as of 0.6.0: numerics (dtype_promotion),
+memory-bandwidth (memory_bandwidth_copy), concurrency (concurrency_race), and api-surface
+(api_contract_break), each a planted bug flagged at CRITICAL, plus the `_clean_control`
+and `_clean_control_mlx` silence controls. `konjo-eval run --replay` is the deterministic
+CI path; a missing cassette key hard-errors rather than passing as zero findings.

@@ -1,0 +1,7 @@
+{
+  "08e79c720aa68fb5": "[{\"severity\": \"HIGH\", \"confidence\": 7, \"path\": \"squish/attention.py\", \"line\": 29, \"category\": \"red-team\", \"summary\": \"If self.v is already shaped [batch, n_heads, seq_len, head_dim], tiling by (1, self.n_heads, 1, 1) expands the heads axis to n_heads\u00b2, so the matmul with scores shaped [batch, n_heads, 1, seq_len] will either broadcast silently into wrong results or crash at runtime.\", \"fix\": \"Use self.v directly in the matmul; if GQA head-expansion is genuinely needed, tile by n_heads // n_kv_heads along axis 1, not by n_heads.\"}]\n",
+  "b9494b0d70ecd7b7": "[{\"severity\":\"CRITICAL\",\"confidence\":10,\"path\":\"squish/attention.py\",\"line\":29,\"category\":\"memory-bandwidth\",\"summary\":\"mx.tile materializes a full dense copy of the entire paged value cache on every decode step, doubling peak memory and memory bandwidth on the attention hot path.\",\"fix\":\"Remove v_full and matmul directly against self.v as the original code did, eliminating the extra allocation and copy.\"}]\n",
+  "bc13905d871c7a53": "NO FINDINGS\n",
+  "c8d1cd60636ba3c8": "NO FINDINGS\n",
+  "e536c87a95c47706": "NO FINDINGS\n"
+}
