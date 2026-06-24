@@ -1,0 +1,6 @@
+{
+  "269b09f5f8a73e26": "NO FINDINGS\n",
+  "40cbab1f8735a604": "NO FINDINGS\n",
+  "660d7ef999c65942": "[{\"severity\": \"CRITICAL\", \"confidence\": 10, \"path\": \"squish/http_api.py\", \"line\": 74, \"category\": \"api-surface\", \"summary\": \"Response fields `choices` and `finish_reason` are renamed to `results` and `stop_reason` without an API version bump, silently breaking every caller that parses the OpenAI-compatible response contract.\", \"fix\": \"Revert the field names to `choices` and `finish_reason`, or introduce a versioned endpoint and keep the original fields on the existing route.\"}]\n",
+  "c002611ebf35c1a8": "NO FINDINGS\n"
+}

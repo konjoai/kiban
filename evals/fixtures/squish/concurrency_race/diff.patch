@@ -1,0 +1,16 @@
+diff --git a/squish/doctor.py b/squish/doctor.py
+index 3333333..4444444 100644
+--- a/squish/doctor.py
++++ b/squish/doctor.py
+@@ -40,11 +40,10 @@ class HealthRegistry:
+     def record(self, worker_id, status):
+         # Called concurrently from every inference worker thread.
+-        with self._lock:
+-            self._status[worker_id] = status
+-            self._seen += 1
++        # BUG: the lock was removed. self._status and self._seen are shared mutable
++        # state written from multiple worker threads with no synchronization, a data
++        # race that corrupts the counter and can drop or interleave status writes.
++        self._status[worker_id] = status
++        self._seen += 1
+         return self._seen

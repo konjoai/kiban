@@ -83,8 +83,12 @@ each pin, never all repos at once.
   significance alone never merges. It runs locally on the bench hardware and records a
   MERGE trailer; the CI `prove` gate checks the trailer and runs no benchmark. Working and
   tested; the kill-test passes.
-- **Phase 5+**: propagation (`konjo-gates-rs`/`-js`, a second repo profile behind pins),
-  eval corpus growth, and the supply_chain gate. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 5 (this release, 0.6.0)**: the squish pilot is complete. The eval corpus covers
+  all four squish specialists (numerics, memory-bandwidth, concurrency, api-surface), and
+  the squish prove gate is wired against the real benchmark (`lib/bench_squish.py`,
+  `konjo-prove adapt`) and stays honestly NOT ACTIVATED until its threshold is confirmed.
+- **Phase 6+**: first propagation (`konjo-gates-rs`, a second repo profile behind a pin),
+  then `konjo-gates-js` and the supply_chain gate. See `NEXT_SESSION_PROMPT.md`.
 
 ## Proving a perf change
 

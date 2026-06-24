@@ -107,4 +107,22 @@ OUT="$(run_gate)"
 echo "$OUT" | grep -Eq "PASS.*prove|prove.*PASS" || { echo "$OUT"; fail "acked perf change should PASS"; }
 pass "perf change with the MERGE record passes CI"
 
+# ---- squish prove gate is honest about its inert state (PENDING threshold) ----
+# The squish profile has min_effect_pct PENDING (null), so konjo-prove must refuse a
+# verdict with NOT ACTIVATED (exit 3) rather than invent an effect size or pass silently.
+make_artifact "$WORK/act.json" -5
+python - "$WORK/act.json" <<'PY'
+import json, sys
+a = json.load(open(sys.argv[1])); a["baseline"] = [x + 5 for x in a["candidate"]]
+json.dump(a, open(sys.argv[1], "w"))
+PY
+d="$(mktemp -d)"; git -C "$d" init -q; git -C "$d" config user.email t@t; git -C "$d" config user.name t
+git -C "$d" checkout -q -b main; echo x > "$d/f"; git -C "$d" add .; git -C "$d" commit -qm base
+OUT="$(cd "$d" && env HOME="$HOME_DIR" KONJO_STATE_DIR="$STATE" \
+  python "$PROVE" run --results "$WORK/act.json" --profile "$KIBAN_ROOT/profiles/squish.yml" --base main 2>&1)"; RC=$?
+rm -rf "$d"
+echo "$OUT" | grep -q "NOT ACTIVATED" || { echo "$OUT"; fail "PENDING profile should report NOT ACTIVATED"; }
+[ "$RC" -eq 3 ] || { echo "$OUT"; fail "NOT ACTIVATED should exit 3 (got $RC)"; }
+pass "squish prove gate reports NOT ACTIVATED while min_effect_pct is PENDING"
+
 echo "ALL prove kill-test checks passed"
