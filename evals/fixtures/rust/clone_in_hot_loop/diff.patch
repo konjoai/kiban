@@ -1,0 +1,17 @@
+diff --git a/src/search.rs b/src/search.rs
+index 9999999..aaaaaaa 100644
+--- a/src/search.rs
++++ b/src/search.rs
+@@ -40,9 +40,11 @@ impl Index {
+     pub fn rank(&self, query: &Query) -> Vec<Hit> {
+         let mut hits = Vec::new();
+         for doc in &self.docs {
+-            let score = self.score(doc, query);
++            // BUG: clones the whole query for every document in the hot ranking loop.
++            // The clone is needless; score() only needs a shared reference.
++            let score = self.score(doc, &query.clone());
+             hits.push(Hit { id: doc.id, score });
+         }
+         hits
+     }
+ }

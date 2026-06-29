@@ -20,6 +20,8 @@ for _p in (str(_ROOT), str(_PKG_SRC)):
 
 from konjo_gates_py import cli  # noqa: E402
 
+from lib import diff_scope  # noqa: E402
+
 PRIVATE_KEY = (
     "-----BEGIN PRIVATE KEY-----\n"
     "MIIBVgIBADANBgkqhkiG9w0BAQEFAASCAUAwggE8AgEAAkEA\n"
@@ -107,6 +109,46 @@ def test_docs_only_skips_python_tools() -> None:
     flags = {"SCOPE_DOCS": True}
     r = cli.gate_repo_native("ruff", flags, ["README.md"], "main")
     assert r.status == cli.SKIP
+
+
+def test_rust_tools_route_to_cargo() -> None:
+    # All Rust tools are SCOPE_RUST and invoke cargo; their argv runs through konjo-newonly.
+    for tool in ("clippy", "fmt-check", "cargo-deny", "cargo-mutants"):
+        assert cli._TOOL_SCOPE[tool] == "SCOPE_RUST"
+        assert cli._TOOL_BIN.get(tool, tool) == "cargo"
+        assert cli._tool_argv(tool, [])[0] == "cargo"
+
+
+def test_unsafe_budget_gate_net_new_blocks() -> None:
+    diff = "@@ -1 +1,3 @@\n fn f() {\n+    unsafe {\n+        ptr.read();\n"
+    assert cli.gate_unsafe_budget({"SCOPE_RUST": True}, diff).status == cli.FAIL
+
+
+def test_unsafe_budget_gate_with_safety_passes() -> None:
+    diff = (
+        "@@ -1 +1,4 @@\n fn f() {\n+    // SAFETY: valid for this call\n"
+        "+    unsafe {\n+        ptr.read();\n"
+    )
+    assert cli.gate_unsafe_budget({"SCOPE_RUST": True}, diff).status == cli.PASS
+
+
+def test_unsafe_budget_gate_skips_non_rust() -> None:
+    assert cli.gate_unsafe_budget({"SCOPE_DOCS": True}, "+anything").status == cli.SKIP
+
+
+def test_rust_change_activates_rust_lanes_and_tools() -> None:
+    flags = diff_scope.scope(["src/lib.rs"])
+    assert flags["SCOPE_RUST"] and diff_scope.has_code(flags)
+    # A docs-only change activates no code lane and no rust tool.
+    docs = diff_scope.scope(["README.md"])
+    assert not diff_scope.has_code(docs) and not docs["SCOPE_RUST"]
+
+
+def test_scope_ts_extensions_are_code() -> None:
+    flags = diff_scope.scope(["app/a.ts", "b.tsx", "c.mts"])
+    assert flags["SCOPE_TS"] and diff_scope.has_code(flags)
+    # No TS lanes this sprint, only the scope flag.
+    assert not flags["SCOPE_PYTHON"] and not flags["SCOPE_RUST"]
 
 
 def test_one_way_gate_two_way_passes() -> None:

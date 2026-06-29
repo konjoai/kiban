@@ -24,7 +24,18 @@ dependencies = ["PyYAML>=6.0"]
 konjo-gates = "konjo_gates_py.cli:main"
 
 [tool.setuptools]
-packages = ["lib", "lib.specialists", "ledger", "evals", "konjo_gates_py"]
+packages = [
+    "lib",
+    "lib.packs",
+    "lib.packs.lang",
+    "lib.packs.lang._base",
+    "lib.packs.lang.mlx",
+    "lib.packs.lang.python",
+    "lib.packs.lang.rust",
+    "ledger",
+    "evals",
+    "konjo_gates_py",
+]
 
 [tool.setuptools.package-dir]
 konjo_gates_py = "packages/konjo-gates-py/src/konjo_gates_py"

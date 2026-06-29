@@ -71,6 +71,26 @@ def discover_fixtures(corpus_dir: Path = FIXTURES_DIR) -> list[Path]:
     return found
 
 
+def corpus_fixtures(profile: dict[str, Any], corpus_dir: Path = FIXTURES_DIR) -> list[Path]:
+    """Fixtures for a profile. A profile may scope its corpus with `eval_corpus` (a list of
+    subdir names under the fixtures root); absent, the whole tree is used (back-compat).
+
+    Scoping is load-bearing: a repo only evaluates fixtures for its own stack, so the Squish
+    self-test never tries to review a Rust fixture (which would miss its cassette and error).
+    """
+    subdirs = profile.get("eval_corpus")
+    if not subdirs:
+        return discover_fixtures(corpus_dir)
+    found: list[Path] = []
+    seen: set[Path] = set()
+    for sd in subdirs:
+        for fx in discover_fixtures(corpus_dir / sd):
+            if fx not in seen:
+                seen.add(fx)
+                found.append(fx)
+    return found
+
+
 def _load_profile(profile_path: str | Path) -> dict[str, Any]:
     with open(profile_path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
@@ -127,7 +147,7 @@ def record_cassettes(
 
     profile = _load_profile(profile_path)
     written: list[Path] = []
-    for fixture in discover_fixtures(corpus_dir):
+    for fixture in corpus_fixtures(profile, corpus_dir):
         diff_text = (fixture / "diff.patch").read_text(encoding="utf-8")
         name = str(fixture.relative_to(corpus_dir))
         recorder = cassettes.RecordingBackend(review.ClaudeCLIBackend())
@@ -148,7 +168,7 @@ def run(
     """Run the whole corpus and return an eval-store report dict."""
     profile = _load_profile(profile_path)
     results: list[FixtureResult] = []
-    for fixture in discover_fixtures(corpus_dir):
+    for fixture in corpus_fixtures(profile, corpus_dir):
         results.append(
             evaluate_fixture(fixture, profile, runs=runs, backend=backend, mode=mode)
         )

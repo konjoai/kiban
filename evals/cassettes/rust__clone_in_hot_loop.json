@@ -1,0 +1,8 @@
+{
+  "0c383fc6ffb83304": "NO FINDINGS\n",
+  "3cd12feb4496aeec": "NO FINDINGS\n",
+  "8f30fd5e23ef461a": "NO FINDINGS\n",
+  "996cb53041f1a475": "NO FINDINGS\n",
+  "b0717bd830bb85d5": "NO FINDINGS\n",
+  "d0a515ab012eadbb": "[{\"severity\":\"HIGH\",\"confidence\":9,\"path\":\"src/search.rs\",\"line\":43,\"category\":\"perf-alloc\",\"summary\":\"Query is cloned on every iteration of the document ranking loop, allocating unnecessarily for each doc when score() only requires a shared reference.\",\"fix\":\"Pass `query` directly instead of `&query.clone()`; the existing `query: &Query` borrow suffices.\"}]\n"
+}

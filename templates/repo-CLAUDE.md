@@ -20,7 +20,7 @@ with `konjo-decision search` before reopening a settled call.
 
 This repo pins a kiban ref in `.konjo/kiban.ref` (and `KIBAN_REF` in CI). The session
 plane checks out that ref on self-update instead of pulling main, so kiban changes land
-here on a deliberate schedule.
+here on a deliberate schedule. The current recommended pin is `v0.7.0`.
 
 ## Repo-specific rules
 

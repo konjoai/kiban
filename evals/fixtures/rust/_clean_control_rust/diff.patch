@@ -1,0 +1,13 @@
+diff --git a/src/client.rs b/src/client.rs
+index bbbbbbb..ccccccc 100644
+--- a/src/client.rs
++++ b/src/client.rs
+@@ -22,6 +22,8 @@ impl Client {
+     /// Open a connection to `host` on `port`.
++    ///
++    /// Returns a `Client` once the handshake completes, or an `Error` on failure.
+     pub fn connect_with(host: &str, port: u16, timeout: Timeout) -> Result<Client, Error> {
+         let addr = (host, port);
+         Transport::dial(addr, timeout).map(Client::new)
+     }
+ }

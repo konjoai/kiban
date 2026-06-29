@@ -1,0 +1,8 @@
+{
+  "3116845fdb9f39c6": "[{\"severity\":\"HIGH\",\"confidence\":10,\"path\":\"src/config.rs\",\"line\":23,\"category\":\"error-handling\",\"summary\":\"fs::read_to_string is called with .unwrap() on a production load path, causing a panic instead of returning the declared ConfigError when the file is missing or unreadable.\",\"fix\":\"Replace .unwrap() with ? to propagate the error through the existing Result<Config, ConfigError> return type.\"},{\"severity\":\"HIGH\",\"confidence\":10,\"path\":\"src/config.rs\",\"line\":24,\"category\":\"error-handling\",\"summary\":\"toml::from_str is called with .unwrap() on a production load path, causing a panic instead of returning the declared ConfigError when the file content is malformed TOML.\",\"fix\":\"Replace .unwrap() with ? to propagate the parse error through the existing Result<Config, ConfigError> return type.\"}]\n",
+  "68f933fff5b6c71c": "NO FINDINGS\n",
+  "71c452612bfaff50": "[{\"severity\":\"CRITICAL\",\"confidence\":9,\"path\":\"src/config.rs\",\"line\":23,\"category\":\"api-surface\",\"summary\":\"Config::load now panics on I/O or parse errors instead of returning Err(ConfigError) as its signature declares.\",\"fix\":\"Replace both .unwrap() calls with ? to propagate errors through the declared Result<Config, ConfigError> return type.\"}]\n",
+  "d923abd19dd511b2": "NO FINDINGS\n",
+  "e3d8f6ef79b2c24d": "NO FINDINGS\n",
+  "e8046e05b3df7a67": "NO FINDINGS\n"
+}

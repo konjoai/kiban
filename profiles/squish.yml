@@ -92,4 +92,12 @@ prove:
 
 killtest: true
 
+# The eval corpus for this repo. Scopes the meta-gate to squish's own fixtures so the
+# self-test never reviews another stack's fixture (e.g. a Rust fixture it has no cassette
+# for). Phase 7: added when the Rust corpus landed under evals/fixtures/rust.
+eval_corpus:
+  - squish
+  - _clean_control
+  - _clean_control_mlx
+
 overrides: {}

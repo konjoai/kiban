@@ -1,0 +1,17 @@
+diff --git a/src/session.rs b/src/session.rs
+index 5555555..6666666 100644
+--- a/src/session.rs
++++ b/src/session.rs
+@@ -30,8 +30,11 @@ impl Session {
+     pub async fn touch(&self) -> Result<(), Error> {
+-        let now = Instant::now();
+-        self.store.persist(now).await?;
++        // BUG: the std Mutex guard is held across an .await point. The guard is not
++        // Send and the lock stays held while the task is suspended, deadlocking any
++        // other task that needs `last_seen` and blocking the executor thread.
++        let mut last = self.last_seen.lock().unwrap();
++        self.store.persist(*last).await?;
++        *last = Instant::now();
+         Ok(())
+     }
+ }

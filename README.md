@@ -87,8 +87,16 @@ each pin, never all repos at once.
   all four squish specialists (numerics, memory-bandwidth, concurrency, api-surface), and
   the squish prove gate is wired against the real benchmark (`lib/bench_squish.py`,
   `konjo-prove adapt`) and stays honestly NOT ACTIVATED until its threshold is confirmed.
-- **Phase 6+**: first propagation (`konjo-gates-rs`, a second repo profile behind a pin),
-  then `konjo-gates-js` and the supply_chain gate. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 7 (this release, 0.7.0)**: the pack seam plus the first new language pack. The
+  review engine split into an invariant core and opt-in language packs (`lib/packs/lang`):
+  `_base` (the shared machinery and lanes), `mlx` and `python` (the repackaged Squish
+  content), and a new `rust` pack (`ownership-lifetimes`, `error-handling`, `perf-alloc`,
+  the `unsafe-budget` gate, and the cargo tool table). A second repo profile
+  (`profiles/vectro.yml`, Rust) proves the schema generalizes. The Squish cassettes moved
+  verbatim and still replay deterministically with no re-record. Working and tested.
+- **Phase 8+**: the compounding loop (learnings log + `correct` skill), the long-run gate,
+  the craft skill, then `konjo-gates-js` and the context-budget gate. See
+  `NEXT_SESSION_PROMPT.md`.
 
 ## Proving a perf change
 

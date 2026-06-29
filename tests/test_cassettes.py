@@ -9,7 +9,10 @@ import pytest
 from evals import cassettes
 from lib.review import ScriptedBackend, review_diff
 
-SQUISH = {"specialists": ["numerics", "memory-bandwidth", "concurrency", "api-surface"]}
+SQUISH = {
+    "stack": ["python", "mlx"],
+    "specialists": ["numerics", "memory-bandwidth", "concurrency", "api-surface"],
+}
 
 MLX_DIFF = """diff --git a/squish/kv.py b/squish/kv.py
 --- a/squish/kv.py

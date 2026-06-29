@@ -1,0 +1,15 @@
+diff --git a/src/buffer.rs b/src/buffer.rs
+index 1111111..2222222 100644
+--- a/src/buffer.rs
++++ b/src/buffer.rs
+@@ -10,6 +10,12 @@ impl Buffer {
+     pub fn as_slice(&self) -> &[u8] {
+         &self.data
+     }
++
++    pub fn as_mut_slice(&self) -> &mut [u8] {
++        // BUG: hands out a &mut slice from a &self, aliasing the same bytes that
++        // as_slice() can return immutably. Unsound: two live references, one mutable.
++        unsafe { std::slice::from_raw_parts_mut(self.data.as_ptr() as *mut u8, self.data.len()) }
++    }
+ }

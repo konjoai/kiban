@@ -26,7 +26,26 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from lib import diff_scope
-from lib import specialists as specialists_mod
+from lib.packs.lang import _base
+
+# Stack entries map to language packs when a profile does not name `packs` explicitly. Only
+# packs that exist are mapped; an unmapped stack entry contributes no pack (the `_base`
+# lanes are always present). This keeps profiles/squish.yml (stack: [python, mlx]) working
+# unchanged with no `packs` field.
+_STACK_TO_PACK = {
+    "python": "lang/python",
+    "mlx": "lang/mlx",
+    "rust": "lang/rust",
+}
+
+
+def packs_for(profile: dict[str, Any]) -> list[str]:
+    """The pack list for a profile: explicit `packs`, else derived from `stack`."""
+    explicit = profile.get("packs")
+    if explicit:
+        return list(explicit)
+    stack = profile.get("stack", []) or []
+    return [_STACK_TO_PACK[s] for s in stack if s in _STACK_TO_PACK]
 
 logger = logging.getLogger("kiban.review")
 
@@ -315,7 +334,8 @@ def review_diff(
     files = changed_files(diff_text)
     flags = diff_scope.scope(files, diff_text)
     profile_specs = specialists if specialists is not None else profile.get("specialists", [])
-    selected = specialists_mod.select(list(profile_specs), flags)
+    registry = _base.load_registry(packs_for(profile))
+    selected = _base.select(registry, list(profile_specs), flags)
 
     reports: dict[str, SpecialistReport] = {
         s.name: SpecialistReport(name=s.name, model=model_name(backend)) for s in selected
@@ -328,7 +348,7 @@ def review_diff(
         redteam = [s for s in selected if s.is_redteam]
 
         def _call(
-            spec: specialists_mod.Specialist, prior: list[Finding] | None = None
+            spec: _base.Specialist, prior: list[Finding] | None = None
         ) -> list[Finding]:
             t0 = time.monotonic()
             reply = backend.dispatch(spec.name, spec.system_prompt, _user_prompt(diff_text, prior))
