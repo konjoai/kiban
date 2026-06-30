@@ -65,7 +65,7 @@ CONCURRENCY = Specialist(
 API_SURFACE = Specialist(
     name="api-surface",
     category="api-surface",
-    scopes=("SCOPE_SWIFT", "SCOPE_PYTHON", "SCOPE_RUST", "SCOPE_TS"),
+    scopes=("SCOPE_SWIFT", "SCOPE_PYTHON", "SCOPE_RUST", "SCOPE_TS", "SCOPE_MOJO"),
     system_prompt=_prompt(
         "You are an API-surface reviewer.",
         "Hunt for breaking changes to a public signature, return type, or contract: a "

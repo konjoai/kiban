@@ -1,0 +1,8 @@
+{
+  "3d021c3934a07248": "[{\"severity\": \"MEDIUM\", \"confidence\": 7, \"path\": \"src/vectro_mojo/__init__.mojo\", \"line\": 18, \"category\": \"red-team\", \"summary\": \"The result of `_quantize(data, 8)` is piped directly into `.to_python()` with no error check; if `_quantize` returns a sentinel error value or a zeroed/invalid `QuantResult`, the error is silently converted to a Python object rather than propagated, making failures invisible to callers.\", \"fix\": \"Capture the `QuantResult` into a local variable, check its error/validity state before calling `.to_python()`, and raise or propagate the error explicitly on failure.\"}]\n",
+  "4ea77702ebac5d70": "NO FINDINGS\n",
+  "582ff79e4ef4798d": "NO FINDINGS\n",
+  "d92bec260fcb9809": "[{\"severity\": \"CRITICAL\", \"confidence\": 10, \"path\": \"src/vectro_mojo/__init__.mojo\", \"line\": 17, \"category\": \"api-surface\", \"summary\": \"The `bits` parameter is removed from `quantize_vector` and the return type is changed from `QuantResult` to `PythonObject`, breaking every existing caller.\", \"fix\": \"Restore the `bits: Int` parameter and `QuantResult` return type, or introduce a new overload and deprecate the old signature without removing it.\"}]\n",
+  "dcc5384b181ea58b": "NO FINDINGS\n",
+  "e1ca2ea3483bbf0a": "[{\"severity\": \"HIGH\", \"confidence\": 8, \"path\": \"src/vectro_mojo/__init__.mojo\", \"line\": 17, \"category\": \"mojo-perf\", \"summary\": \"The `data: List[Float32]` parameter is passed by value, causing a full heap copy of the vector on every call to `quantize_vector`.\", \"fix\": \"Declare the parameter as `borrowed data: List[Float32]` so the caller's buffer is referenced in place rather than copied.\"}]\n"
+}

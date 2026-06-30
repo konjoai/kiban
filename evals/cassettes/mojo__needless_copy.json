@@ -1,0 +1,8 @@
+{
+  "796ed4347e2a2569": "[{\"severity\": \"LOW\", \"confidence\": 8, \"path\": \"src/vectro_mojo/batch.mojo\", \"line\": 28, \"category\": \"mojo-memory\", \"summary\": \"Introducing `var row_copy = rows[i]` performs a full deep copy of each Float32 row on every loop iteration even though `quantize_row` only needs a borrowed read, violating value-semantics intent.\", \"fix\": \"Remove `row_copy` and pass `rows[i]` directly so the compiler can bind a borrow instead of materialising an owned copy; if `quantize_row`'s signature is `borrowed`, no copy occurs at the call site.\"}]\n",
+  "ac35c3d5dfd36f67": "[{\"severity\":\"HIGH\",\"confidence\":9,\"path\":\"src/vectro_mojo/batch.mojo\",\"line\":28,\"category\":\"mojo-perf\",\"summary\":\"Each iteration copies the entire Float32 row into `row_copy` before passing it to `quantize_row`, which only needs a borrowed read \u2014 this is a needless O(N) allocation per row inside the hot encode loop.\",\"fix\":\"Remove `var row_copy = rows[i]` and pass `rows[i]` directly to `quantize_row` so it receives a `borrowed` reference with no copy.\"}]\n",
+  "ba627b436fe9412e": "NO FINDINGS\n",
+  "de050d997e802ffb": "NO FINDINGS\n",
+  "f70b185d19f8842c": "NO FINDINGS\n",
+  "fb351213277d64a9": "NO FINDINGS\n"
+}

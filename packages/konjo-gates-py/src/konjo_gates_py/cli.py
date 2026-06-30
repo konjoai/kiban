@@ -83,6 +83,8 @@ _TOOL_SCOPE = {
     "eslint": "SCOPE_TS",
     "stryker": "SCOPE_TS",
     "npm-audit": "SCOPE_TS",
+    "mojo-format": "SCOPE_MOJO",
+    "mojo-test": "SCOPE_MOJO",
 }
 _TOOL_BIN = {
     "ruff-format": "ruff",
@@ -94,6 +96,8 @@ _TOOL_BIN = {
     "eslint": "npx",
     "stryker": "npx",
     "npm-audit": "npm",
+    "mojo-format": "mojo",
+    "mojo-test": "mojo",
 }
 
 # kiban-native gates handled in-process, not as a PATH binary through konjo-newonly.
@@ -461,6 +465,10 @@ def _tool_argv(tool: str, py_files: list[str]) -> list[str] | None:
         "eslint": ["npx", "eslint", "."],
         "stryker": ["npx", "stryker", "run"],
         "npm-audit": ["npm", "audit"],
+        # Mojo tools operate on the project/changed files; the formatter checks, the test
+        # runner runs the Mojo test suite. Each still runs through konjo-newonly.
+        "mojo-format": ["mojo", "format", "-q", "--check", *files],
+        "mojo-test": ["mojo", "test"],
     }
     return table.get(tool)
 

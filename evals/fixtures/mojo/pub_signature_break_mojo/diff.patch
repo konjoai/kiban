@@ -1,0 +1,13 @@
+diff --git a/src/vectro_mojo/__init__.mojo b/src/vectro_mojo/__init__.mojo
+index 7777777..8888888 100644
+--- a/src/vectro_mojo/__init__.mojo
++++ b/src/vectro_mojo/__init__.mojo
+@@ -14,8 +14,9 @@ from python import Python, PythonObject
+-# Python-exposed entry point. Callers pass (data, bits).
+-fn quantize_vector(data: List[Float32], bits: Int) -> QuantResult:
+-    return _quantize(data, bits)
++# BUG: a breaking change to a Python-exposed signature with no version bump. The
++# `bits` parameter is removed and the return type changes from QuantResult to a raw
++# PythonObject; every caller of vectro_mojo.quantize_vector breaks.
++fn quantize_vector(data: List[Float32]) -> PythonObject:
++    return _quantize(data, 8).to_python()

@@ -1,0 +1,15 @@
+diff --git a/src/vectro_mojo/batch.mojo b/src/vectro_mojo/batch.mojo
+index 5555555..6666666 100644
+--- a/src/vectro_mojo/batch.mojo
++++ b/src/vectro_mojo/batch.mojo
+@@ -22,9 +22,11 @@ fn encode_batch(rows: List[List[Float32]]) -> List[QuantResult]:
+     var out = List[QuantResult]()
+     for i in range(len(rows)):
+-        # Borrow the row; quantize_row reads it without taking ownership.
+-        out.append(quantize_row(rows[i]))
++        # BUG: copies the whole row out of the list on every iteration of the hot
++        # encode loop before passing it in. quantize_row only needs a borrowed read,
++        # so this is a needless per-row copy of a large Float32 buffer.
++        var row_copy = rows[i]
++        out.append(quantize_row(row_copy))
+     return out^

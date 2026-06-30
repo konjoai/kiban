@@ -38,6 +38,7 @@ _STACK_TO_PACK = {
     "rust": "lang/rust",
     "ts": "lang/typescript",
     "typescript": "lang/typescript",
+    "mojo": "lang/mojo",
 }
 
 
