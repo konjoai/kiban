@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""konjo-learn: the learnings-log CLI (the compounding loop's write/read path).
+
+Subcommands:
+  add       log a learning (mistake, rule, enforcement target, scope)
+  redact    retire a learning by id (history preserved)
+  search    keyword search over mistake + rule + enforcement, active-first
+
+The guardrail: `add` REFUSES a learning with no enforcement target. A learning must name
+where its rule now lives (a CLAUDE.md line, a prose-lint word, a new lane, or a gate);
+without one it is a note, not a learning, and notes do not go in the log.
+
+Examples:
+  konjo-learn add --scope org \\
+    --mistake "Reworded a moved specialist prompt during a refactor" \\
+    --rule "Move lane prompts verbatim; assert byte-equality in a test" \\
+    --enforcement "tests/test_packs.py frozen prompt-hash assertion" --author wes
+  konjo-learn search "prompt"
+  konjo-learn redact <id> --reason "superseded by a stronger gate"
+"""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from lib import jsonl_store  # noqa: E402
+from lib.learnings import Learning, LearningsLog, MissingEnforcement  # noqa: E402
+
+
+def _print_learning(learning: Learning) -> None:
+    status = "ACTIVE" if learning.active else "REDACTED"
+    print(f"[{status}] {learning.id}  ({learning.scope}, {learning.date})")
+    print(f"  mistake    : {learning.mistake}")
+    print(f"  rule       : {learning.rule}")
+    print(f"  enforcement: {learning.enforcement}")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="konjo-learn", description="Konjo learnings-log CLI")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    a = sub.add_parser("add", help="log a learning")
+    a.add_argument("--mistake", required=True, help="one-line statement of the mistake")
+    a.add_argument("--rule", required=True, help="the rule that prevents it")
+    a.add_argument(
+        "--enforcement",
+        required=True,
+        help="where the rule now lives (CLAUDE.md line, prose-lint word, lane, or gate)",
+    )
+    a.add_argument("--scope", default="org")
+    a.add_argument("--author", default="unknown")
+
+    r = sub.add_parser("redact", help="retire a learning by id")
+    r.add_argument("target_id")
+    r.add_argument("--reason", required=True)
+    r.add_argument("--author", default="unknown")
+
+    q = sub.add_parser("search", help="keyword search, active-first")
+    q.add_argument("query", nargs="?", default="")
+    q.add_argument("--scope", default=None)
+    q.add_argument("--all", action="store_true", help="include redacted in the list")
+
+    return p
+
+
+def main(argv: list[str]) -> int:
+    args = _build_parser().parse_args(argv)
+    log = LearningsLog()
+
+    try:
+        if args.cmd == "add":
+            lid = log.learn(
+                args.mistake,
+                args.rule,
+                args.enforcement,
+                scope=args.scope,
+                author=args.author,
+            )
+            print(f"logged learning {lid}")
+            return 0
+
+        if args.cmd == "redact":
+            log.redact_learning(args.target_id, args.reason, author=args.author)
+            print(f"redacted {args.target_id}")
+            return 0
+
+        if args.cmd == "search":
+            results = log.search(args.query, scope=args.scope)
+            if not args.all:
+                results = [learning for learning in results if learning.active]
+            if not results:
+                print("no matching learnings")
+                return 0
+            for learning in results:
+                _print_learning(learning)
+                print()
+            return 0
+
+    except MissingEnforcement as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 4
+    except jsonl_store.SecretRejected as e:
+        print(f"blocked: {e}", file=sys.stderr)
+        return 3
+    except jsonl_store.InjectionRejected as e:
+        print(f"blocked: {e}", file=sys.stderr)
+        return 3
+    except (KeyError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

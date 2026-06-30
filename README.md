@@ -94,9 +94,13 @@ each pin, never all repos at once.
   the `unsafe-budget` gate, and the cargo tool table). A second repo profile
   (`profiles/vectro.yml`, Rust) proves the schema generalizes. The Squish cassettes moved
   verbatim and still replay deterministically with no re-record. Working and tested.
-- **Phase 8+**: the compounding loop (learnings log + `correct` skill), the long-run gate,
-  the craft skill, then `konjo-gates-js` and the context-budget gate. See
-  `NEXT_SESSION_PROMPT.md`.
+- **Phase 8 (this release, 0.8.0)**: the compounding loop. A learnings log
+  (`lib/learnings.py`, `konjo-learn`) on the substrate, a sibling of the decision Ledger,
+  plus the `correct` skill that turns a caught mistake into a durable rule. The guardrail: a
+  learning must name where its rule lives (a CLAUDE.md line, a prose-lint word, a lane, or a
+  gate) or it is refused. `recall` now searches learnings too. Working and tested.
+- **Phase 9+**: the long-run gate (checkpoint/resume), the craft skill, then
+  `konjo-gates-js` and the context-budget gate. See `NEXT_SESSION_PROMPT.md`.
 
 ## Proving a perf change
 

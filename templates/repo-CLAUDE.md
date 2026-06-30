@@ -16,11 +16,16 @@ Editorial rules: no em dashes, no AI-tell vocabulary. The prose lint enforces it
 Log durable decisions with `konjo-decision decide` at `repo:<this-repo>` scope. Search
 with `konjo-decision search` before reopening a settled call.
 
+When you catch a mistake worth not repeating, invoke `correct`: it records a learning with
+`konjo-learn` and proposes the smallest durable fix. A learning must name where its rule
+lives (a CLAUDE.md line, a prose-lint word, a lane, or a gate), or it is refused. Search
+past learnings with `konjo-learn search` before repeating a class of mistake.
+
 ## Pinning
 
 This repo pins a kiban ref in `.konjo/kiban.ref` (and `KIBAN_REF` in CI). The session
 plane checks out that ref on self-update instead of pulling main, so kiban changes land
-here on a deliberate schedule. The current recommended pin is `v0.7.0`.
+here on a deliberate schedule. The current recommended pin is `v0.8.0`.
 
 ## Repo-specific rules
 

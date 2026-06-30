@@ -1,68 +1,58 @@
-# Next session: Phase 8 (the compounding loop)
+# Next session: Phase 9 (the long-run gate)
 
-## What Phase 7 built (0.7.0)
+## What Phase 8 built (0.8.0)
 
-The pack seam landed and the first new language pack (Rust) shipped behind a second profile.
+The compounding loop. The Ledger recorded decisions; kiban now records the other half too,
+so a caught mistake becomes a durable rule instead of a one-run patch.
 
-- The review engine split into an invariant core and opt-in language packs. The former
-  `lib/specialists` moved verbatim into `lib/packs/lang`: the `_base` pack holds the
-  `Specialist` machinery, `select`, the new `load_registry`, and the shared lanes
-  (`concurrency`, `api-surface`, `red-team`); `mlx` holds `numerics` + `memory-bandwidth`;
-  `python` is a placeholder (empty `SPECIALISTS`, a `TOOLS` fragment). The move was
-  behavior-preserving: the six Squish cassettes still replay deterministically with no
-  re-record.
-- `review_diff` reads `packs` from the profile, or derives them from `stack` when absent
-  (python -> lang/python, mlx -> lang/mlx, rust -> lang/rust), so `profiles/squish.yml`
-  keeps working unchanged.
-- The Rust pack (`lib/packs/lang/rust`): `ownership-lifetimes`, `error-handling`,
-  `perf-alloc`, plus the reused shared lanes. Tools wired into the orchestrator: `clippy`,
-  `fmt-check`, `cargo-deny`, `cargo-mutants` (all through konjo-newonly), and the
-  kiban-native `unsafe-budget` gate (diff-only: a net rise in unsafe blocks with no safety
-  comment fails).
-- `SCOPE_TS` added to `diff_scope` (`.ts` / `.tsx` / `.mts`, in `CODE_SCOPES`). No TS lanes
-  yet; the TS pack is Phase 12.
-- Second profile `profiles/vectro.yml` (stack `[rust]`). VECTRO was NOT reachable from the
-  build environment, so it is SEEDED with every unconfirmed field marked UNVERIFIED and the
-  prove block PENDING, exactly as squish.yml was originally seeded.
-- Rust eval corpus under `evals/fixtures/rust/` (five planted bugs, one clean control). The
-  eval corpus is now profile-scoped via the `eval_corpus` field so each repo evaluates only
-  its own fixtures.
+- `lib/learnings.py`: the learnings log, a sibling stream of the decision Ledger on the same
+  substrate (`ledger/learnings.jsonl`). Append-only, event-sourced, redact-scanned. A
+  learning is the one-line mistake, the rule that prevents it, the enforcement target (where
+  the rule now lives), and the scope. `redact` retires one.
+- The guardrail: a learning MUST name an enforcement target, or `konjo-learn add` refuses it
+  (exit 4). A learning with no target is a note, not a learning, and notes do not go in the
+  log.
+- `bin/konjo-learn` (add / search / redact), the `correct` skill (recall, write the
+  learning, propose and apply the smallest durable fix), and `recall` extended to search
+  learnings.
+- Kill-test green with no model and no network: a no-target learning is refused and not
+  stored; a valid learning is logged, found, and retired.
 
-## Carried activation steps
+## Carried activation steps (unchanged, still parked)
 
-1. **Rust cassettes** — ACTIVATED in Phase 7 against a live model; the replay is
-   deterministic across three runs and committed. No carried step. (If the lanes are ever
-   reworded, re-record with `konjo-eval record --profile profiles/vectro.yml` and re-verify
-   `konjo-eval run --replay --profile profiles/vectro.yml`.)
-2. **VECTRO reconciliation** — when VECTRO unparks, clone it read-only and reconcile
-   `profiles/vectro.yml`: confirm the stack, the format/lint and contract tools, and the
-   LOAD-BEARING prove fields (metric, unit, bench_cmd, perf_globs). Clear every UNVERIFIED.
-3. **Squish prove gate** — still PENDING on the M3 bench hardware (carried from Phase 5):
-   capture >= 30 paired runs, measure jitter, set and confirm `min_effect_pct`, capture the
-   golden baseline.
+1. **Rust cassettes** (Phase 7): ACTIVATED; no carried step.
+2. **VECTRO reconciliation** (Phase 7): when VECTRO unparks, reconcile `profiles/vectro.yml`
+   and clear every UNVERIFIED field, including the load-bearing prove fields.
+3. **Squish prove gate** (Phase 5): still PENDING on the M3 bench hardware.
 
-## Phase 8 tasks (the compounding loop)
+## Phase 9 tasks (the long-run gate)
 
-The highest-leverage missing piece (evolution plan section 5b). When the agent errs, do not
-just correct it in chat; write a durable rule so it never recurs.
+The resume-flag pain, generalized: any run long enough to be interrupted must resume from a
+checkpoint with minimal loss. Evolution plan section 6.
 
-1. A learnings stream on the substrate (`lib/learnings.py` or a Ledger stream): one-line
-   mistake, the rule that prevents it, the repo scope, and a pointer to where the rule now
-   lives. Append-only, redact-scanned, same as the Ledger.
-2. A `correct` skill: write the learning, propose the smallest durable fix (a CLAUDE.md
-   rule, a prose-lint word, a new specialist check, or a gate), and apply on confirm.
-3. Extend `recall` to search learnings, not just decisions.
-4. Kill-test: a correction writes a learning; a learning names an enforcement target; a
-   learning with no target is refused.
+1. `packs/longrun/konjo_longrun.py` (mirror the pack layout under `lib/packs`): a `Checkpoint`
+   helper (open a progress JSONL on `jsonl_store`, `done(unit_key)`, `mark(unit_key, result)`,
+   `completed()`) and an argparse mixin that adds `--resume` / `--fresh`. A benchmark adopts
+   resume in about five lines.
+2. `gate_longrun` in the orchestrator: a static check that a change touching a
+   `longrun_globs` path has the resume contract (an argparse `--resume` flag or the documented
+   helper imported, and a checkpoint-write call in the main loop). It reads the diff; it never
+   runs the benchmark. In the spirit of the existing `oneway` and `prove` gates.
+3. `longrun_globs` profile field (default: `benchmarks/**`, `**/bench_*.py`,
+   `scripts/train_*.py`, eval-matrix runners).
+4. Kill-test (`tests/test_longrun_killtest.sh`): run a synthetic long-run to unit 3 of 5,
+   kill it, resume, and assert units 1-3 are skipped, 4-5 complete, and the final result set
+   equals a clean `--fresh` run. Plus a corruption case: append a garbage line to the progress
+   file and assert resume still works (the tolerant-read property of `jsonl_store.iter_read`).
 
-Guardrail: a learning must name where its rule lives, or it is a note, and notes do not go
-in the log.
+Scope discipline (stay honest about section 2's conflict): resume is the operational floor
+for any run that costs more than a few minutes, not gold-plating. The gate fires only on
+long-run scripts, never on ordinary code, so "simplicity first" still governs everything else.
 
 ## Tag and release discipline (in force)
 
-`release.yml` cuts the release and tag server-side on a VERSION change on main. Every
-VERSION bump is a one-way door: classify and confirm it. The build environment cannot push
-tag refs.
+`release.yml` cuts the release and tag server-side on a VERSION change on main. Every VERSION
+bump is a one-way door: classify and confirm it. The build environment cannot push tag refs.
 
 ## Still out, permanently
 

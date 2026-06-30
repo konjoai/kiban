@@ -4,6 +4,50 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-30
+
+Phase 8: the compounding loop. The Ledger recorded decisions; kiban ported only that half.
+This adds the other half the loop needs, the learnings log, so a caught mistake becomes a
+durable rule instead of a one-run patch. A correction that only fixes this run is a patch; a
+correction that edits the rules is a fix.
+
+### Added
+
+- `lib/learnings.py`: the learnings log, a sibling stream of the decision Ledger on the same
+  substrate (`ledger/learnings.jsonl`). Append-only, event-sourced, redact-scanned. A
+  learning is four things: the one-line mistake, the rule that prevents it, the enforcement
+  target (where the rule now lives), and the scope. `redact` retires a learning without
+  rewriting history.
+- The guardrail: a learning MUST name an enforcement target. A learning with no target is
+  not a learning, it is a note, and `LearningsLog.learn` refuses it (`MissingEnforcement`).
+  This keeps the loop tied to mechanism instead of becoming a diary.
+- `bin/konjo-learn`: the learnings CLI (`add`, `search`, `redact`), mirroring
+  `konjo-decision`. `add` exits 4 when the enforcement target is blank.
+- `correct` skill (`plugins/konjo/skills/correct`): the compounding loop, in three steps,
+  recall first, write the learning (with its enforcement target), then propose the smallest
+  durable fix (a CLAUDE.md line, a prose-lint word, a new lane, or a gate) and apply it on
+  confirmation.
+- `tests/test_learnings.py` and `tests/test_learnings_killtest.sh`: a correction writes a
+  learning; a learning names an enforcement target; a learning with no target is refused and
+  not stored; the recall path finds it; redact retires it. No model, no network.
+
+### Changed
+
+- `recall` skill extended to search the learnings log, not just decisions, so the agent
+  checks "have we already learned this" before repeating a class of mistake.
+- The `konjo` umbrella skill routes to `correct` and names the learnings log.
+- `ledger/schema.md` documents the learnings stream and the enforcement guardrail.
+- Templates pinned to v0.8.0.
+
+### Kill-test (measured)
+
+- Learnings kill-test green with no model and no network: a no-target learning is refused
+  (exit 4) and not stored; a learning with a target is logged, found via `konjo-learn
+  search`, and retired by `redact`.
+- The Phase 7 invariants still hold: Squish six-cassette replay deterministic with no
+  re-record; `konjo-gates`, oneway, and prove kill-tests green.
+- Full pytest: 103 passed (95 + 8 new).
+
 ## [0.7.0] - 2026-06-29
 
 Phase 7: split the review engine into an invariant core and opt-in language packs, then
