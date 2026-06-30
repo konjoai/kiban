@@ -32,6 +32,7 @@ The update is a no-op when:
 - `correct`: turn a caught mistake into a durable rule (the compounding loop).
 - `recall`: search the Ledger (decisions) and the learnings log before re-litigating a past
   call or repeating a known mistake.
+- `longrun`: make a benchmark or training script resumable (the checkpoint/resume contract).
 - `konjo-prose`: editorial lint (no em dashes, no AI-tell vocabulary).
 
 ## Ethos (do not weaken)

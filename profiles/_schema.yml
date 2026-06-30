@@ -34,6 +34,9 @@ prove:                      # the perf prove gate (runs locally on bench hardwar
     - string                # e.g. "benchmarks/**"
   bench_cmd: string         # the command a maintainer runs to produce the paired artifact
 
+longrun_globs:              # paths whose scripts must wire the resume contract (Phase 9)
+  - string                  # e.g. "benchmarks/**", "**/bench_*.py"; default set if omitted
+
 killtest: bool              # require a kill-test before a sprint starts
 
 overrides:                  # per-repo escape hatches, each with a reason

@@ -151,6 +151,73 @@ def test_scope_ts_extensions_are_code() -> None:
     assert not flags["SCOPE_PYTHON"] and not flags["SCOPE_RUST"]
 
 
+def test_longrun_gate_skips_non_longrun_change() -> None:
+    assert cli.gate_longrun(["src/app.py", "README.md"], {}).status == cli.SKIP
+
+
+def test_longrun_gate_fails_script_without_resume(tmp_path: Path) -> None:
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(tmp_path)
+        (tmp_path / "benchmarks").mkdir()
+        (tmp_path / "benchmarks" / "bench_x.py").write_text(
+            "for i in range(5):\n    do(i)\n"
+        )
+        r = cli.gate_longrun(["benchmarks/bench_x.py"], {})
+        assert r.status == cli.FAIL
+        assert "resume" in r.detail
+    finally:
+        _os.chdir(cwd)
+
+
+def test_longrun_gate_passes_compliant_script(tmp_path: Path) -> None:
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(tmp_path)
+        (tmp_path / "benchmarks").mkdir()
+        (tmp_path / "benchmarks" / "bench_y.py").write_text(
+            "import argparse\n"
+            "from lib.packs.longrun import konjo_longrun\n"
+            "p = argparse.ArgumentParser()\n"
+            "konjo_longrun.add_resume_args(p)\n"
+            "c = konjo_longrun.Checkpoint('p.jsonl')\n"
+            "for i in range(5):\n"
+            "    if c.done(str(i)):\n        continue\n"
+            "    c.mark(str(i), i)\n"
+        )
+        r = cli.gate_longrun(["benchmarks/bench_y.py"], {})
+        assert r.status == cli.PASS
+    finally:
+        _os.chdir(cwd)
+
+
+def test_longrun_gate_exempts_bench_named_library(tmp_path: Path) -> None:
+    # A library that shares a benchmark's prefix (bench_*.py) but is not a runnable script
+    # (no __main__, not under benchmarks/) must not be forced to wire resume.
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(tmp_path)
+        (tmp_path / "lib").mkdir()
+        (tmp_path / "lib" / "bench_adapter.py").write_text(
+            "def adapt(x):\n    return x * 2\n"
+        )
+        r = cli.gate_longrun(["lib/bench_adapter.py"], {})
+        assert r.status == cli.SKIP
+    finally:
+        _os.chdir(cwd)
+
+
+def test_longrun_glob_matching() -> None:
+    globs = list(cli._DEFAULT_LONGRUN_GLOBS)
+    assert cli._is_longrun_path("benchmarks/sub/bench.py", globs)
+    assert cli._is_longrun_path("bench_main.py", globs)
+    assert cli._is_longrun_path("scripts/train_big.py", globs)
+    assert not cli._is_longrun_path("src/app.py", globs)
+
+
 def test_one_way_gate_two_way_passes() -> None:
     r = cli.gate_one_way_door(["notes.py"], "+# a harmless comment\n", "main")
     assert r.status == cli.PASS

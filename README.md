@@ -99,8 +99,13 @@ each pin, never all repos at once.
   plus the `correct` skill that turns a caught mistake into a durable rule. The guardrail: a
   learning must name where its rule lives (a CLAUDE.md line, a prose-lint word, a lane, or a
   gate) or it is refused. `recall` now searches learnings too. Working and tested.
-- **Phase 9+**: the long-run gate (checkpoint/resume), the craft skill, then
-  `konjo-gates-js` and the context-budget gate. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 9 (this release, 0.9.0)**: the long-run gate. A checkpoint/resume helper
+  (`lib/packs/longrun/konjo_longrun.py`) on the substrate, a static `gate_longrun` that
+  enforces the resume contract on changes to long-run scripts (it reads the diff, never runs
+  the benchmark), a `longrun_globs` profile field, and the `longrun` skill. The generalized
+  fix for the benchmark resume pain. Working and tested.
+- **Phase 10+**: the craft skill, then `konjo-gates-js` and the context-budget gate. See
+  `NEXT_SESSION_PROMPT.md`.
 
 ## Proving a perf change
 

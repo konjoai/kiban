@@ -4,6 +4,47 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-30
+
+Phase 9: the long-run gate. The benchmark resume pain, generalized: any run long enough to
+be interrupted must resume from a checkpoint with minimal loss. A checkpoint helper, a static
+gate that enforces the contract, and a skill, on the same substrate the Ledger uses.
+
+### Added
+
+- `lib/packs/longrun/konjo_longrun.py`: the checkpoint/resume helper. `Checkpoint`
+  (`done` / `mark` / `completed` / `results`) writes one append per completed unit to a
+  progress JSONL on `jsonl_store` (atomic, redact-scanned, tolerant on read), folded
+  latest-wins for unit-level idempotency. `add_resume_args` adds a mutually exclusive
+  `--resume` / `--fresh` pair; `is_fresh` resolves the run mode (explicit flag wins, else the
+  script's declared default). A benchmark adopts resume in about five lines.
+- `gate_longrun` in the orchestrator: a static, diff-only check that a changed long-run
+  script wires the resume contract (a `--resume` affordance or the helper, and a checkpoint
+  write). It fires only on runnable scripts (a `__main__` guard, or a path under
+  `benchmarks/` or `scripts/`), so a bench-named library is exempt. It reads files; it never
+  runs the benchmark.
+- `longrun_globs` profile field (default: `benchmarks/**`, `**/bench_*.py`,
+  `scripts/train_*.py`), documented in `profiles/_schema.yml`.
+- `longrun` skill (`plugins/konjo/skills/longrun`): the contract and how to adopt the helper;
+  routed from the `konjo` umbrella.
+- Tests: `tests/test_longrun.py` (the helper), `tests/test_longrun_killtest.sh` (kill at unit
+  3 of 5, resume, skip 1-3, complete 4-5, match a clean `--fresh` run, and survive a corrupt
+  progress line), and gate-routing tests in `tests/test_konjo_gates.py`.
+
+### Changed
+
+- `pyproject.toml` packages: added `lib.packs.longrun`.
+- Templates pinned to v0.9.0.
+
+### Kill-test (measured)
+
+- Long-run kill-test green with no model and no network: an interrupted run resumes, skips
+  finished units, completes the rest, equals a fresh run, and survives a corrupt progress
+  line (the tolerant-read property).
+- All prior invariants still hold: Squish six-cassette replay deterministic with no
+  re-record; Rust replay green; `konjo-gates`, oneway, prove, and learnings kill-tests green.
+- Full pytest: 117 passed (103 + 14 new).
+
 ## [0.8.0] - 2026-06-30
 
 Phase 8: the compounding loop. The Ledger recorded decisions; kiban ported only that half.
