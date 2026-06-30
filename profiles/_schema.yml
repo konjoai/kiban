@@ -37,6 +37,9 @@ prove:                      # the perf prove gate (runs locally on bench hardwar
 longrun_globs:              # paths whose scripts must wire the resume contract (Phase 9)
   - string                  # e.g. "benchmarks/**", "**/bench_*.py"; default set if omitted
 
+verify_cmd: string          # how the agent verifies its own work (Phase 10): the test/bench/
+                            # browser path to run before claiming done. A missing one warns.
+
 killtest: bool              # require a kill-test before a sprint starts
 
 overrides:                  # per-repo escape hatches, each with a reason

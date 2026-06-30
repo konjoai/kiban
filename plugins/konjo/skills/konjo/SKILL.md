@@ -33,6 +33,7 @@ The update is a no-op when:
 - `recall`: search the Ledger (decisions) and the learnings log before re-litigating a past
   call or repeating a known mistake.
 - `longrun`: make a benchmark or training script resumable (the checkpoint/resume contract).
+- `craft`: how to build, the Konjo way (four behaviors plus the verify-loop).
 - `konjo-prose`: editorial lint (no em dashes, no AI-tell vocabulary).
 
 ## Ethos (do not weaken)

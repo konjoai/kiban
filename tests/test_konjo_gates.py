@@ -218,6 +218,28 @@ def test_longrun_glob_matching() -> None:
     assert not cli._is_longrun_path("src/app.py", globs)
 
 
+def test_verify_cmd_gate_present_passes() -> None:
+    assert cli.gate_verify_cmd({"verify_cmd": "pytest"}).status == cli.PASS
+
+
+def test_verify_cmd_gate_absent_warns() -> None:
+    r = cli.gate_verify_cmd({})
+    assert r.status == cli.WARN
+    assert "verify_cmd" in r.detail
+
+
+def test_verify_cmd_gate_blank_or_placeholder_warns() -> None:
+    # An empty string, or an honest TODO/UNVERIFIED placeholder, is still a surfaced gap.
+    assert cli.gate_verify_cmd({"verify_cmd": "   "}).status == cli.WARN
+    assert cli.gate_verify_cmd({"verify_cmd": "TODO-confirm-against-vectro"}).status == cli.WARN
+    assert cli.gate_verify_cmd({"verify_cmd": "UNVERIFIED"}).status == cli.WARN
+
+
+def test_verify_cmd_gate_never_blocks() -> None:
+    # Report-only: a WARN is not blocking, so a missing verify_cmd never fails CI.
+    assert not cli.gate_verify_cmd({}).blocking
+
+
 def test_one_way_gate_two_way_passes() -> None:
     r = cli.gate_one_way_door(["notes.py"], "+# a harmless comment\n", "main")
     assert r.status == cli.PASS

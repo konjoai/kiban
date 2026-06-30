@@ -324,6 +324,27 @@ def gate_longrun(changed: list[str], profile: dict) -> GateResult:
     return GateResult("longrun", PASS, f"{n_scripts} long-run script(s) wire resume")
 
 
+def gate_verify_cmd(profile: dict) -> GateResult:
+    """Report-only: a repo should declare verify_cmd so the agent can verify its own work.
+
+    The verify-loop (run the repo's own test/bench/browser path before claiming done) is the
+    single highest-value habit, made a per-repo contract by the `verify_cmd` profile field. A
+    repo with none is a surfaced gap, the way a missing prove threshold is, not a hard block:
+    this gate warns, it never fails.
+    """
+    cmd = profile.get("verify_cmd")
+    if isinstance(cmd, str) and cmd.strip() and not cmd.strip().upper().startswith(
+        ("TODO", "UNVERIFIED")
+    ):
+        return GateResult("verify_cmd", PASS, f"declared: {cmd}")
+    return GateResult(
+        "verify_cmd",
+        WARN,
+        "no verify_cmd declared; the agent has no machine-checkable verify loop. Add "
+        "verify_cmd to the profile (the test/bench/browser path that proves a change works)",
+    )
+
+
 def gate_self_test(profile_path: str, mode: str) -> GateResult:
     """Run the meta-gate eval through the deterministic replay backend (no model)."""
     if not cassettes.cassettes_present():
@@ -459,6 +480,7 @@ def run_gates(
     ]
     if self_test:
         results.append(gate_self_test(profile_path, mode))
+    results.append(gate_verify_cmd(profile))
     results.append(gate_specialist_stats())
 
     repo_tools = list(profile.get("format_lint", [])) + list(profile.get("contract_gates", []))
