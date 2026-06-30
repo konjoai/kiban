@@ -108,8 +108,14 @@ each pin, never all repos at once.
   (`plugins/konjo/skills/craft`) carrying the four build behaviors plus the verify-loop, and
   a `verify_cmd` profile field with a report-only gate that surfaces a missing one. Working
   and tested.
-- **Phase 11+**: lifecycle hooks and the headless host helper, then `konjo-gates-js` and the
-  context-budget gate. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 11 (this release, 0.11.0)**: lifecycle hooks and the headless host helper. Two
+  opt-in hook templates (`templates/hooks/`): a Stop hook that runs `verify_cmd` and blocks a
+  red end-of-turn, and a PostToolUse hook that runs `format_cmd` after an edit. Plus
+  `konjo-headless` (`lib/headless.py`), which bakes `--bare` and `--output-format
+  stream-json --verbose` into one fast, structured invocation. Working and tested.
+- **Phase 12 (1.0.0)**: the context-budget gate (report-only, then blocking), a skill-size
+  limit, the TypeScript pack, and `konjo-gates-js`. Cut 1.0.0 when the budget gate is green on
+  the core. See `NEXT_SESSION_PROMPT.md`.
 
 ## Proving a perf change
 

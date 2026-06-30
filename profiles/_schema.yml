@@ -40,6 +40,9 @@ longrun_globs:              # paths whose scripts must wire the resume contract 
 verify_cmd: string          # how the agent verifies its own work (Phase 10): the test/bench/
                             # browser path to run before claiming done. A missing one warns.
 
+format_cmd: string          # the repo's formatter (Phase 11): run by the optional PostToolUse
+                            # format hook after an edit. Optional; the hook no-ops if absent.
+
 killtest: bool              # require a kill-test before a sprint starts
 
 overrides:                  # per-repo escape hatches, each with a reason

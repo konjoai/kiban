@@ -4,6 +4,43 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-30
+
+Phase 11: lifecycle hooks and the headless host helper. Two narrow, opt-in hooks both tied to
+verification, plus one place that builds the fast, structured `claude -p` invocation. Hooks
+and preamble logic are where bloat accumulates, so two hooks is the ceiling.
+
+### Added
+
+- `lib/headless.py` + `bin/konjo-headless`: the headless invocation helper. `headless_argv`
+  bakes `--bare` (skip discovery, ~10x faster start) and `--output-format stream-json` (a
+  realtime event stream). The CLI requires `--verbose` alongside stream-json in print mode
+  (verified against the installed `claude`, not assumed), so the helper adds it automatically,
+  which closes the lopi `claude_stream.rs` gap by construction. `--dry-run` prints the argv a
+  host should exec.
+- `templates/hooks/`: opt-in lifecycle hook templates.
+  - `stop-verify.sh` (Stop hook): runs the repo's `verify_cmd` when a turn ends, blocking a
+    red end-of-turn (exit 2) so a long autonomous run cannot end on a red state silently.
+  - `posttooluse-format.sh` (PostToolUse hook): runs the repo's `format_cmd` after an edit;
+    formatting is convenience, so it never blocks (always exit 0).
+  - `settings.snippet.json` + `README.md`: how to wire them into `.claude/settings.json`.
+- `bin/konjo-profile-get`: reads a profile field (used by the hooks), printing nothing for an
+  absent field or an honest TODO/UNVERIFIED placeholder, so a hook no-ops safely.
+- `format_cmd` profile field (the repo's formatter), documented in `profiles/_schema.yml`.
+
+### Changed
+
+- Templates pinned to v0.11.0.
+
+### Kill-test (measured)
+
+- Hooks kill-test green with no model and no network: the Stop hook lets a green turn end,
+  blocks a red one (exit 2), and no-ops with no `verify_cmd`; the format hook runs `format_cmd`
+  and never blocks; `konjo-headless` bakes `--bare`, stream-json, and the required `--verbose`.
+- All prior invariants hold: Squish six-cassette replay deterministic with no re-record; Rust
+  replay green; konjo-gates, oneway, prove, learnings, and longrun kill-tests green.
+- Full pytest: 126 passed (121 + 5 new). New shell scripts pass shellcheck.
+
 ## [0.10.0] - 2026-06-30
 
 Phase 10: the craft skill. One small, opt-in skill carrying how to build the Konjo way, plus

@@ -30,7 +30,7 @@ and run it before claiming done; a missing one is surfaced as a warning.
 
 This repo pins a kiban ref in `.konjo/kiban.ref` (and `KIBAN_REF` in CI). The session
 plane checks out that ref on self-update instead of pulling main, so kiban changes land
-here on a deliberate schedule. The current recommended pin is `v0.10.0`.
+here on a deliberate schedule. The current recommended pin is `v0.11.0`.
 
 ## Repo-specific rules
 

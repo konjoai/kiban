@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""konjo-headless: the fast, structured `claude -p` invocation for repo automation.
+
+Wraps lib/headless so every host starts the same way: --bare for a fast start and
+--output-format stream-json (with the --verbose the CLI requires) for a realtime event
+stream. Use --dry-run to print the argv a host should exec without running it.
+
+Examples:
+  konjo-headless "summarize the diff"                  # stream-json events to stdout
+  konjo-headless --text "one-line answer"              # plain text reply
+  konjo-headless --dry-run "x" --model claude-opus-4-8 # print the argv, run nothing
+"""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from lib import headless  # noqa: E402
+
+
+def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="konjo-headless")
+    p.add_argument("prompt", help="the prompt for the headless call")
+    p.add_argument("--model", default=None)
+    p.add_argument("--text", action="store_true", help="plain text reply (no stream-json)")
+    p.add_argument("--no-bare", action="store_true", help="do not pass --bare")
+    p.add_argument("--dry-run", action="store_true", help="print the argv and exit")
+    args = p.parse_args(argv)
+
+    built = headless.headless_argv(
+        args.prompt,
+        model=args.model,
+        bare=not args.no_bare,
+        stream_json=not args.text,
+    )
+    if args.dry_run:
+        print(" ".join(built))
+        return 0
+
+    proc = headless.run_headless(
+        args.prompt,
+        model=args.model,
+        bare=not args.no_bare,
+        stream_json=not args.text,
+    )
+    sys.stdout.write(proc.stdout)
+    if proc.stderr:
+        sys.stderr.write(proc.stderr)
+    return proc.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
