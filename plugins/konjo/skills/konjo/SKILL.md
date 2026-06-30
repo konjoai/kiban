@@ -6,8 +6,9 @@ description: Konjo foundation umbrella skill. Quality gates and the decision Led
 # konjo
 
 The umbrella skill for the Konjo foundation (`kiban`). It groups the quality and memory
-tools the org shares: the Ledger (decide, recall) and the prose lint. The tools keep
-the `konjo-*` brand; `kiban` is the repo they ship from.
+tools the org shares: the Ledger (decide, recall), the learnings log (correct, the
+compounding loop), and the prose lint. The tools keep the `konjo-*` brand; `kiban` is the
+repo they ship from.
 
 ## Self-update preamble (run first, every invocation)
 
@@ -28,7 +29,9 @@ The update is a no-op when:
 ## What this skill routes to
 
 - `decide`: log a durable decision to the Ledger.
-- `recall`: search the Ledger before re-litigating a past call.
+- `correct`: turn a caught mistake into a durable rule (the compounding loop).
+- `recall`: search the Ledger (decisions) and the learnings log before re-litigating a past
+  call or repeating a known mistake.
 - `konjo-prose`: editorial lint (no em dashes, no AI-tell vocabulary).
 
 ## Ethos (do not weaken)
