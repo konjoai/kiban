@@ -1,0 +1,15 @@
+diff --git a/src/config.rs b/src/config.rs
+index 3333333..4444444 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -20,7 +20,9 @@ impl Config {
+     pub fn load(path: &Path) -> Result<Config, ConfigError> {
+-        let text = fs::read_to_string(path)?;
+-        let cfg = toml::from_str(&text)?;
++        // BUG: unwrap on a production load path. A missing or malformed file now
++        // panics the process instead of returning the declared ConfigError.
++        let text = fs::read_to_string(path).unwrap();
++        let cfg = toml::from_str(&text).unwrap();
+         Ok(cfg)
+     }
+ }

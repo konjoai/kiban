@@ -19,6 +19,7 @@ SCOPE_KEYS = (
     "SCOPE_MOJO",
     "SCOPE_SWIFT",
     "SCOPE_PYTHON",
+    "SCOPE_TS",
     "SCOPE_PROMPTS",
     "SCOPE_BENCH",
     "SCOPE_DEPS",
@@ -32,6 +33,9 @@ _EXT = {
     ".swift": "SCOPE_SWIFT",
     ".py": "SCOPE_PYTHON",
     ".pyi": "SCOPE_PYTHON",
+    ".ts": "SCOPE_TS",
+    ".tsx": "SCOPE_TS",
+    ".mts": "SCOPE_TS",
     ".md": "SCOPE_DOCS",
     ".markdown": "SCOPE_DOCS",
     ".rst": "SCOPE_DOCS",
@@ -96,6 +100,7 @@ CODE_SCOPES = (
     "SCOPE_MOJO",
     "SCOPE_SWIFT",
     "SCOPE_PYTHON",
+    "SCOPE_TS",
 )
 
 

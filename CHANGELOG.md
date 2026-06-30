@@ -4,6 +4,77 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-29
+
+Phase 7: split the review engine into an invariant core and opt-in language packs, then
+ship the first new language pack (Rust) behind a second repo profile. A behavior-preserving
+refactor plus one additive pack. The acceptance bar held: the six Squish cassettes still
+replay deterministically with no re-record.
+
+### Added
+
+- The pack seam. `lib/packs/lang/_base` holds the language-agnostic specialist machinery
+  (`Specialist`, `_OUTPUT_CONTRACT`, `_prompt`, `select`, the new `load_registry`) and the
+  shared lanes (`concurrency`, `api-surface`, `red-team`). Each language pack exposes a
+  `SPECIALISTS` tuple; `load_registry(packs)` assembles a registry from `_base` plus the
+  named packs.
+- `lib/packs/lang/mlx`: the `numerics` and `memory-bandwidth` lanes, moved verbatim.
+- `lib/packs/lang/python`: a placeholder pack (empty `SPECIALISTS`; the Python lanes are
+  deferred) with a `TOOLS` fragment naming the Python tool set.
+- `lib/packs/lang/rust`: three new lanes (`ownership-lifetimes`, `error-handling`,
+  `perf-alloc`) plus a `TOOLS` fragment. The shared `concurrency` and `api-surface` lanes
+  from `_base` cover Rust and are reused, not redefined.
+- Rust tools wired into `konjo_gates_py.cli`: `clippy` (`cargo clippy -- -D warnings`),
+  `fmt-check` (`cargo fmt --check`), `cargo-deny` (`cargo deny check`), `cargo-mutants`
+  (`cargo mutants`), each through konjo-newonly, and the kiban-native `unsafe-budget` gate
+  (`lib/unsafe_budget.py`): a diff-only count of net-new `unsafe` blocks with no adjacent
+  safety comment; a net increase fails. It reads the diff, it never builds the crate.
+- `SCOPE_TS` in `diff_scope` (`.ts`, `.tsx`, `.mts`; in `CODE_SCOPES`). No TS lanes this
+  sprint; the TS pack is Phase 12.
+- Second repo profile `profiles/vectro.yml` (stack `[rust]`, packs `[lang/rust]`, the Rust
+  specialists and contract gates, `killtest: true`). VECTRO was NOT reachable from the build
+  environment, so it is SEEDED: every field not confirmed against the real repo is marked
+  UNVERIFIED, and the prove block is PENDING (`min_effect_pct: null`, `bench_cmd`/`metric`
+  left as TODO, with an activation checklist), exactly as squish.yml was originally seeded.
+- Rust eval corpus under `evals/fixtures/rust/`: five planted bugs
+  (`ownership_unsound_unsafe` -> ownership-lifetimes/CRITICAL, `unwrap_on_prod_path` ->
+  error-handling/HIGH, `mutex_across_await` -> concurrency/CRITICAL, `pub_signature_break`
+  -> api-surface/CRITICAL, `clone_in_hot_loop` -> perf-alloc/HIGH) plus `_clean_control_rust`
+  (must be silent). Cassettes were recorded against a live model and ACTIVATED: the replay
+  is deterministic across three runs (each bug detected in the right lane, the control
+  silent). The reference model routed every bug to the lane the sprint specified; for two
+  fixtures it assigned a higher severity than the sprint's initial guess (`pub_signature_break`
+  CRITICAL not HIGH, `clone_in_hot_loop` HIGH not MEDIUM), and the expectations were set to
+  the model's honest output rather than contorting the fixtures, per the plan's "refine
+  against real diffs" discipline.
+- New tests: `tests/test_packs.py` (registry composition + byte-stable prompt hashes),
+  `tests/test_unsafe_budget.py` (the diff scanner), and Rust tool-routing / `SCOPE_TS`
+  coverage in `tests/test_konjo_gates.py`.
+
+### Changed
+
+- `review_diff` builds the specialist registry from the profile's `packs`, deriving the
+  pack list from `stack` when `packs` is absent (python -> lang/python, mlx -> lang/mlx,
+  rust -> lang/rust). `profiles/squish.yml` keeps working unchanged.
+- The eval corpus is now profile-scoped via an `eval_corpus` field, so each repo evaluates
+  only its own fixtures. `profiles/squish.yml` gains `eval_corpus: [squish, _clean_control,
+  _clean_control_mlx]`; `profiles/vectro.yml` uses `[rust]`. Without this scoping the Squish
+  self-test would try to review a Rust fixture it has no cassette for.
+- `pyproject.toml` packages: added the `lib.packs.*` subpackages, dropped `lib.specialists`.
+- Templates pinned to v0.7.0.
+
+### Kill-test (measured)
+
+- Squish six-cassette replay: deterministic across 3 runs, no re-record (4 must-flag at the
+  right lane/severity, 2 controls silent). Invariant 1 held.
+- `konjo-gates` no-model, no-network kill-test: green (clean diff passes, prose violation
+  blocks, HIGH secret blocks, self_test replay runs as a gate). Invariant 2 held.
+- Rust corpus: all six fixtures ACTIVATED and green through the replay backend,
+  deterministic across three runs (five must-flag at the right lane and severity, one
+  control silent). Invariant 6 satisfied with a reachable model.
+- Full pytest: 95 passed (77 pre-flight + 18 new: pack registry, unsafe-budget, Rust
+  tool-routing, SCOPE_TS). The oneway and prove kill-tests also stay green.
+
 ## [0.6.0] - 2026-06-24
 
 Phase 5: complete the squish pilot so it is trustworthy before any propagation. The eval

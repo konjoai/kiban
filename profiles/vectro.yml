@@ -1,0 +1,80 @@
+# profiles/vectro.yml
+# The second repo profile, added in Phase 7 to prove the schema generalizes past squish to
+# a Rust stack. VECTRO is parked and was NOT reachable from this build environment (GitHub
+# access is scoped to konjoai/kiban), so this profile is SEEDED, not reconciled. Every field
+# that could not be confirmed against the real VECTRO repo is marked UNVERIFIED, exactly as
+# profiles/squish.yml was originally seeded before its Phase 2 reconciliation. Do not treat
+# any UNVERIFIED value as ground truth; reconcile against the repo when it unparks.
+
+repo: vectro
+
+# UNVERIFIED: VECTRO is a Rust repo per the evolution plan (section 5d), but the real
+# Cargo.toml / workspace layout was not read. Confirm the stack on reconciliation.
+stack:
+  - rust
+
+# Explicit pack opt-in. lang/rust supplies the Rust review lanes; the _base lanes
+# (concurrency, api-surface, red-team) are always present. craft/longrun are later phases
+# and are intentionally NOT listed yet.
+packs:
+  - lang/rust
+
+# UNVERIFIED: the formatter/linter set is the conventional Rust pair. Confirm VECTRO's
+# actual CI tools (rustfmt edition, clippy lint config) on reconciliation.
+format_lint:
+  - fmt-check          # cargo fmt --check
+  - clippy             # cargo clippy -- -D warnings, net-new only
+
+# UNVERIFIED: the blocking correctness contracts for this stack. cargo-deny is also the
+# per-language realization of the still-stubbed supply_chain universal gate. unsafe-budget
+# is the kiban-native gate: a net increase in unsafe blocks with no safety comment fails.
+contract_gates:
+  - cargo-deny         # advisory + license scan
+  - unsafe-budget      # kiban-native, diff-only
+
+# UNVERIFIED: mutation tool. cargo-mutants is the Rust analogue of mutmut.
+mutation: cargo-mutants
+
+# kiban-native review lanes for this stack. ownership-lifetimes / error-handling / perf-alloc
+# come from lang/rust; concurrency and api-surface are the shared _base lanes that already
+# cover SCOPE_RUST. red-team is appended automatically.
+specialists:
+  - ownership-lifetimes
+  - error-handling
+  - perf-alloc
+  - concurrency
+  - api-surface
+
+# The perf prove gate. PENDING per the house rule: min_effect_pct must be measured on the
+# real bench hardware, never invented. Until activated, konjo-prove run refuses a verdict
+# (NOT ACTIVATED) and the CI prove gate keeps blocking perf changes; it never passes a perf
+# change silently while inert. The bench command and metric are LOAD-BEARING and were NOT
+# confirmed against VECTRO, so they are left as TODO rather than guessed.
+prove:
+  enabled: true
+  baseline: "UNVERIFIED-pending-vectro-reconciliation"
+  metric: "TODO-confirm-against-vectro"      # UNVERIFIED: e.g. a query-latency metric
+  unit: "TODO"                               # UNVERIFIED
+  lower_is_better: true                      # UNVERIFIED (true if the metric is latency)
+  run_floor: 30
+  min_effect_pct: null                       # PENDING: measure jitter on the bench box first
+  perf_globs:                                # UNVERIFIED: confirm VECTRO's perf paths
+    - "benches/**"
+    - "src/**"
+  bench_cmd: "TODO-confirm-against-vectro"   # UNVERIFIED: do not invent a bench command
+  activation_checklist:
+    - "Reconcile this profile against the real VECTRO repo (read Cargo.toml, CI workflow, benches/)."
+    - "Confirm the prove metric, unit, lower_is_better, and bench_cmd from VECTRO's own benchmark."
+    - "On the VECTRO bench hardware, capture >= 30 paired runs of bench_cmd under controlled conditions."
+    - "Measure run-to-run jitter (CoV, or MAD as a percent of the median) on those runs."
+    - "Set min_effect_pct above that noise floor (a win must exceed the bench's own jitter), then confirm it here."
+    - "Capture the golden baseline: konjo-prove baseline capture --tag <tag> --results baseline.json"
+
+killtest: true
+
+# The eval corpus for this repo: the Rust planted-bug fixtures. Scopes the meta-gate so the
+# VECTRO self-test runs only the Rust corpus, and the squish self-test never runs it.
+eval_corpus:
+  - rust
+
+overrides: {}

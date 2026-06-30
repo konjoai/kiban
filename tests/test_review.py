@@ -12,7 +12,10 @@ import json
 from lib import diff_scope, review
 from lib.review import Finding, ScriptedBackend, review_diff
 
-SQUISH = {"specialists": ["numerics", "memory-bandwidth", "concurrency", "api-surface"]}
+SQUISH = {
+    "stack": ["python", "mlx"],
+    "specialists": ["numerics", "memory-bandwidth", "concurrency", "api-surface"],
+}
 
 MLX_DIFF = """diff --git a/squish/kv_cache.py b/squish/kv_cache.py
 --- a/squish/kv_cache.py

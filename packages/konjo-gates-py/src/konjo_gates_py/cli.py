@@ -47,7 +47,15 @@ KIBAN_ROOT = _ensure_engine_on_path()
 import yaml  # type: ignore[import-untyped]  # noqa: E402
 
 from evals import cassettes, runner  # noqa: E402
-from lib import diff_scope, oneway, prose_lint, redact, review_log, specialist_stats  # noqa: E402
+from lib import (  # noqa: E402
+    diff_scope,
+    oneway,
+    prose_lint,
+    redact,
+    review_log,
+    specialist_stats,
+    unsafe_budget,
+)
 
 PASS, FAIL, WARN, SKIP, ERROR = "PASS", "FAIL", "WARN", "SKIP", "ERROR"
 _BLOCKING = {FAIL, ERROR}
@@ -64,9 +72,21 @@ _TOOL_SCOPE = {
     "radon": "SCOPE_PYTHON",
     "interrogate": "SCOPE_PYTHON",
     "clippy": "SCOPE_RUST",
+    "fmt-check": "SCOPE_RUST",
+    "cargo-deny": "SCOPE_RUST",
     "cargo-mutants": "SCOPE_RUST",
+    "unsafe-budget": "SCOPE_RUST",
 }
-_TOOL_BIN = {"ruff-format": "ruff", "cargo-mutants": "cargo"}
+_TOOL_BIN = {
+    "ruff-format": "ruff",
+    "clippy": "cargo",
+    "fmt-check": "cargo",
+    "cargo-deny": "cargo",
+    "cargo-mutants": "cargo",
+}
+
+# kiban-native gates handled in-process, not as a PATH binary through konjo-newonly.
+_NATIVE_TOOLS = {"unsafe-budget"}
 
 
 @dataclass
@@ -276,8 +296,38 @@ def _tool_argv(tool: str, py_files: list[str]) -> list[str] | None:
         "radon": ["radon", "cc", "-s", *files],
         "interrogate": ["interrogate", "-q", *files],
         "mutmut": ["mutmut", "run"],
+        # Rust tools operate on the whole crate; they take no file list. Each still runs
+        # through konjo-newonly so only net-new findings block.
+        "clippy": ["cargo", "clippy", "--", "-D", "warnings"],
+        "fmt-check": ["cargo", "fmt", "--check"],
+        "cargo-deny": ["cargo", "deny", "check"],
+        "cargo-mutants": ["cargo", "mutants"],
     }
     return table.get(tool)
+
+
+def gate_unsafe_budget(flags: dict[str, bool], diff_text: str) -> GateResult:
+    """kiban-native: a net increase in `unsafe` blocks with no safety comment fails.
+
+    Reads the diff only; never builds the crate. Skips a change with no Rust in scope.
+    """
+    if not flags.get("SCOPE_RUST"):
+        return GateResult("repo:unsafe-budget", SKIP, "SCOPE_RUST not in this change")
+    budget = unsafe_budget.scan(diff_text)
+    if budget.fails:
+        return GateResult(
+            "repo:unsafe-budget",
+            FAIL,
+            f"net +{budget.net} unsafe block(s) without a safety comment "
+            f"(added unjustified {budget.added_unjustified}, removed {budget.removed}); "
+            f"add a `// SAFETY:` comment or remove the unsafe",
+        )
+    return GateResult(
+        "repo:unsafe-budget",
+        PASS,
+        f"no net-new unjustified unsafe (added unjustified {budget.added_unjustified}, "
+        f"removed {budget.removed})",
+    )
 
 
 def gate_repo_native(
@@ -334,8 +384,13 @@ def run_gates(
     if isinstance(mutation, str) and mutation and not mutation.startswith("none"):
         repo_tools.append(mutation)
     for tool in repo_tools:
-        if tool in _TOOL_SCOPE:
-            results.append(gate_repo_native(tool, flags, changed, base))
+        if tool not in _TOOL_SCOPE:
+            continue
+        if tool in _NATIVE_TOOLS:
+            if tool == "unsafe-budget":
+                results.append(gate_unsafe_budget(flags, diff_text))
+            continue
+        results.append(gate_repo_native(tool, flags, changed, base))
     return results
 
 
