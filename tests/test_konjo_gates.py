@@ -170,6 +170,24 @@ def test_ts_tool_skipped_when_not_in_scope() -> None:
     assert cli.gate_repo_native("tsc", {"SCOPE_PYTHON": True}, ["m.py"], "main").status == cli.SKIP
 
 
+def test_mojo_tools_route_to_mojo_under_scope_mojo() -> None:
+    for tool in ("mojo-format", "mojo-test"):
+        assert cli._TOOL_SCOPE[tool] == "SCOPE_MOJO"
+        assert cli._TOOL_BIN[tool] == "mojo"
+        assert cli._tool_argv(tool, [])[0] == "mojo"
+
+
+def test_mojo_extensions_are_code_scope() -> None:
+    flags = diff_scope.scope(["src/x.mojo", "k.🔥"])
+    assert flags["SCOPE_MOJO"] and diff_scope.has_code(flags)
+
+
+def test_mojo_tool_absent_is_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli.shutil, "which", lambda _b: None)
+    r = cli.gate_repo_native("mojo-format", {"SCOPE_MOJO": True}, ["a.mojo"], "main")
+    assert r.status == cli.ERROR
+
+
 def test_longrun_gate_skips_non_longrun_change() -> None:
     assert cli.gate_longrun(["src/app.py", "README.md"], {}).status == cli.SKIP
 

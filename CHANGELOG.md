@@ -4,6 +4,52 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-30
+
+The Mojo language pack. The fourth language pack (after python/mlx, rust, typescript),
+prompted by the real VECTRO repo: it carries a substantial Mojo surface (38 `.mojo` files,
+`src/vectro_mojo`, `experimental/mojo`, Mojo tests) that the rust/python/typescript profile
+missed. `diff_scope` already emitted `SCOPE_MOJO`; this gives it review depth.
+
+### Added
+
+- `lib/packs/lang/mojo`: three Mojo-specific lanes for a SIMD quantization codebase:
+  - `mojo-memory`: `UnsafePointer` out-of-bounds load/store, manual alloc with no free,
+    aliasing, wrong `owned`/`borrowed`/`inout` convention, use-after-`^`-transfer.
+  - `mojo-numerics`: `SIMD[dtype, width]` mismatches, unsafe `cast`/`bitcast`, fixed-width
+    overflow, a dropped saturating clamp before an int8 cast, precision loss on the quant path.
+  - `mojo-perf`: needless value-semantics copies of large buffers, a hot loop left scalar
+    where `vectorize`/`parallelize` was meant, a missing `@always_inline`/`@parameter`,
+    allocation in a hot loop.
+  The shared `concurrency`, `api-surface`, and `red-team` lanes now cover `SCOPE_MOJO` and are
+  reused (`api-surface` gained `SCOPE_MOJO`; scope metadata only, so existing prompts and
+  cassettes are byte-unchanged).
+- `mojo-format` / `mojo-test` tools wired into `konjo-gates-py` under `SCOPE_MOJO` (`mojo
+  format --check`, `mojo test`), each through konjo-newonly. A repo wires them only if its CI
+  has the Mojo toolchain.
+- `_STACK_TO_PACK` maps `mojo` to `lang/mojo`; `pyproject.toml` ships the package.
+- `profiles/mojo_example.yml` (seeded) and a Mojo eval corpus under `evals/fixtures/mojo/`:
+  `oob_simd_store`, `quant_overflow`, `needless_copy`, `pub_signature_break_mojo`, plus
+  `_clean_control_mojo`. Cassettes recorded against a live model and ACTIVATED: the replay is
+  deterministic across three runs, each bug in the right lane (two at CRITICAL, the others at
+  the model's honest severity, the control silent).
+
+### Changed
+
+- `profiles/vectro.yml`: added `mojo` to the stack, packs, specialists, and eval corpus. The
+  specialist list keeps `api-surface` last and places the Mojo lanes after `concurrency` so
+  each language's `diff_scope`-filtered worker order matches its recorded corpus order
+  (the red-team cassette key depends on it; recorded as a learning in 1.0.1).
+- Templates pinned to v1.1.0.
+
+### Kill-test (measured)
+
+- All prior invariants hold: Squish six-cassette replay deterministic with no re-record; Rust
+  and TypeScript replays green; the frozen prompt-hash test green (api-surface byte-unchanged
+  despite the new scope). Mojo corpus ACTIVATED and green over `mojo_example` and `vectro`
+  (which now replays all 15 fixtures: 6 Rust, 4 TypeScript, 5 Mojo) deterministically, no
+  re-record of the existing cassettes. Full pytest: 141 passed (+4 new).
+
 ## [1.0.1] - 2026-06-30
 
 Post-1.0 activation: reconcile `profiles/vectro.yml` against the real VECTRO repo. The first

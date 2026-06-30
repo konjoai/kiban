@@ -120,9 +120,13 @@ each pin, never all repos at once.
   (`lib/packs/lang/typescript`: `type-soundness`, `async-correctness`, reusing `api-surface`)
   and its tools (`tsc`, `eslint`, `stryker`, `npm audit`) wire into the same orchestrator that
   runs every other stack. Cut 1.0.0 with the budget gate green on the core. Working and tested.
-- **Post-1.0**: pilots and activation, not new phases. Reconcile the seeded VECTRO and
-  TypeScript profiles against real repos, activate the Squish and VECTRO prove gates on bench
-  hardware, and pilot a JS-first runner if one is ever needed. See `NEXT_SESSION_PROMPT.md`.
+- **Post-1.0 (1.0.1)**: reconciled `profiles/vectro.yml` against the real VECTRO repo.
+- **Post-1.0 (1.1.0)**: the Mojo language pack (`lib/packs/lang/mojo`: `mojo-memory`,
+  `mojo-numerics`, `mojo-perf`, reusing the shared lanes), prompted by VECTRO's real Mojo
+  surface. A fourth language pack, the same template as rust/typescript.
+- **Ongoing**: pilots and activation, not new phases. Activate the Squish and VECTRO prove
+  gates on bench hardware, and pilot a JS-first runner if one is ever needed. See
+  `NEXT_SESSION_PROMPT.md`.
 
 ## Proving a perf change
 

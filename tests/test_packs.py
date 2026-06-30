@@ -53,6 +53,14 @@ def test_typescript_registry_has_ts_lanes_plus_reused() -> None:
     assert "SCOPE_TS" in reg["red-team"].scopes
 
 
+def test_mojo_registry_has_mojo_lanes_plus_reused() -> None:
+    reg = _base.load_registry(["lang/mojo"])
+    assert {"mojo-memory", "mojo-numerics", "mojo-perf"} <= set(reg)
+    # api-surface, concurrency, and red-team are reused from _base and cover SCOPE_MOJO.
+    for lane in ("api-surface", "concurrency", "red-team"):
+        assert "SCOPE_MOJO" in reg[lane].scopes
+
+
 def test_packs_for_derives_from_stack_when_absent() -> None:
     # squish.yml has no `packs` field; it derives from stack: [python, mlx].
     assert review.packs_for({"stack": ["python", "mlx"]}) == ["lang/python", "lang/mlx"]

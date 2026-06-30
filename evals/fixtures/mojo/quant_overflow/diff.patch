@@ -1,0 +1,15 @@
+diff --git a/src/vectro_mojo/scale.mojo b/src/vectro_mojo/scale.mojo
+index 3333333..4444444 100644
+--- a/src/vectro_mojo/scale.mojo
++++ b/src/vectro_mojo/scale.mojo
+@@ -10,7 +10,9 @@ fn quantize_scalar(v: Float32, scale: Float32) -> Int8:
+-    var raw = v * scale
+-    # Saturate to the int8 range before the cast so large values do not wrap.
+-    raw = max(raw, Float32(-127.0))
+-    raw = min(raw, Float32(127.0))
+-    return raw.cast[DType.int8]()
++    var raw = v * scale
++    # BUG: the saturating clamp was dropped. A value past +/-127 now wraps on the
++    # int8 cast (e.g. 130.0 -> -126), corrupting the quantized output instead of
++    # clamping. Precision/overflow defect on the quantization path.
++    return raw.cast[DType.int8]()

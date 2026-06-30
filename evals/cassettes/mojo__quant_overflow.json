@@ -1,0 +1,8 @@
+{
+  "0ec699e124260747": "NO FINDINGS\n",
+  "2bc27a739d6f04af": "NO FINDINGS\n",
+  "39108210d8249da4": "NO FINDINGS\n",
+  "3bbc06e91bd7b184": "NO FINDINGS\n",
+  "88725047bc8872b9": "[{\"severity\": \"CRITICAL\", \"confidence\": 10, \"path\": \"src/vectro_mojo/scale.mojo\", \"line\": 14, \"category\": \"api-surface\", \"summary\": \"quantize_scalar now silently wraps on overflow instead of saturating, changing the observable contract from clamped output in [-127, 127] to undefined wrapping behavior for inputs outside that range.\", \"fix\": \"Restore the two clamp lines (max to -127.0, min to 127.0) before the cast[DType.int8]() call.\"}]\n",
+  "8976632580824c60": "[{\"severity\":\"CRITICAL\",\"confidence\":10,\"path\":\"src/vectro_mojo/scale.mojo\",\"line\":14,\"category\":\"mojo-numerics\",\"summary\":\"Saturating clamp before int8 cast was removed, causing values outside [-127, 127] to wrap on cast (e.g. 130.0 casts to -126) instead of clamping to the range boundary.\",\"fix\":\"Restore the clamp: apply `raw = max(raw, Float32(-127.0))` and `raw = min(raw, Float32(127.0))` before calling `raw.cast[DType.int8]()`.\"}]\n"
+}

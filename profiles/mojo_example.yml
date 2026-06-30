@@ -1,0 +1,43 @@
+# profiles/mojo_example.yml
+# A SEEDED Mojo profile, added with the Mojo pack to exercise its eval corpus. Modeled on the
+# Mojo surface of the real konjoai/vectro repo (src/vectro_mojo, experimental/mojo: SIMD
+# quantization with vectorize/parallelize, UnsafePointer, value semantics, a Python FFI), but
+# it is an example, not a reconciled standalone repo. The Mojo review lanes are validated here
+# and reused by vectro.yml.
+#
+# The specialist order is deliberate and matches vectro.yml's `.mojo`-filtered worker order
+# (concurrency, the three mojo lanes, then the shared api-surface last). The red-team lane
+# embeds the other lanes' findings in this order and the cassette key depends on it, so the
+# two profiles must agree; reordering would stale the Mojo cassettes.
+
+repo: mojo_example
+
+stack:
+  - mojo
+
+packs:
+  - lang/mojo
+
+# Mojo has no standard lint/test gate wired in vectro's CI (the Mojo smoke-test uses a Python
+# stub), so this example declares none; the value is in the review lanes.
+format_lint: []
+contract_gates: []
+mutation: "none-with-reason: vectro does not run Mojo mutation in CI"
+
+specialists:
+  - concurrency
+  - mojo-memory
+  - mojo-numerics
+  - mojo-perf
+  - api-surface
+
+prove:
+  enabled: false
+  baseline: "none"
+
+killtest: true
+
+eval_corpus:
+  - mojo
+
+overrides: {}

@@ -1,0 +1,15 @@
+diff --git a/src/vectro_mojo/quantizer.mojo b/src/vectro_mojo/quantizer.mojo
+index 1111111..2222222 100644
+--- a/src/vectro_mojo/quantizer.mojo
++++ b/src/vectro_mojo/quantizer.mojo
+@@ -18,8 +18,10 @@ fn quantize_row(data: UnsafePointer[Float32], out: UnsafePointer[Int8], d: Int):
+     @parameter
+     fn _quant_kernel[w: Int](j: Int):
+         var v = data.load[width=w](j)
+-        var q = (v * scale).cast[DType.int8]()
+-        out.store[width=w](j, q)
++        var q = (v * scale).cast[DType.int8]()
++        # BUG: stores at j + w, one SIMD lane past the row. On the last vectorized
++        # chunk this writes out[d .. d+w), out of bounds for the d-length buffer.
++        out.store[width=w](j + w, q)
+     vectorize[_quant_kernel, SIMD_W](d)

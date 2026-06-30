@@ -1,0 +1,14 @@
+diff --git a/src/vectro_mojo/__init__.mojo b/src/vectro_mojo/__init__.mojo
+index 9999999..aaaaaaa 100644
+--- a/src/vectro_mojo/__init__.mojo
++++ b/src/vectro_mojo/__init__.mojo
+@@ -1,6 +1,9 @@
+ """
+ Vectro Mojo Package - High-performance embedding quantization.
++
++This package exposes Python-accessible int8 quantization built on SIMD. See
++`quantize_vector` for the per-vector entry point.
+ """
+
+ from python import Python, PythonObject
+ from memory import memcpy

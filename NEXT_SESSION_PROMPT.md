@@ -19,9 +19,10 @@ real repos and activating the gates that are honestly inert.
 
 ## Carried activation steps (the real backlog now)
 
-1. **VECTRO reconciliation** (Phase 7): DONE in 1.0.1. `profiles/vectro.yml` was reconciled
-   against the real `konjoai/vectro` repo (stack `[rust, python, typescript]`, the
-   konjo-gate.yml gate set, prove metric `qps`, `verify_cmd`/`format_cmd`). The only thing
+1. **VECTRO reconciliation** (Phase 7): DONE in 1.0.1, extended in 1.1.0. `profiles/vectro.yml`
+   was reconciled against the real `konjoai/vectro` repo (stack `[rust, python, typescript,
+   mojo]`, the konjo-gate.yml gate set, prove metric `qps`, `verify_cmd`/`format_cmd`). The
+   Mojo surface (38 `.mojo` files) is covered by the new Mojo pack (1.1.0). The only thing
    still PENDING for VECTRO is its prove `min_effect_pct`, which needs a bench-host run (see
    step 3); everything else is confirmed.
 2. **TypeScript pilot**: `profiles/ts_example.yml` is seeded, not a real repo. When a JS/TS
