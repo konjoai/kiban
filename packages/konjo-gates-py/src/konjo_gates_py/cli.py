@@ -17,6 +17,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import fnmatch
+import re
 import shutil
 import subprocess
 import sys
@@ -243,6 +245,85 @@ def gate_prove(changed: list[str], flags: dict[str, bool], profile: dict, base: 
     )
 
 
+_DEFAULT_LONGRUN_GLOBS = ("benchmarks/**", "**/bench_*.py", "scripts/train_*.py")
+
+# A change to a long-run script must wire the resume contract. The gate checks the working
+# file statically for both halves: a resume affordance and a checkpoint write.
+_RESUME_RE = re.compile(r"--resume\b|konjo_longrun|add_resume_args")
+_CHECKPOINT_RE = re.compile(r"\bCheckpoint\s*\(|\.mark\s*\(")
+
+
+_MAIN_GUARD_RE = re.compile(r"if\s+__name__\s*==\s*['\"]__main__['\"]")
+
+
+def _is_longrun_path(path: str, globs: list[str]) -> bool:
+    """fnmatch-based glob match, with `**` matching across directories and `**/` patterns
+    also matching at the repo root (Path.match does not handle `**` recursively)."""
+    base = path.rsplit("/", 1)[-1]
+    for g in globs:
+        if fnmatch.fnmatch(path, g):
+            return True
+        if "/" not in g and fnmatch.fnmatch(base, g):
+            return True
+        if g.startswith("**/") and fnmatch.fnmatch(base, g[3:]):
+            return True
+    return False
+
+
+def _is_runnable_script(path: str, text: str) -> bool:
+    """A glob can name a library that merely shares a benchmark's prefix (e.g. a bench
+    adapter under lib/). Only treat a file as a long-run script if it is actually runnable:
+    it has a __main__ guard, or it lives under a scripts directory (benchmarks/, scripts/).
+    This keeps the gate off importable helpers that are not entry points."""
+    if path.startswith(("benchmarks/", "scripts/")) or "/benchmarks/" in path:
+        return True
+    return bool(_MAIN_GUARD_RE.search(text))
+
+
+def gate_longrun(changed: list[str], profile: dict) -> GateResult:
+    """Long-run scripts must declare the resume contract; this gate never runs the script.
+
+    For a change touching a `longrun_globs` path (default: benchmarks/**, **/bench_*.py,
+    scripts/train_*.py) that is a runnable script (a __main__ guard, or under benchmarks/ or
+    scripts/), it statically checks the working file for a resume affordance (a --resume flag
+    or the konjo_longrun helper) AND a checkpoint write (a Checkpoint(...) or .mark(...)
+    call). Missing either fails with guidance. A static check confirms the resume path
+    exists, not that it is correct; correctness is the kill-test's job. The gate reads files
+    only, never executes them, so the CI runner stays clean.
+    """
+    globs = list(profile.get("longrun_globs", [])) or list(_DEFAULT_LONGRUN_GLOBS)
+    candidates = [p for p in changed if _is_longrun_path(p, globs) and p.endswith(".py")]
+
+    offenders: list[str] = []
+    n_scripts = 0
+    for path in candidates:
+        if not Path(path).exists():
+            continue  # deleted file; nothing to enforce
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+        if not _is_runnable_script(path, text):
+            continue  # an importable library that merely shares the prefix, not a script
+        n_scripts += 1
+        missing = []
+        if not _RESUME_RE.search(text):
+            missing.append("--resume/--fresh (or the konjo_longrun helper)")
+        if not _CHECKPOINT_RE.search(text):
+            missing.append("a checkpoint write (Checkpoint(...) / .mark(...))")
+        if missing:
+            offenders.append(f"{path} (missing: {', '.join(missing)})")
+
+    if not n_scripts:
+        return GateResult("longrun", SKIP, "no changed long-run scripts")
+    if offenders:
+        return GateResult(
+            "longrun",
+            FAIL,
+            "long-run script(s) lack the resume contract: "
+            + "; ".join(offenders)
+            + ". Adopt lib/packs/longrun/konjo_longrun (add_resume_args + Checkpoint)",
+        )
+    return GateResult("longrun", PASS, f"{n_scripts} long-run script(s) wire resume")
+
+
 def gate_self_test(profile_path: str, mode: str) -> GateResult:
     """Run the meta-gate eval through the deterministic replay backend (no model)."""
     if not cassettes.cassettes_present():
@@ -374,6 +455,7 @@ def run_gates(
         gate_secrets(diff_text),
         gate_one_way_door(changed, diff_text, base),
         gate_prove(changed, flags, profile, base),
+        gate_longrun(changed, profile),
     ]
     if self_test:
         results.append(gate_self_test(profile_path, mode))

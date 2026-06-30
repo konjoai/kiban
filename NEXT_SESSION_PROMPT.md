@@ -1,53 +1,54 @@
-# Next session: Phase 9 (the long-run gate)
+# Next session: Phase 10 (the craft skill)
 
-## What Phase 8 built (0.8.0)
+## What Phase 9 built (0.9.0)
 
-The compounding loop. The Ledger recorded decisions; kiban now records the other half too,
-so a caught mistake becomes a durable rule instead of a one-run patch.
+The long-run gate: the benchmark resume pain, generalized. Any run long enough to be
+interrupted now has a contract, a helper, and a gate.
 
-- `lib/learnings.py`: the learnings log, a sibling stream of the decision Ledger on the same
-  substrate (`ledger/learnings.jsonl`). Append-only, event-sourced, redact-scanned. A
-  learning is the one-line mistake, the rule that prevents it, the enforcement target (where
-  the rule now lives), and the scope. `redact` retires one.
-- The guardrail: a learning MUST name an enforcement target, or `konjo-learn add` refuses it
-  (exit 4). A learning with no target is a note, not a learning, and notes do not go in the
-  log.
-- `bin/konjo-learn` (add / search / redact), the `correct` skill (recall, write the
-  learning, propose and apply the smallest durable fix), and `recall` extended to search
-  learnings.
-- Kill-test green with no model and no network: a no-target learning is refused and not
-  stored; a valid learning is logged, found, and retired.
+- `lib/packs/longrun/konjo_longrun.py`: `Checkpoint` (done / mark / completed / results) on a
+  progress JSONL on `jsonl_store`, folded latest-wins for unit-level idempotency, plus the
+  `add_resume_args` / `is_fresh` argparse mixin (`--resume` / `--fresh`). A benchmark adopts
+  resume in about five lines.
+- `gate_longrun`: a static, diff-only check that a changed long-run script wires the resume
+  contract. It fires only on runnable scripts (a `__main__` guard, or under `benchmarks/` /
+  `scripts/`), so a bench-named library is exempt. Never runs the benchmark.
+- `longrun_globs` profile field; the `longrun` skill.
+- Kill-test green with no model and no network (kill at unit 3 of 5, resume, match a fresh
+  run, survive a corrupt progress line).
 
 ## Carried activation steps (unchanged, still parked)
 
 1. **Rust cassettes** (Phase 7): ACTIVATED; no carried step.
-2. **VECTRO reconciliation** (Phase 7): when VECTRO unparks, reconcile `profiles/vectro.yml`
-   and clear every UNVERIFIED field, including the load-bearing prove fields.
+2. **VECTRO reconciliation** (Phase 7): reconcile `profiles/vectro.yml` and clear every
+   UNVERIFIED field when VECTRO unparks.
 3. **Squish prove gate** (Phase 5): still PENDING on the M3 bench hardware.
 
-## Phase 9 tasks (the long-run gate)
+## Phase 10 tasks (the craft skill)
 
-The resume-flag pain, generalized: any run long enough to be interrupted must resume from a
-checkpoint with minimal loss. Evolution plan section 6.
+One small skill, opt-in per repo, carrying the four Karpathy behaviors plus the verify-loop.
+It is prose, not code. Evolution plan section 7. Keep it short (section 8 caps its token
+cost; the craft skill is the most likely place for bloat, so resist it).
 
-1. `packs/longrun/konjo_longrun.py` (mirror the pack layout under `lib/packs`): a `Checkpoint`
-   helper (open a progress JSONL on `jsonl_store`, `done(unit_key)`, `mark(unit_key, result)`,
-   `completed()`) and an argparse mixin that adds `--resume` / `--fresh`. A benchmark adopts
-   resume in about five lines.
-2. `gate_longrun` in the orchestrator: a static check that a change touching a
-   `longrun_globs` path has the resume contract (an argparse `--resume` flag or the documented
-   helper imported, and a checkpoint-write call in the main loop). It reads the diff; it never
-   runs the benchmark. In the spirit of the existing `oneway` and `prove` gates.
-3. `longrun_globs` profile field (default: `benchmarks/**`, `**/bench_*.py`,
-   `scripts/train_*.py`, eval-matrix runners).
-4. Kill-test (`tests/test_longrun_killtest.sh`): run a synthetic long-run to unit 3 of 5,
-   kill it, resume, and assert units 1-3 are skipped, 4-5 complete, and the final result set
-   equals a clean `--fresh` run. Plus a corruption case: append a garbage line to the progress
-   file and assert resume still works (the tolerant-read property of `jsonl_store.iter_read`).
+1. `plugins/konjo/skills/craft/SKILL.md` (or a `lib/packs/craft` fragment if a pack shape
+   fits better), covering:
+   - **Think before coding**: state assumptions; present differing interpretations rather
+     than pick silently; name a simpler path; stop and name what is unclear.
+   - **Simplicity first**: the minimum that solves the problem, nothing speculative; no
+     configurability that was not asked for; if it is 200 lines and could be 50, rewrite it.
+   - **Surgical changes**: touch only what the task requires; match the existing style; do
+     not refactor unbroken code; remove only the orphans your own change created; mention
+     unrelated dead code, do not delete it.
+   - **Goal-driven execution**: turn the task into a verifiable success criterion before
+     starting, and loop until it is met.
+   - **Verify-loop**: run the repo's declared verify command before claiming done.
+2. A `verify_cmd` profile field (the per-repo verify command/path). A repo with no
+   `verify_cmd` is a surfaced finding, the way a missing prove threshold is, not a hard
+   block at first.
+3. Route `craft` from the `konjo` umbrella skill.
 
-Scope discipline (stay honest about section 2's conflict): resume is the operational floor
-for any run that costs more than a few minutes, not gold-plating. The gate fires only on
-long-run scripts, never on ordinary code, so "simplicity first" still governs everything else.
+Stay honest about scope: the craft skill is opt-in and short. Do not let it grow into the
+gstack-style multi-hundred-line preamble the evolution plan explicitly rejects (section 1,
+"Contradicted"). The context-budget gate that enforces this lands in Phase 12.
 
 ## Tag and release discipline (in force)
 

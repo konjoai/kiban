@@ -32,6 +32,7 @@ packages = [
     "lib.packs.lang.mlx",
     "lib.packs.lang.python",
     "lib.packs.lang.rust",
+    "lib.packs.longrun",
     "ledger",
     "evals",
     "konjo_gates_py",
