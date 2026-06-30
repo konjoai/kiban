@@ -1,0 +1,16 @@
+diff --git a/src/session.ts b/src/session.ts
+index 3333333..4444444 100644
+--- a/src/session.ts
++++ b/src/session.ts
+@@ -12,8 +12,9 @@ export class Session {
+   async close(): Promise<void> {
+     this.active = false;
+-    await this.store.flush(this.id);
+-    await this.store.persist(this.id);
++    // BUG: flush() returns a promise that is never awaited. close() resolves before
++    // the flush completes, so persist() can run against unflushed state, and a
++    // rejection becomes an unhandled rejection.
++    this.store.flush(this.id);
++    await this.store.persist(this.id);
+   }
+ }

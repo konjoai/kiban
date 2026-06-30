@@ -147,8 +147,27 @@ def test_rust_change_activates_rust_lanes_and_tools() -> None:
 def test_scope_ts_extensions_are_code() -> None:
     flags = diff_scope.scope(["app/a.ts", "b.tsx", "c.mts"])
     assert flags["SCOPE_TS"] and diff_scope.has_code(flags)
-    # No TS lanes this sprint, only the scope flag.
     assert not flags["SCOPE_PYTHON"] and not flags["SCOPE_RUST"]
+
+
+def test_ts_tools_route_to_npx_and_npm() -> None:
+    for tool in ("tsc", "eslint", "stryker"):
+        assert cli._TOOL_SCOPE[tool] == "SCOPE_TS"
+        assert cli._TOOL_BIN[tool] == "npx"
+        assert cli._tool_argv(tool, [])[0] == "npx"
+    assert cli._TOOL_SCOPE["npm-audit"] == "SCOPE_TS"
+    assert cli._TOOL_BIN["npm-audit"] == "npm"
+    assert cli._tool_argv("npm-audit", []) == ["npm", "audit"]
+
+
+def test_ts_tool_absent_is_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli.shutil, "which", lambda _b: None)
+    r = cli.gate_repo_native("tsc", {"SCOPE_TS": True}, ["src/app.ts"], "main")
+    assert r.status == cli.ERROR
+
+
+def test_ts_tool_skipped_when_not_in_scope() -> None:
+    assert cli.gate_repo_native("tsc", {"SCOPE_PYTHON": True}, ["m.py"], "main").status == cli.SKIP
 
 
 def test_longrun_gate_skips_non_longrun_change() -> None:

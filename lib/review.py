@@ -36,6 +36,8 @@ _STACK_TO_PACK = {
     "python": "lang/python",
     "mlx": "lang/mlx",
     "rust": "lang/rust",
+    "ts": "lang/typescript",
+    "typescript": "lang/typescript",
 }
 
 

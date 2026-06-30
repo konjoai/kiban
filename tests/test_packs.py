@@ -45,11 +45,22 @@ def test_python_mlx_registry_is_the_five_squish_lanes() -> None:
     }
 
 
+def test_typescript_registry_has_ts_lanes_plus_reused() -> None:
+    reg = _base.load_registry(["lang/typescript"])
+    assert {"type-soundness", "async-correctness"} <= set(reg)
+    # api-surface and red-team are reused from _base and now cover SCOPE_TS.
+    assert "SCOPE_TS" in reg["api-surface"].scopes
+    assert "SCOPE_TS" in reg["red-team"].scopes
+
+
 def test_packs_for_derives_from_stack_when_absent() -> None:
     # squish.yml has no `packs` field; it derives from stack: [python, mlx].
     assert review.packs_for({"stack": ["python", "mlx"]}) == ["lang/python", "lang/mlx"]
     # an explicit `packs` wins over stack.
     assert review.packs_for({"stack": ["python"], "packs": ["lang/rust"]}) == ["lang/rust"]
+    # ts and typescript both map to the typescript pack.
+    assert review.packs_for({"stack": ["ts"]}) == ["lang/typescript"]
+    assert review.packs_for({"stack": ["typescript"]}) == ["lang/typescript"]
     # an unmapped stack entry contributes no pack (the _base lanes are still present).
     assert review.packs_for({"stack": ["cobol"]}) == []
 

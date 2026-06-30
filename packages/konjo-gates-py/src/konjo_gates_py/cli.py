@@ -50,6 +50,7 @@ import yaml  # type: ignore[import-untyped]  # noqa: E402
 
 from evals import cassettes, runner  # noqa: E402
 from lib import (  # noqa: E402
+    context_budget,
     diff_scope,
     oneway,
     prose_lint,
@@ -78,6 +79,10 @@ _TOOL_SCOPE = {
     "cargo-deny": "SCOPE_RUST",
     "cargo-mutants": "SCOPE_RUST",
     "unsafe-budget": "SCOPE_RUST",
+    "tsc": "SCOPE_TS",
+    "eslint": "SCOPE_TS",
+    "stryker": "SCOPE_TS",
+    "npm-audit": "SCOPE_TS",
 }
 _TOOL_BIN = {
     "ruff-format": "ruff",
@@ -85,6 +90,10 @@ _TOOL_BIN = {
     "fmt-check": "cargo",
     "cargo-deny": "cargo",
     "cargo-mutants": "cargo",
+    "tsc": "npx",
+    "eslint": "npx",
+    "stryker": "npx",
+    "npm-audit": "npm",
 }
 
 # kiban-native gates handled in-process, not as a PATH binary through konjo-newonly.
@@ -345,6 +354,47 @@ def gate_verify_cmd(profile: dict) -> GateResult:
     )
 
 
+def gate_context_budget(profile: dict) -> GateResult:
+    """Report-only: the always-on context (the umbrella skill, ethos included) must stay under
+    a token ceiling, so the framework cannot preach token-efficiency and then bloat its own
+    preamble. Packs and the on-demand skills are never always-on, so they do not count.
+
+    The token count is a model-free estimate (chars/4); the ceiling carries headroom. WARN
+    over the ceiling, never a hard block until calibrated. The 1.0.0 cut requires this PASS on
+    the core itself.
+    """
+    ceiling = int(profile.get("context_budget_tokens", context_budget.DEFAULT_BUDGET_TOKENS))
+    used = context_budget.always_on_tokens(KIBAN_ROOT)
+    if used <= ceiling:
+        return GateResult("context_budget", PASS, f"always-on ~{used} tok <= {ceiling} ceiling")
+    return GateResult(
+        "context_budget",
+        WARN,
+        f"always-on ~{used} tok over the {ceiling} ceiling; trim the umbrella skill, or raise "
+        "context_budget_tokens with a recorded reason",
+    )
+
+
+def gate_skill_size(profile: dict) -> GateResult:
+    """Report-only: no single SKILL.md over a line cap without a recorded justification.
+
+    The mechanical version of "if it could be 50 lines, rewrite it," applied to the
+    framework's own prose. A skill that needs its length carries the `konjo-skill-size-ok:`
+    marker (a one-way-door justification) and is exempt.
+    """
+    cap = int(profile.get("skill_line_cap", context_budget.DEFAULT_SKILL_LINE_CAP))
+    offenders = context_budget.oversized_skills(KIBAN_ROOT, cap)
+    if not offenders:
+        return GateResult("skill_size", PASS, f"all skills within {cap} lines (or justified)")
+    rendered = ", ".join(f"{p} ({n} lines)" for p, n in offenders)
+    return GateResult(
+        "skill_size",
+        WARN,
+        f"SKILL.md over {cap} lines with no justification: {rendered}. Trim it, or add a "
+        f"'{context_budget.SKILL_SIZE_OVERRIDE} <reason>' line",
+    )
+
+
 def gate_self_test(profile_path: str, mode: str) -> GateResult:
     """Run the meta-gate eval through the deterministic replay backend (no model)."""
     if not cassettes.cassettes_present():
@@ -404,6 +454,13 @@ def _tool_argv(tool: str, py_files: list[str]) -> list[str] | None:
         "fmt-check": ["cargo", "fmt", "--check"],
         "cargo-deny": ["cargo", "deny", "check"],
         "cargo-mutants": ["cargo", "mutants"],
+        # TypeScript tools operate on the whole project; they take no file list. Each still
+        # runs through konjo-newonly so only net-new findings block. npm-audit is the JS
+        # realization of the supply_chain universal gate.
+        "tsc": ["npx", "tsc", "--noEmit"],
+        "eslint": ["npx", "eslint", "."],
+        "stryker": ["npx", "stryker", "run"],
+        "npm-audit": ["npm", "audit"],
     }
     return table.get(tool)
 
@@ -481,6 +538,8 @@ def run_gates(
     if self_test:
         results.append(gate_self_test(profile_path, mode))
     results.append(gate_verify_cmd(profile))
+    results.append(gate_context_budget(profile))
+    results.append(gate_skill_size(profile))
     results.append(gate_specialist_stats())
 
     repo_tools = list(profile.get("format_lint", [])) + list(profile.get("contract_gates", []))

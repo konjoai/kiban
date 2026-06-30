@@ -43,6 +43,11 @@ verify_cmd: string          # how the agent verifies its own work (Phase 10): th
 format_cmd: string          # the repo's formatter (Phase 11): run by the optional PostToolUse
                             # format hook after an edit. Optional; the hook no-ops if absent.
 
+context_budget_tokens: int  # ceiling for the always-on context in estimated tokens (Phase 12;
+                            # default 1500). The context-budget gate warns over it.
+skill_line_cap: int         # per-SKILL.md line cap (Phase 12; default 80). A skill over it
+                            # needs a `konjo-skill-size-ok:` justification or the gate warns.
+
 killtest: bool              # require a kill-test before a sprint starts
 
 overrides:                  # per-repo escape hatches, each with a reason

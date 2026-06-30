@@ -1,54 +1,52 @@
-# Next session: Phase 12 (1.0.0), the context-budget gate and the TypeScript pack
+# Next session: post-1.0.0 (pilots and activation, not new phases)
 
-## What Phase 11 built (0.11.0)
+kiban reached 1.0.0. The evolution plan's twelve phases are all shipped: the substrate and
+Ledger (0.1-0.4), the prove gate and Squish pilot (0.5-0.6), the pack seam and Rust pack
+(0.7), the compounding loop (0.8), the long-run gate (0.9), the craft skill (0.10), lifecycle
+hooks and the headless helper (0.11), and the context-budget guardrail plus the TypeScript
+pack (1.0). The remaining work is not new mechanism; it is reconciling seeded profiles against
+real repos and activating the gates that are honestly inert.
 
-Lifecycle hooks and the headless host helper.
+## What 1.0.0 built (Phase 12)
 
-- `lib/headless.py` + `bin/konjo-headless`: the headless `claude -p` invocation, baking
-  `--bare` (fast start) and `--output-format stream-json` (a realtime event stream), and the
-  `--verbose` the CLI requires alongside stream-json (verified, not assumed). Closes the lopi
-  `claude_stream.rs` gap by construction.
-- `templates/hooks/`: two opt-in hooks, both tied to verification. `stop-verify.sh` runs
-  `verify_cmd` and blocks a red end-of-turn; `posttooluse-format.sh` runs `format_cmd` after
-  an edit and never blocks. `bin/konjo-profile-get` reads the fields; `format_cmd` is a new
-  profile field.
+- `gate_context_budget` (always-on context under a token ceiling, ~463 of 1500 on the core)
+  and `gate_skill_size` (no SKILL.md over the line cap without a `konjo-skill-size-ok:`
+  justification). Both report-only; the core is green, which is what gated the 1.0.0 cut.
+- The TypeScript pack (`lib/packs/lang/typescript`: `type-soundness`, `async-correctness`,
+  reusing `api-surface`/`red-team` via `SCOPE_TS`), the TS tools wired into `konjo-gates-py`
+  (`tsc`, `eslint`, `stryker`, `npm audit`), the seeded `profiles/ts_example.yml`, and the TS
+  eval corpus.
 
-## Carried activation steps (unchanged, still parked)
+## Carried activation steps (the real backlog now)
 
-1. **Rust cassettes** (Phase 7): ACTIVATED; no carried step.
-2. **VECTRO reconciliation** (Phase 7): reconcile `profiles/vectro.yml` and clear every
-   UNVERIFIED field (stack, tools, prove fields, `verify_cmd`) when VECTRO unparks.
-3. **Squish prove gate** (Phase 5): still PENDING on the M3 bench hardware.
+1. **VECTRO reconciliation** (since Phase 7): clone the real VECTRO repo read-only and
+   reconcile `profiles/vectro.yml`, clearing every UNVERIFIED field (stack, tools, prove
+   metric/unit/bench_cmd/perf_globs, `verify_cmd`, `format_cmd`).
+2. **TypeScript pilot**: `profiles/ts_example.yml` is seeded, not a real repo. When a JS/TS
+   repo is piloted, reconcile it, confirm the TS lanes against real diffs, and decide whether
+   a Node-native `konjo-gates-js` runner is worth building (today TS runs through the single
+   Python orchestrator, exactly as Rust does).
+3. **Prove gates on bench hardware**: the Squish prove gate (since Phase 5) and the VECTRO
+   prove gate are both honestly NOT ACTIVATED, PENDING a `min_effect_pct` measured on real
+   bench hardware. Work each profile's activation checklist.
+4. **Rust and TypeScript cassettes**: recorded against a live model this session; re-record
+   only if a lane is reworded (the frozen prompt-hash test in `tests/test_packs.py` guards
+   against accidental drift).
 
-## Phase 12 tasks (1.0.0)
+## Optional hardening (only if a real need appears, never speculatively)
 
-Evolution plan section 8 and section 5c/5d. This is the 1.0.0 cut; do not cut it until the
-context-budget gate is green on the core itself.
-
-1. **`gate_context_budget`** (report-only first, blocking once calibrated): measure the token
-   cost of the always-on session-plane preamble plus the umbrella skill text, and fail a
-   change that pushes it over a ceiling (start at a measured number, e.g. ~1,500 tokens for
-   the umbrella skill plus ethos). kiban holds itself to this the way it dogfoods prose_lint
-   and shellcheck. Packs load only when their scope fires; they are never always-on, so they
-   do not count against the budget.
-2. **A skill-size limit**: no single SKILL.md over a fixed length without a recorded
-   one-way-door justification. The mechanical version of "if it could be 50 lines, rewrite it,"
-   applied to the framework's own prose.
-3. **The TypeScript pack** (`lib/packs/lang/typescript`): the lanes the `SCOPE_TS` flag was
-   added for in Phase 7 (`type-soundness`, `async-correctness`, `api-surface` reused). Tool
-   table: `tsc --noEmit`, `eslint`, `stryker`, `npm-audit`/`pnpm audit` (the JS realization of
-   supply_chain). A third repo profile if a JS repo is available, else seed it UNVERIFIED.
-4. **`konjo-gates-js`**: the JS CI-plane runner, mirroring konjo-gates-py, wiring the TS tools.
-5. Eval fixtures for the TS lanes (planted bug per lane + a clean control), cassettes recorded
-   if a model is reachable, else NOT ACTIVATED per the Phase 7 honesty rule.
-
-Cut 1.0.0 only when `gate_context_budget` is green on the core. Classify and confirm the
-1.0.0 VERSION bump as a one-way door, and log it to the Ledger.
+- Flip `gate_context_budget` / `gate_skill_size` from report-only (WARN) to blocking once the
+  ceilings are calibrated against more usage. A one-line change each; do it when a real bloat
+  regression is caught, not before.
+- A Node-native `konjo-gates-js` only for a JS-first CI environment that refuses a Python
+  toolchain on the runner.
 
 ## Tag and release discipline (in force)
 
-`release.yml` cuts the release and tag server-side on a VERSION change on main. Every VERSION
-bump is a one-way door: classify and confirm it. The build environment cannot push tag refs.
+`release.yml` cuts the release and tag server-side on a VERSION change on main. The 1.0.0 bump
+is a one-way door, confirmed and logged. Post-1.0, follow SemVer: patch for fixes, minor for
+additive packs/gates, major only for a breaking change to the profile schema or the gate
+contract.
 
 ## Still out, permanently
 

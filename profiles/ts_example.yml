@@ -1,0 +1,45 @@
+# profiles/ts_example.yml
+# A SEEDED TypeScript profile, added in Phase 12 to exercise the TS pack and its eval corpus.
+# No real JS/TS repo was piloted (VECTRO is Rust and parked), so this is an example, not a
+# reconciled repo profile. Every field is UNVERIFIED against a real repo and exists to drive
+# the meta-gate over the TS fixtures. When a real JS repo is piloted, copy this, reconcile it,
+# and clear the UNVERIFIED marks (per the squish.yml precedent).
+
+repo: ts_example   # UNVERIFIED: not a real repo
+
+stack:
+  - typescript     # UNVERIFIED
+
+packs:
+  - lang/typescript
+
+# UNVERIFIED: the conventional TS tool set. Confirm against the real repo's CI on pilot.
+format_lint:
+  - eslint
+contract_gates:
+  - tsc
+  - npm-audit      # the JS realization of the supply_chain universal gate
+mutation: stryker
+
+# kiban-native review lanes for this stack. type-soundness and async-correctness come from
+# lang/typescript; api-surface is the shared _base lane (it now covers SCOPE_TS). red-team is
+# appended automatically.
+specialists:
+  - type-soundness
+  - async-correctness
+  - api-surface
+
+prove:
+  enabled: false
+  baseline: "UNVERIFIED-no-bench"
+
+killtest: true
+
+verify_cmd: "TODO-confirm-against-repo"   # UNVERIFIED: e.g. "npm test"
+format_cmd: "TODO-confirm-against-repo"   # UNVERIFIED: e.g. "npx eslint --fix ."
+
+# Scope the meta-gate to the TS fixtures so this profile's self-test runs only its own corpus.
+eval_corpus:
+  - typescript
+
+overrides: {}
