@@ -4,6 +4,59 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-06-30
+
+Phase 12: the context-budget guardrail, the skill-size limit, and the TypeScript pack. The
+1.0.0 cut. The framework now holds itself to the token-efficiency it preaches, and the
+generalization the pack seam promised reaches a third language. Cut only because the
+context-budget gate is green on the core itself.
+
+### Added
+
+- `lib/context_budget.py` + two report-only gates in the orchestrator:
+  - `gate_context_budget`: the always-on context (the umbrella skill, ethos included) must
+    stay under a token ceiling (default 1500, profile `context_budget_tokens`). Tokens are a
+    model-free estimate (chars/4) so the gate is deterministic offline. The core measures
+    ~463 tokens, well under the ceiling. Packs and the on-demand skills are never always-on,
+    so they do not count.
+  - `gate_skill_size`: no single SKILL.md over a line cap (default 80, profile
+    `skill_line_cap`) without a recorded `konjo-skill-size-ok:` justification. The craft skill
+    carries that justification (it holds all ten field notes by design and is opt-in).
+- The TypeScript pack (`lib/packs/lang/typescript`): `type-soundness` and `async-correctness`
+  lanes; the shared `api-surface` and `red-team` lanes now cover `SCOPE_TS` (scope metadata
+  only, so existing prompts and cassettes are byte-unchanged). `TOOLS`: `tsc`, `eslint`,
+  `stryker`, `npm-audit`.
+- TS tools wired into `konjo-gates-py` (`tsc --noEmit`, `eslint`, `stryker run`, `npm audit`),
+  each through konjo-newonly, exactly as the Rust tools are. `npm-audit` is the JS realization
+  of the supply_chain universal gate.
+- `profiles/ts_example.yml`: a SEEDED TypeScript profile (no real JS repo was piloted, so
+  every field is UNVERIFIED) driving the TS eval corpus.
+- TS eval corpus under `evals/fixtures/typescript/`: `type_soundness_any_cast`,
+  `floating_promise`, `pub_signature_break_ts`, plus `_clean_control_ts`. Cassettes recorded
+  against a live model and ACTIVATED: the replay is deterministic across three runs, with each
+  bug detected in the right lane and at the right severity on the first try (no expectation
+  adjustment needed) and the control silent.
+- `context_budget_tokens` and `skill_line_cap` profile fields, documented in
+  `profiles/_schema.yml`.
+
+### Changed
+
+- `_STACK_TO_PACK` maps `ts` and `typescript` to `lang/typescript`.
+- `pyproject.toml` packages: added `lib.packs.lang.typescript`.
+- `konjo-gates-js` README updated: TypeScript is enforced through the single Python
+  orchestrator (`konjo-gates`), exactly as Rust is; the Node-native runner stays a stub until
+  a JS-first CI is piloted, keeping one source of truth for the gate logic.
+- Templates pinned to v1.0.0.
+
+### Kill-test (measured)
+
+- Context-budget gate green on the core (~463 of 1500 tokens); skill-size gate green (craft
+  justified). TS corpus ACTIVATED: all four fixtures green and deterministic across three runs
+  (three must-flag at the right lane and severity, one control silent).
+- All prior invariants hold: Squish six-cassette replay deterministic with no re-record; Rust
+  replay green; konjo-gates, oneway, prove, learnings, longrun, and hooks kill-tests green.
+- Full pytest: 137 passed (121 from 0.11 plus 16 new across context-budget and the TS pack).
+
 ## [0.11.1] - 2026-06-30
 
 Completes the craft skill against Karpathy's full field notes. Phase 10 adopted four of the

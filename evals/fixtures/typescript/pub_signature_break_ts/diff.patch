@@ -1,0 +1,15 @@
+diff --git a/src/client.ts b/src/client.ts
+index 5555555..6666666 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -3,7 +3,8 @@ export interface ConnectOptions {
+   timeoutMs: number;
+ }
+
+-export function connect(host: string, port: number, opts?: ConnectOptions): Client {
+-  return new Client(host, port, opts ?? defaults);
++// BUG: a breaking change to an exported signature with no version bump. `port` is
++// removed and the return type narrows from Client to Client | null; every caller breaks.
++export function connect(host: string, opts?: ConnectOptions): Client | null {
++  return new Client(host, 443, opts ?? defaults);
+ }

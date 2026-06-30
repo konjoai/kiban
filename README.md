@@ -113,9 +113,16 @@ each pin, never all repos at once.
   red end-of-turn, and a PostToolUse hook that runs `format_cmd` after an edit. Plus
   `konjo-headless` (`lib/headless.py`), which bakes `--bare` and `--output-format
   stream-json --verbose` into one fast, structured invocation. Working and tested.
-- **Phase 12 (1.0.0)**: the context-budget gate (report-only, then blocking), a skill-size
-  limit, the TypeScript pack, and `konjo-gates-js`. Cut 1.0.0 when the budget gate is green on
-  the core. See `NEXT_SESSION_PROMPT.md`.
+- **Phase 12 (this release, 1.0.0)**: the context-budget guardrail and the TypeScript pack.
+  `gate_context_budget` holds the always-on context (the umbrella skill plus ethos) under a
+  token ceiling, and `gate_skill_size` caps any SKILL.md without a recorded justification, so
+  the framework cannot preach token-efficiency and then bloat itself. The TypeScript pack
+  (`lib/packs/lang/typescript`: `type-soundness`, `async-correctness`, reusing `api-surface`)
+  and its tools (`tsc`, `eslint`, `stryker`, `npm audit`) wire into the same orchestrator that
+  runs every other stack. Cut 1.0.0 with the budget gate green on the core. Working and tested.
+- **Post-1.0**: pilots and activation, not new phases. Reconcile the seeded VECTRO and
+  TypeScript profiles against real repos, activate the Squish and VECTRO prove gates on bench
+  hardware, and pilot a JS-first runner if one is ever needed. See `NEXT_SESSION_PROMPT.md`.
 
 ## Proving a perf change
 

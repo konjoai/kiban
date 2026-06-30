@@ -3,6 +3,11 @@ name: craft
 description: How to build, the Konjo way. The build behaviors from Karpathy's field notes (read before you write, think before coding, simplicity, surgical changes, verification, goal-driven execution, debugging, dependencies, communication, and the common failure modes) plus the verify-loop. Opt-in per repo. Invoke before a non-trivial build step.
 ---
 
+<!-- konjo-skill-size-ok: carries all ten Karpathy build field notes by design; it is opt-in
+(loaded only when invoked), so its length does not count against the always-on context budget.
+Trimming below the line cap would drop a behavior. This length is a recorded one-way door. -->
+
+
 # craft
 
 How to build, the Konjo way: the field notes earned by watching the same model mistakes
