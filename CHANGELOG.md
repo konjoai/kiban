@@ -4,6 +4,30 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-06-30
+
+Completes the craft skill against Karpathy's full field notes. Phase 10 adopted four of the
+ten sections (think before coding, simplicity, surgical changes, goal-driven execution) plus
+verification; the other five were evaluated and added so the skill carries the whole set.
+
+### Changed
+
+- `plugins/konjo/skills/craft/SKILL.md` now covers all ten build behaviors, in source order:
+  read before you write (new), think before coding, simplicity first, surgical changes,
+  verification (the verify-loop), goal-driven execution, debugging (new), dependencies (new,
+  pointing at the supply-chain gates as the mechanical half), communication (new), and the
+  common failure modes (new: Kitchen Sink, Wrong Abstraction, Optimistic Path, Runaway
+  Refactor). The skill is opt-in, so the added prose does not count against the always-on
+  context budget (Phase 12).
+- The `konjo` umbrella skill's one-line description of `craft` updated to match.
+- Templates pinned to v0.11.1.
+
+### Kill-test (measured)
+
+- No behavior change: 126 pytest pass; all kill-tests (konjo-gates, oneway, prove, learnings,
+  longrun, hooks) green; Squish replay deterministic with no re-record. The craft skill and
+  umbrella pass konjo-prose.
+
 ## [0.11.0] - 2026-06-30
 
 Phase 11: lifecycle hooks and the headless host helper. Two narrow, opt-in hooks both tied to
