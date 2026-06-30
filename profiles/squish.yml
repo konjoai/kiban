@@ -92,6 +92,11 @@ prove:
 
 killtest: true
 
+# Phase 10: how the agent verifies its own work before claiming done. Derived from the
+# confirmed pytest coverage gate (konjo-gate.yml G2, coverage-80); running the suite is
+# squish's verify loop.
+verify_cmd: "pytest"
+
 # The eval corpus for this repo. Scopes the meta-gate to squish's own fixtures so the
 # self-test never reviews another stack's fixture (e.g. a Rust fixture it has no cassette
 # for). Phase 7: added when the Rust corpus landed under evals/fixtures/rust.

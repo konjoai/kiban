@@ -21,11 +21,16 @@ When you catch a mistake worth not repeating, invoke `correct`: it records a lea
 lives (a CLAUDE.md line, a prose-lint word, a lane, or a gate), or it is refused. Search
 past learnings with `konjo-learn search` before repeating a class of mistake.
 
+Build the Konjo way: the `craft` skill carries the four behaviors (think before coding,
+simplicity first, surgical changes, goal-driven execution) plus the verify-loop. Declare a
+`verify_cmd` in this repo's profile (the test/bench/browser path that proves a change works)
+and run it before claiming done; a missing one is surfaced as a warning.
+
 ## Pinning
 
 This repo pins a kiban ref in `.konjo/kiban.ref` (and `KIBAN_REF` in CI). The session
 plane checks out that ref on self-update instead of pulling main, so kiban changes land
-here on a deliberate schedule. The current recommended pin is `v0.9.0`.
+here on a deliberate schedule. The current recommended pin is `v0.10.0`.
 
 ## Repo-specific rules
 

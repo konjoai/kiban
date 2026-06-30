@@ -72,6 +72,11 @@ prove:
 
 killtest: true
 
+# Phase 10: the verify loop. UNVERIFIED: VECTRO is parked, so its real verify command was
+# not confirmed. `cargo test` is the conventional Rust default, but until it is confirmed
+# against the repo this stays a TODO and the verify_cmd gate honestly warns.
+verify_cmd: "TODO-confirm-against-vectro"   # UNVERIFIED: e.g. "cargo test"
+
 # The eval corpus for this repo: the Rust planted-bug fixtures. Scopes the meta-gate so the
 # VECTRO self-test runs only the Rust corpus, and the squish self-test never runs it.
 eval_corpus:

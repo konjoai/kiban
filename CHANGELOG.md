@@ -4,6 +4,40 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-30
+
+Phase 10: the craft skill. One small, opt-in skill carrying how to build the Konjo way, plus
+the verify-loop made a per-repo contract. Prose, not machinery, and deliberately short, so it
+carries the rules and nothing else.
+
+### Added
+
+- `plugins/konjo/skills/craft/SKILL.md`: the four behaviors (think before coding, simplicity
+  first, surgical changes, goal-driven execution) plus the verify-loop. Routed from the
+  `konjo` umbrella skill. Kept short on purpose; the context-budget gate that enforces this
+  lands in Phase 12.
+- `verify_cmd` profile field: how the agent verifies its own work (the test/bench/browser
+  path to run before claiming done), documented in `profiles/_schema.yml`.
+- `gate_verify_cmd` in the orchestrator: report-only. A repo that declares `verify_cmd`
+  passes; a repo with none (or an honest TODO/UNVERIFIED placeholder) gets a WARN, a surfaced
+  gap, never a hard block, the way a missing prove threshold is surfaced.
+
+### Changed
+
+- `profiles/squish.yml` declares `verify_cmd: pytest` (derived from its confirmed pytest
+  coverage gate).
+- `profiles/vectro.yml` declares `verify_cmd` as an UNVERIFIED TODO (VECTRO is parked; the
+  gate honestly warns until it is confirmed against the repo).
+- Templates pinned to v0.10.0.
+
+### Kill-test (measured)
+
+- `konjo-gates` no-model, no-network kill-test green, now reporting the `verify_cmd` gate
+  (squish PASS, a missing one WARN). All prior invariants hold: Squish six-cassette replay
+  deterministic with no re-record; Rust replay green; oneway, prove, learnings, and longrun
+  kill-tests green.
+- Full pytest: 121 passed (117 + 4 new).
+
 ## [0.9.0] - 2026-06-30
 
 Phase 9: the long-run gate. The benchmark resume pain, generalized: any run long enough to
