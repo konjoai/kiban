@@ -4,6 +4,42 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-06-30
+
+Post-1.0 activation: reconcile `profiles/vectro.yml` against the real VECTRO repo. The first
+of the carried activation steps, done as the evolution plan intended (the squish.yml
+precedent). No engine change.
+
+### Changed
+
+- `profiles/vectro.yml` reconciled against `konjoai/vectro` (added to the session read-only,
+  not modified). Confirmed and UNVERIFIED marks cleared from its real state:
+  - Stack `[rust, python, typescript]`: a Rust core (`rust/vectro_lib`) with Python bindings
+    (`rust/vectro_py`, `python/`) and a JS binding (`js/`, TypeScript types). Packs derive to
+    `lang/rust`, `lang/python`, `lang/typescript`.
+  - `format_lint` and `contract_gates` taken from `.github/workflows/konjo-gate.yml`
+    (cargo fmt/clippy with pedantic + unwrap/expect/panic denied, ruff, ruff-format, mypy,
+    vulture; cargo-deny with `.konjo/deny.toml`, cargo-audit, 80% coverage via
+    `cargo llvm-cov nextest`, complexity, the 500-line limit, `dry_check.py`, rustdoc
+    missing_docs) plus the kiban-native `unsafe-budget`. `mutation: cargo-mutants`.
+  - The prove gate wired to VECTRO's real bench: metric `qps` (queries per second at fixed
+    recall@10, higher is better), `bench_cmd: ./reproduce_paper.sh --wave 1 --runs 3`. Per the
+    house rule, `min_effect_pct` stays `null` PENDING (measured on the bench host, never
+    invented); the gate stays NOT ACTIVATED and keeps blocking perf changes while inert.
+  - `verify_cmd: cargo nextest run --workspace && python -m pytest tests/ -q` and
+    `format_cmd: cargo fmt --all && ruff format .`, both confirmed from CI.
+  - `eval_corpus: [rust, typescript]`, VECTRO's two reviewed binding surfaces. The specialist
+    list is ordered so `api-surface` (shared) comes last, so each scope's filtered worker
+    sequence matches its recorded corpus order; the Rust and TS cassettes replay
+    deterministically across three runs with no re-record.
+- Templates pinned to v1.0.1.
+
+### Kill-test (measured)
+
+- VECTRO replay green and deterministic across three runs over all ten fixtures (six Rust,
+  four TypeScript), no re-record. Squish and ts_example replays unchanged. konjo-gates
+  kill-test green. Full pytest: 137 passed.
+
 ## [1.0.0] - 2026-06-30
 
 Phase 12: the context-budget guardrail, the skill-size limit, and the TypeScript pack. The

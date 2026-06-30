@@ -19,9 +19,11 @@ real repos and activating the gates that are honestly inert.
 
 ## Carried activation steps (the real backlog now)
 
-1. **VECTRO reconciliation** (since Phase 7): clone the real VECTRO repo read-only and
-   reconcile `profiles/vectro.yml`, clearing every UNVERIFIED field (stack, tools, prove
-   metric/unit/bench_cmd/perf_globs, `verify_cmd`, `format_cmd`).
+1. **VECTRO reconciliation** (Phase 7): DONE in 1.0.1. `profiles/vectro.yml` was reconciled
+   against the real `konjoai/vectro` repo (stack `[rust, python, typescript]`, the
+   konjo-gate.yml gate set, prove metric `qps`, `verify_cmd`/`format_cmd`). The only thing
+   still PENDING for VECTRO is its prove `min_effect_pct`, which needs a bench-host run (see
+   step 3); everything else is confirmed.
 2. **TypeScript pilot**: `profiles/ts_example.yml` is seeded, not a real repo. When a JS/TS
    repo is piloted, reconcile it, confirm the TS lanes against real diffs, and decide whether
    a Node-native `konjo-gates-js` runner is worth building (today TS runs through the single
