@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""konjo-profile-get: print a profile field's value if it is a real (non-placeholder) string.
+
+Used by the lifecycle hook templates to read verify_cmd / format_cmd from a repo profile.
+Prints nothing (and exits 0) when the field is absent, blank, or an honest TODO/UNVERIFIED
+placeholder, so a hook can no-op safely instead of running a bogus command.
+
+Usage:
+  konjo-profile-get <field> [profile-path]   # default profile: .konjo/profile.yml
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+import yaml  # type: ignore[import-untyped]  # noqa: E402
+
+_PLACEHOLDERS = ("TODO", "UNVERIFIED")
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        print("usage: konjo-profile-get <field> [profile-path]", file=sys.stderr)
+        return 2
+    field = argv[0]
+    profile = argv[1] if len(argv) > 1 else ".konjo/profile.yml"
+    try:
+        with open(profile, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    except (OSError, yaml.YAMLError):
+        return 0  # no readable profile: print nothing, the hook no-ops
+    value = data.get(field) if isinstance(data, dict) else None
+    if (
+        isinstance(value, str)
+        and value.strip()
+        and not value.strip().upper().startswith(_PLACEHOLDERS)
+    ):
+        print(value.strip())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

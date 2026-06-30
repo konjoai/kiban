@@ -1,0 +1,20 @@
+{
+  "_comment": "Konjo lifecycle hooks (Phase 11), opt-in. Merge the `hooks` block into the consuming repo's .claude/settings.json. Two narrow hooks, both tied to verification, is the ceiling; do not add more. Copy stop-verify.sh and posttooluse-format.sh into .konjo/hooks/ (or adjust the paths below). The Stop hook runs verify_cmd and blocks a red end-of-turn; the PostToolUse hook runs format_cmd after an edit and never blocks.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": ".konjo/hooks/stop-verify.sh" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": ".konjo/hooks/posttooluse-format.sh" }
+        ]
+      }
+    ]
+  }
+}
