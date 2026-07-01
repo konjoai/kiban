@@ -290,6 +290,62 @@ def test_gate_repo_native_does_not_depend_on_bin_konjo_newonly(
         _os.chdir(cwd)
 
 
+def _stub_cargo_fmt_abspath(bin_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake `cargo fmt --check` that prints an absolute path rooted at its OWN cwd,
+    exactly like the real tool's `Diff in <abs path>:<line>:` output -- as opposed to
+    `_stub_cargo`'s `findings.txt`, which is a repo-relative fixture and does not
+    exercise the absolute-path bug."""
+    stub = bin_dir / "cargo"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "fmt" ]; then\n'
+        "  found=0\n"
+        "  for f in untouched.rs new.rs; do\n"
+        '    if [ -f "$f" ]; then echo "Diff in $(pwd)/$f:12:"; found=1; fi\n'
+        "  done\n"
+        '  [ "$found" = "1" ] && exit 1\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 0\n"
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+
+
+def test_rust_gate_ignores_preexisting_finding_with_absolute_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression test (kiban#18): a pre-existing finding on a file the PR never
+    touched must not become "net-new" merely because the tool prints an absolute
+    path and HEAD (the real checkout) and the base ref (a throwaway git worktree)
+    have different absolute roots. `cargo fmt --check`, `cargo clippy`, and `cargo
+    deny check` all print absolute paths, so this was previously silently broken
+    for every one of them: the whole repo's pre-existing lint backlog looked
+    net-new on every single Rust PR."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_cargo_fmt_abspath(bin_dir, monkeypatch)
+
+    repo = _new_repo(tmp_path)
+    (repo / "untouched.rs").write_text("fn f() {}\n")
+    (repo / "Cargo.toml").write_text("[package]\nname = 'x'\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base with a pre-existing (never fixed) fmt violation")
+    _git(repo, "checkout", "-q", "-b", "feature")
+
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(repo)
+        (repo / "README.md").write_text("unrelated doc change\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", "unrelated change; untouched.rs is not part of this diff")
+        r = cli.gate_repo_native("fmt-check", {"SCOPE_RUST": True}, ["README.md"], "main")
+        assert r.status == cli.PASS, r.detail
+    finally:
+        _os.chdir(cwd)
+
+
 def test_unsafe_budget_gate_net_new_blocks() -> None:
     diff = "@@ -1 +1,3 @@\n fn f() {\n+    unsafe {\n+        ptr.read();\n"
     assert cli.gate_unsafe_budget({"SCOPE_RUST": True}, diff).status == cli.FAIL

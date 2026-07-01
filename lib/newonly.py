@@ -4,8 +4,8 @@ This is the engine behind the `konjo-newonly` CLI and every `repo:*` gate in
 konjo-gates that shells out to an external scanner (ruff, cargo clippy, cargo deny,
 ...). It runs the scanner on the current working tree (HEAD plus any local changes)
 and on the merge-base of HEAD and a given base ref, then diffs the two finding sets
-line-insensitively (line numbers normalized away). Only findings present at HEAD and
-absent at the merge-base are net-new.
+line-insensitively (line numbers normalized away, and each scan's own root directory
+stripped away). Only findings present at HEAD and absent at the merge-base are net-new.
 
 konjo-gates imports `net_new` directly and runs it in-process. It used to shell out to
 the `bin/konjo-newonly` script instead, resolved via a path computed from the installed
@@ -15,6 +15,16 @@ the computed path, so every repo-native gate crashed instantly (python's own mis
 file error, `returncode != 0`, empty stdout) and got folded into a generic "net-new
 findings" failure regardless of the real diff. Importing this module directly removes
 the vanished-path failure mode entirely: `lib` is part of the installed distribution.
+
+Fixing that unmasked a second, independent bug: tools that print absolute
+paths (`cargo fmt --check`, `cargo clippy`, `cargo deny check`) root those paths at the
+scanner's cwd. HEAD is scanned in the real checkout; the base ref is scanned in a
+throwaway `git worktree` under a random `tempfile.mkdtemp()` path -- a different root
+every run. A finding on an untouched file at an identical line was therefore never
+recognized as pre-existing: its HEAD-side and base-side strings differed only in the
+leading absolute path, so `head - base` kept it forever, and every Rust PR failed on
+the *entire* repo's pre-existing lint backlog, not its own diff. `_normalize` now takes
+the root each scan actually ran from and strips it before comparing.
 """
 
 from __future__ import annotations
@@ -29,8 +39,15 @@ _LOCATION_RE = re.compile(r"^([^\s:]+):\d+(?::\d+)?")
 _NUM_RE = re.compile(r"\b\d+\b")
 
 
-def _normalize(line: str) -> str:
+def _normalize(line: str, root: str | None = None) -> str:
     line = line.rstrip("\n")
+    if root:
+        # Both a bare root and a trailing-slash root appear (a path exactly equal to
+        # root, vs. root + "/rest/of/path"); strip both so head/base findings for an
+        # untouched file compare equal regardless of which absolute directory each
+        # scan ran from.
+        line = line.replace(root.rstrip("/") + "/", "")
+        line = line.replace(root, ".")
     line = _LOCATION_RE.sub(lambda m: m.group(1) + ":N", line)
     line = _NUM_RE.sub("N", line)
     return line.strip()
@@ -58,32 +75,39 @@ def _tree_is_dirty() -> bool:
     return bool(_git(["status", "--porcelain"]))
 
 
-def _findings_at_head(scanner: list[str]) -> set[str]:
+def _findings_at_head(scanner: list[str], root: str) -> set[str]:
     """Scan the current working tree (HEAD plus any local changes) in place."""
-    out = _run(scanner)
-    return {_normalize(line) for line in out.splitlines() if line.strip()}
+    out = _run(scanner, cwd=root)
+    return {_normalize(line, root) for line in out.splitlines() if line.strip()}
 
 
-def _findings_at_base(ref: str, scanner: list[str]) -> set[str]:
+def _findings_at_base(ref: str, scanner: list[str]) -> set[str] | None:
     """Scan the base ref WITHOUT touching the user's working tree (C3).
 
     Preferred path: check the ref out into a throwaway `git worktree` and run the
     scanner there. The caller's tree is never modified, so this is safe even with
     uncommitted changes. If worktrees are unavailable, the caller has already gated on
     a clean tree, so this falls back to an in-place checkout-and-restore.
+
+    Returns None (rather than an empty set) when the comparison itself could not be
+    established -- e.g. `git worktree add` failed -- so the caller can surface a real
+    error instead of silently treating "the scan didn't run" as "nothing was found",
+    which would flag every HEAD-side finding as net-new.
     """
     if _worktree_supported():
         tmp = tempfile.mkdtemp(prefix="konjo-newonly-")
         try:
             if not _git_ok(["worktree", "add", "--quiet", "--detach", tmp, ref]):
-                return set()
+                return None
             out = _run(scanner, cwd=tmp)
-            return {_normalize(line) for line in out.splitlines() if line.strip()}
+            return {_normalize(line, tmp) for line in out.splitlines() if line.strip()}
         finally:
             _git(["worktree", "remove", "--force", tmp])
             shutil.rmtree(tmp, ignore_errors=True)
 
     # Fallback: in-place checkout. Only reached on a clean tree (gated by the caller).
+    # No worktree means no separate root, so head and base share the same cwd and no
+    # path-stripping is needed here.
     original = _git(["rev-parse", "--abbrev-ref", "HEAD"])
     if original == "HEAD":
         original = _git(["rev-parse", "HEAD"])
@@ -128,6 +152,9 @@ def net_new(scanner: list[str], base: str) -> NetNewResult:
             "commit or stash your changes, or use a git version with worktree support",
         )
 
-    head_findings = _findings_at_head(scanner)
+    head_root = _git(["rev-parse", "--show-toplevel"]) or "."
+    head_findings = _findings_at_head(scanner, head_root)
     base_findings = _findings_at_base(merge_base, scanner)
+    if base_findings is None:
+        return NetNewResult(ok=False, error=f"could not scan the base ref ({merge_base})")
     return NetNewResult(ok=True, net_new=sorted(head_findings - base_findings))
