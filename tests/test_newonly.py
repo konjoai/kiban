@@ -213,3 +213,77 @@ def test_compile_duration_suffix_does_not_look_net_new(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "no net-new findings" in result.stdout
+
+
+def test_ansi_colored_line_number_does_not_defeat_normalization(tmp_path: Path) -> None:
+    """Regression test (reported from a real `konjoai/vectro` CI run): `dtolnay/
+    rust-toolchain` forces CARGO_TERM_COLOR=always, so a real `cargo clippy` diagnostic
+    wraps its source-snippet line-number gutter in ANSI color codes, e.g.
+    "\\x1b[94m221\\x1b[0m | ...". `_NUM_RE` requires a `\\b` word boundary on both sides
+    of the digit run to normalize a line number away, but a digit glued to the escape
+    code's trailing letter ("94m", "0m") is a word-to-word transition -- no boundary, no
+    match -- so the ANSI codes silently defeat the very normalization that's supposed to
+    make a pre-existing finding whose line merely shifted (because the PR added or
+    removed lines earlier in the same file) compare equal at HEAD and base. The result:
+    a completely unmodified clippy warning reappears as a false net-new on every PR that
+    touches an earlier line in the same file. `_normalize` must strip ANSI escapes
+    before the numeric normalization runs.
+    """
+    repo, base = _make_repo(tmp_path)
+    (repo / "findings.txt").write_text("")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qam", "unrelated change; findings.txt scanner output unaffected")
+
+    # A scanner that reports the identical pre-existing diagnostic every time, but at a
+    # different line number each run -- the exact shape of a clippy source snippet whose
+    # unrelated line shifted, colorized exactly like a real ANSI-enabled cargo run.
+    scanner = [
+        sys.executable, "-c",
+        "import random;"
+        "n=random.randint(1, 999);"
+        "print(f'\\x1b[0m\\x1b[1;94m{n}\\x1b[0m\\x1b[0m | '"
+        "f'        if self.dim == 0 {{\\x1b[0m')",
+    ]
+    result = subprocess.run(
+        [sys.executable, str(BIN), "--base", base, "--", *scanner],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no net-new findings" in result.stdout
+
+
+def test_cargo_build_progress_noise_is_not_a_finding(tmp_path: Path) -> None:
+    """Regression test (reported from a real `konjoai/vectro` CI run): `cargo` prints
+    its own build/fetch progress as a right-justified verb + message ("   Compiling foo
+    v1.2.3", "    Checking bar v0.4.0") to stdout/stderr alongside real diagnostics. The
+    HEAD scan runs in the real checkout (a warm, possibly cache-restored `target/`); the
+    base-ref scan runs in a throwaway `git worktree` with no cache at all, so it always
+    starts colder. Which crates print a fresh "Compiling"/"Checking" line is a function
+    of that incremental-build cache state, not of the diff being scanned -- so on a real
+    PR the HEAD scan showed "Checking crossbeam-channel v0.8" and "Compiling vectro_py
+    v8.17" that the base scan never printed, and konjo-gates reported them as net-new
+    lint findings even though they are pure build noise with zero diagnostic content.
+    This must be filtered out regardless of whether the two scans agree on it.
+    """
+    repo, base = _make_repo(tmp_path)
+    (repo / "findings.txt").write_text("")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qam", "unrelated change; findings.txt scanner output unaffected")
+
+    # A scanner that prints only cargo-style build-progress noise -- no diagnostic at
+    # all -- and varies which crates it names each run, exactly like an asymmetric
+    # warm-vs-cold build cache would.
+    scanner = [
+        sys.executable, "-c",
+        "import random;"
+        "crates=['crossbeam-channel v0.8', 'num_cpus v1.0', 'numpy v0.1', 'rustc-hash v1.0'];"
+        "random.shuffle(crates);"
+        "[print(f'   Checking {c}') for c in crates[:random.randint(1, 4)]];"
+        "print('   Compiling vectro_py v8.17 (rust/vectro_py)')",
+    ]
+    result = subprocess.run(
+        [sys.executable, str(BIN), "--base", base, "--", *scanner],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no net-new findings" in result.stdout
