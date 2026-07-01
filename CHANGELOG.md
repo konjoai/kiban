@@ -4,6 +4,26 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-07-01
+
+Fixes a robustness gap flagged while chasing the `v1.1.1`/`v1.1.2` `repo:*` gate bugs
+from a consuming repo (`pdfree`): a PR that touches a binary-ish file without a
+`.gitattributes` entry marking it binary can leak raw non-UTF-8 bytes into `git diff`
+output. `konjo-gates`'s own diff/base-file readers decoded that output with Python's
+default strict UTF-8 handling and crashed with `UnicodeDecodeError` before any gate
+ran at all -- a crash that depends on the *consuming* repo's `.gitattributes`, not on
+anything kiban controls, so `konjo-gates` should not depend on it either.
+
+### Fixed
+
+- `packages/konjo-gates-py/src/konjo_gates_py/cli.py`: `_git` and `_base_file` now
+  decode subprocess output with `errors="replace"` instead of Python's default strict
+  UTF-8 decoding, so a diff or `git show` containing non-UTF-8 bytes degrades to
+  replacement characters instead of crashing the whole gate run.
+  - Added a regression test in `tests/test_konjo_gates.py` that commits a file with
+    non-UTF-8 bytes past git's binary-detection sniff window and confirms `_diff_text`
+    returns instead of raising.
+
 ## [1.1.2] - 2026-07-01
 
 Fixes a second, independent bug that `v1.1.1` unmasked: after fixing the packaging
