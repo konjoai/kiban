@@ -31,7 +31,7 @@ def _ensure_engine_on_path() -> Path:
 
     When installed via the root distribution, lib/ and evals/ import normally. When run
     from a source checkout (the kill-test path), add the repo root to sys.path. Returns
-    the kiban root for locating bin/konjo-newonly and the cassettes.
+    the kiban root for locating the always-on skills and the eval cassettes.
     """
     here = Path(__file__).resolve()
     # packages/konjo-gates-py/src/konjo_gates_py/cli.py -> repo root is parents[4]
@@ -52,6 +52,7 @@ from evals import cassettes, runner  # noqa: E402
 from lib import (  # noqa: E402
     context_budget,
     diff_scope,
+    newonly,
     oneway,
     prose_lint,
     redact,
@@ -98,6 +99,16 @@ _TOOL_BIN = {
     "npm-audit": "npm",
     "mojo-format": "mojo",
     "mojo-test": "mojo",
+}
+
+# Some tools live behind a subcommand of an already-installed binary (cargo-deny,
+# cargo-mutants are `cargo` subcommands installed separately via `cargo install`).
+# `shutil.which("cargo")` passing tells us nothing about whether the subcommand plugin
+# is present, so probe it directly and report a distinct error rather than letting the
+# gate run and misreport a missing plugin as "net-new findings".
+_TOOL_PROBE = {
+    "cargo-deny": ["cargo", "deny", "--version"],
+    "cargo-mutants": ["cargo", "mutants", "--version"],
 }
 
 # kiban-native gates handled in-process, not as a PATH binary through konjo-newonly.
@@ -436,11 +447,6 @@ def gate_specialist_stats() -> GateResult:
     return GateResult("specialist_stats", PASS, "\n" + table)
 
 
-def _newonly_cmd(tool_argv: list[str], base: str) -> list[str]:
-    newonly = str(KIBAN_ROOT / "bin" / "konjo-newonly")
-    return [sys.executable, newonly, "--base", base, "--", *tool_argv]
-
-
 def _tool_argv(tool: str, py_files: list[str]) -> list[str] | None:
     files = py_files or ["."]
     table: dict[str, list[str]] = {
@@ -510,14 +516,23 @@ def gate_repo_native(
         return GateResult(
             f"repo:{tool}", ERROR, f"tool {binary!r} named in profile is not installed"
         )
+    probe = _TOOL_PROBE.get(tool)
+    if probe is not None and subprocess.run(probe, capture_output=True, text=True).returncode != 0:
+        return GateResult(
+            f"repo:{tool}", ERROR,
+            f"`{' '.join(probe)}` failed; the cargo subcommand for {tool!r} is not "
+            f"installed (run `cargo install {tool.removeprefix('cargo-')}`)",
+        )
     argv = _tool_argv(tool, [c for c in changed if c.endswith(".py")])
     if argv is None:
         return GateResult(f"repo:{tool}", WARN, "no runner mapping; skipped")
-    proc = subprocess.run(_newonly_cmd(argv, base), capture_output=True, text=True)
-    if proc.returncode == 0:
+    result = newonly.net_new(argv, base)
+    if not result.ok:
+        return GateResult(f"repo:{tool}", ERROR, f"could not run {tool}: {result.error}")
+    if not result.net_new:
         return GateResult(f"repo:{tool}", PASS, "no net-new findings")
-    last = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else "net-new findings"
-    return GateResult(f"repo:{tool}", FAIL, last)
+    rendered = "; ".join(result.net_new)
+    return GateResult(f"repo:{tool}", FAIL, f"{len(result.net_new)} net-new finding(s): {rendered}")
 
 
 # --------------------------------------------------------------------------- driver

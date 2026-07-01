@@ -4,6 +4,48 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-07-01
+
+Fixes a bug reported from the real VECTRO repo: the `repo:*` gates that shell out to
+cargo (`fmt-check`, `clippy`, `cargo-deny`, `cargo-mutants`) reported `[FAIL] ...
+net-new findings` on every Rust PR, unconditionally and independent of the real diff
+(observed: `cargo-deny` "failing" on a diff with zero dependency changes; the full
+~18-gate battery completing in ~0.4s, too fast for any real compile).
+
+### Fixed
+
+- `gate_repo_native` invoked `KIBAN_ROOT / "bin" / "konjo-newonly"` as a subprocess.
+  That path only exists in a source checkout: the root distribution's
+  `[tool.setuptools] packages` list never included `bin/`, so once kiban is
+  pip-installed (the CI plane's actual install path, per `templates/repo-ci.yml`) the
+  script is not on disk. `KIBAN_ROOT` itself also resolves to the install prefix, not
+  the (nonexistent, post-build) source tree, once installed. The subprocess call
+  failed instantly (`python: can't open file ...`, exit 2, empty stdout) before ever
+  reaching cargo; `gate_repo_native`'s only fallback path for a nonzero exit with no
+  stdout was the literal string `"net-new findings"`, so the failure looked identical
+  to a real, blocking finding on every Rust-scoped PR, regardless of toolchain
+  presence or diff content.
+  - Moved the net-new diffing engine from `bin/konjo-newonly` into `lib/newonly.py`
+    (`net_new(scanner, base) -> NetNewResult`), which ships with the installed
+    distribution the same way `lib/unsafe_budget.py` already does. `gate_repo_native`
+    now calls it in-process; `bin/konjo-newonly` is a thin CLI wrapper over the same
+    function, kept for direct/manual use.
+  - `gate_repo_native` now reports the tool's real net-new finding text on FAIL
+    (previously a single hardcoded string), and a distinct ERROR when the comparison
+    itself could not be established (no merge-base, dirty tree with no worktree
+    support), instead of folding every failure mode into "net-new findings".
+  - Added a probe (`cargo <subcommand> --version`) for `cargo-deny` / `cargo-mutants`:
+    `cargo` being on PATH says nothing about whether the subcommand plugin is
+    installed, and running the gate against a missing plugin produced the same
+    generic-failure symptom. A missing plugin is now a distinct
+    tool-unavailable ERROR.
+  - `tests/test_konjo_gates.py`: a stub `cargo` drives the four Rust gates through a
+    clean diff (PASS), a dirty diff (FAIL with the real finding text), a
+    dependency-free diff for `cargo-deny` (PASS), a missing-subcommand case for
+    `cargo-mutants` (ERROR, not a false FAIL), and a regression test that points
+    `KIBAN_ROOT` at a directory with no `bin/` at all to prove the gate no longer
+    depends on that path existing.
+
 ## [1.1.0] - 2026-06-30
 
 The Mojo language pack. The fourth language pack (after python/mlx, rust, typescript),
