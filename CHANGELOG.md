@@ -4,6 +4,50 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2026-07-01
+
+The `v1.1.4` fix closed the compile-duration and shared-cache false-positive modes, but
+`repo:clippy` (and, to a lesser extent, `repo:cargo-mutants`) still failed on real PRs
+after that release. Reproduced from a real `konjoai/vectro` CI run (PR #104): `gates`
+reported 8 "net-new" `repo:clippy` findings on a PR whose own local `cargo clippy -- -D
+warnings` was clean. Two independent, still-live bugs, both in `lib/newonly.py`:
+
+1. **ANSI escape codes defeat line-number normalization.** `dtolnay/rust-toolchain`
+   forces `CARGO_TERM_COLOR=always` whenever the caller hasn't already set it, so every
+   `cargo clippy` diagnostic ships pretty-printed with color codes wrapped around the
+   source-snippet line-number gutter (`"\x1b[94m221\x1b[0m | ..."`). `_NUM_RE` needs a
+   `\b` word boundary on *both* sides of a digit run to normalize it away, but a digit
+   glued to an escape code's trailing letter (`"94m"`, `"0m"`) is a word-to-word
+   transition -- no boundary, no match. Two of the 8 "findings" were a single real,
+   completely unmodified `if self.dim == 0` clippy diagnostic in `ivf.rs` that merely
+   shifted line (221 at HEAD, a different line at the merge-base) because the PR added
+   code earlier in the same file -- exactly the case `_NUM_RE` exists to normalize away,
+   defeated by the surrounding color codes it was never taught to strip first.
+2. **cargo's own build-progress noise gets diffed as if it were a lint finding.** The
+   other 6 of the 8 "findings" were bare `"   Checking crossbeam-channel v0.8"` /
+   `"   Compiling vectro_py v8.17 (rust/vectro_py)"` lines -- cargo's own right-justified
+   status output, carrying no diagnostic at all. The HEAD scan runs in the real checkout
+   (a warm, cache-restored `target/`); the base-ref scan runs in a throwaway `git
+   worktree` with no cache, so it always starts colder. Which crates print a fresh
+   "Compiling"/"Checking" line is a function of that incremental-build cache asymmetry,
+   not of the diff being scanned, so for any tool that compiles this noise can differ
+   between the two scans on genuinely unmodified source -- an unremovable false net-new
+   that has nothing to do with line numbers or durations.
+
+### Fixed
+
+- `lib/newonly.py`: `_normalize` now strips ANSI CSI/SGR escape sequences
+  (`\x1b\[[0-9;]*[A-Za-z]`) before any other normalization runs, so a colorized line
+  number normalizes exactly like a plain one.
+- `lib/newonly.py`: cargo/`Shell::status`-style build-progress lines (`Compiling`,
+  `Checking`, `Downloading`, `Finished`, `Updating`, ... -- cargo's fixed, documented
+  verb list) are filtered out of both the HEAD and base-ref finding sets entirely,
+  rather than normalized, since they carry no diagnostic content to compare.
+- Added regression tests in `tests/test_newonly.py`: one reproduces the exact
+  ANSI-wrapped, line-shifted diagnostic from the `vectro` CI run and confirms it no
+  longer looks net-new; another reproduces the asymmetric build-noise lines and
+  confirms they're never treated as findings even when they differ between scans.
+
 ## [1.1.4] - 2026-07-01
 
 Fixes the last piece of the `repo:*` net-new false-positive saga (`v1.1.1`-`v1.1.3`):

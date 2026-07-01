@@ -49,6 +49,49 @@ _LOCATION_RE = re.compile(r"^([^\s:]+):\d+(?::\d+)?")
 # checked after it, not immediately after the bare digits.
 _NUM_RE = re.compile(r"\b\d+(?:\.\d+)?(?:ms|min|ns|s|m|h)?\b")
 
+# Matches a CSI (ANSI SGR) escape sequence, e.g. "\x1b[0m", "\x1b[1;94m". `dtolnay/
+# rust-toolchain` forces CARGO_TERM_COLOR=always whenever the caller hasn't already
+# set it, so every `cargo clippy` diagnostic ships pretty-printed with color codes
+# wrapped around the source-snippet line-number gutter: "\x1b[94m221\x1b[0m | ...".
+# Left in place, these sequences defeat `_NUM_RE`'s own \b boundary check -- "94" in
+# "\x1b[94m221" is glued to the preceding "m" (word-to-word, no \b) so it is never
+# consumed as part of a unit suffix or stripped, and the *actual* line number ("221")
+# immediately follows a "m" too, so `_NUM_RE` cannot normalize it away either. That is
+# exactly the number `_NUM_RE` exists to normalize: a pre-existing, byte-for-byte
+# unchanged clippy finding whose line merely shifted because the PR added or removed
+# lines earlier in the same file. Stripping ANSI sequences first, before any other
+# normalization, restores plain "221 | ..." so the existing numeric normalization can
+# do its job.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+# cargo (and tools built on cargo's `Shell::status`, like cargo-deny/cargo-mutants)
+# prints its own build/fetch progress as a right-justified verb + message, e.g.
+# "   Compiling foo v1.2.3" / "    Checking bar v0.4.0 (crates.io)" / "    Finished
+# dev profile ...". This is not a diagnostic -- it carries no finding -- but the raw
+# stdout+stderr capture treats every non-blank line as a candidate finding. The HEAD
+# scan runs in the real checkout (a warm, possibly cache-restored `target/`); the
+# base-ref scan runs in a throwaway `git worktree` with no cache at all, so it always
+# starts a colder build. Which crates get a fresh "Compiling"/"Checking" line is a
+# function of that incremental-build cache state, not of the diff being scanned --
+# so for any tool that compiles, this noise can differ between the two scans on
+# genuinely unmodified source and shows up as a permanent false net-new. Filtered out
+# entirely rather than normalized, since it carries no content worth comparing.
+_CARGO_STATUS_RE = re.compile(
+    r"^(?:Compiling|Checking|Downloading|Downloaded|Fresh|Ignored|Updating|Adding|"
+    r"Removing|Fetching|Packaging|Verifying|Archiving|Publishing|Uploading|Signing|"
+    r"Testing|Doc-tested|Documenting|Running|Finished|Replacing|Unpacking|Blocking|"
+    r"Waiting|Locking|Installing|Compiled|Summary|Created|Migrating)\b"
+)
+
+
+def _strip_ansi(line: str) -> str:
+    return _ANSI_RE.sub("", line)
+
+
+def _is_build_noise(line: str) -> bool:
+    return bool(_CARGO_STATUS_RE.match(_strip_ansi(line).strip()))
+
+
 # Vars that point a build tool at a cache/output directory outside the scan's own cwd.
 # If CI sets one of these globally (a common caching optimization), the HEAD scan (the
 # real checkout) and the base-ref scan (a throwaway worktree at an unrelated path) would
@@ -75,7 +118,7 @@ def _scan_env() -> dict[str, str]:
 
 
 def _normalize(line: str, root: str | None = None) -> str:
-    line = line.rstrip("\n")
+    line = _strip_ansi(line.rstrip("\n"))
     if root:
         # Both a bare root and a trailing-slash root appear (a path exactly equal to
         # root, vs. root + "/rest/of/path"); strip both so head/base findings for an
@@ -113,7 +156,11 @@ def _tree_is_dirty() -> bool:
 def _findings_at_head(scanner: list[str], root: str) -> set[str]:
     """Scan the current working tree (HEAD plus any local changes) in place."""
     out = _run(scanner, cwd=root)
-    return {_normalize(line, root) for line in out.splitlines() if line.strip()}
+    return {
+        _normalize(line, root)
+        for line in out.splitlines()
+        if line.strip() and not _is_build_noise(line)
+    }
 
 
 def _findings_at_base(ref: str, scanner: list[str]) -> set[str] | None:
@@ -135,7 +182,11 @@ def _findings_at_base(ref: str, scanner: list[str]) -> set[str] | None:
             if not _git_ok(["worktree", "add", "--quiet", "--detach", tmp, ref]):
                 return None
             out = _run(scanner, cwd=tmp)
-            return {_normalize(line, tmp) for line in out.splitlines() if line.strip()}
+            return {
+                _normalize(line, tmp)
+                for line in out.splitlines()
+                if line.strip() and not _is_build_noise(line)
+            }
         finally:
             _git(["worktree", "remove", "--force", tmp])
             shutil.rmtree(tmp, ignore_errors=True)
@@ -149,7 +200,11 @@ def _findings_at_base(ref: str, scanner: list[str]) -> set[str] | None:
     try:
         _git(["checkout", "--quiet", ref])
         out = _run(scanner)
-        return {_normalize(line) for line in out.splitlines() if line.strip()}
+        return {
+            _normalize(line)
+            for line in out.splitlines()
+            if line.strip() and not _is_build_noise(line)
+        }
     finally:
         _git(["checkout", "--quiet", original])
 
