@@ -29,6 +29,7 @@ the root each scan actually ran from and strips it before comparing.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -36,7 +37,41 @@ import tempfile
 from dataclasses import dataclass, field
 
 _LOCATION_RE = re.compile(r"^([^\s:]+):\d+(?::\d+)?")
-_NUM_RE = re.compile(r"\b\d+\b")
+# \b requires a boundary on BOTH sides of the digit run, but a digit immediately
+# followed by a letter (a unit suffix: "12.94s", "1s build + 5s test", "12m") is
+# word-to-word -- no boundary, no match -- so the trailing \b\d+\b alone leaves
+# compile/test durations untouched. cargo's own build output prints exactly these
+# ("Finished ... in 12.94s"; cargo-mutants' "in 1s build + 5s test" is part of every
+# finding line), so a nondeterministic wall-clock duration made otherwise-identical
+# HEAD/base output compare as different -- a false net-new on every run for any tool
+# that compiles (clippy, cargo-mutants), never for one that doesn't (fmt-check,
+# cargo-deny). The unit suffix is consumed as part of the match so the trailing \b is
+# checked after it, not immediately after the bare digits.
+_NUM_RE = re.compile(r"\b\d+(?:\.\d+)?(?:ms|min|ns|s|m|h)?\b")
+
+# Vars that point a build tool at a cache/output directory outside the scan's own cwd.
+# If CI sets one of these globally (a common caching optimization), the HEAD scan (the
+# real checkout) and the base-ref scan (a throwaway worktree at an unrelated path) would
+# both write into it -- sharing one crate's incremental compilation state across two
+# different git states scanned back-to-back. Unlike the root-stripping fix above, this
+# isn't cosmetic: a shared cache can make a compiling tool (cargo clippy, cargo mutants)
+# emit genuinely different diagnostics for the same unmodified source, an unremovable
+# false net-new. Non-compiling tools (cargo fmt --check, cargo deny check) never read
+# these vars, so scrubbing them is a no-op for those.
+_CACHE_DIR_ENV_VARS = ("CARGO_TARGET_DIR",)
+
+
+def _scan_env() -> dict[str, str]:
+    """A subprocess environment with shared build-cache vars scrubbed.
+
+    Removing rather than repointing them lets each tool fall back to its own
+    cwd-relative default (e.g. cargo's `<cwd>/target`), which is what actually
+    isolates one scan's build state from the other's regardless of `cwd`.
+    """
+    env = os.environ.copy()
+    for var in _CACHE_DIR_ENV_VARS:
+        env.pop(var, None)
+    return env
 
 
 def _normalize(line: str, root: str | None = None) -> str:
@@ -54,7 +89,7 @@ def _normalize(line: str, root: str | None = None) -> str:
 
 
 def _run(cmd: list[str], cwd: str | None = None) -> str:
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, env=_scan_env())
     return proc.stdout + proc.stderr
 
 
