@@ -112,11 +112,182 @@ def test_docs_only_skips_python_tools() -> None:
 
 
 def test_rust_tools_route_to_cargo() -> None:
-    # All Rust tools are SCOPE_RUST and invoke cargo; their argv runs through konjo-newonly.
+    # All Rust tools are SCOPE_RUST and invoke cargo; their argv runs through lib.newonly.
     for tool in ("clippy", "fmt-check", "cargo-deny", "cargo-mutants"):
         assert cli._TOOL_SCOPE[tool] == "SCOPE_RUST"
         assert cli._TOOL_BIN.get(tool, tool) == "cargo"
         assert cli._tool_argv(tool, [])[0] == "cargo"
+
+
+def _stub_cargo(bin_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake `cargo` on PATH: `clippy` prints `findings.txt` in cwd and exits nonzero
+    when it is non-empty (mirroring clippy's real deny-warnings exit code); `deny
+    --version` succeeds (present); `mutants` is not installed."""
+    stub = bin_dir / "cargo"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "deny" ] && [ "$2" = "--version" ]; then echo "cargo-deny 1.0"; exit 0; fi\n'
+        'if [ "$1" = "mutants" ]; then\n'
+        '  echo "error: no such subcommand: \\`mutants\\`" >&2; exit 101\n'
+        "fi\n"
+        'if [ "$1" = "clippy" ]; then\n'
+        "  cat findings.txt 2>/dev/null\n"
+        '  if [ -s findings.txt ]; then exit 101; fi\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 0\n"
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+
+
+def test_rust_gate_clean_diff_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A clean Rust diff (no new clippy finding) reports PASS -- the tool actually ran,
+    it did not fall back to a generic "net-new findings" failure."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_cargo(bin_dir, monkeypatch)
+
+    repo = _new_repo(tmp_path)
+    (repo / "findings.txt").write_text("src/lib.rs:10:1 warning: preexisting lint\n")
+    (repo / "Cargo.toml").write_text("[package]\nname = 'x'\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "checkout", "-q", "-b", "feature")
+
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(repo)
+        (repo / "README.md").write_text("docs only\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", "unrelated doc change")
+        r = cli.gate_repo_native("clippy", {"SCOPE_RUST": True}, ["README.md"], "main")
+        assert r.status == cli.PASS, r.detail
+    finally:
+        _os.chdir(cwd)
+
+
+def test_rust_gate_dirty_diff_fails_with_real_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deliberately dirty diff (a net-new clippy finding) reports FAIL with the
+    tool's real finding text, not the generic "net-new findings" string."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_cargo(bin_dir, monkeypatch)
+
+    repo = _new_repo(tmp_path)
+    (repo / "findings.txt").write_text("src/lib.rs:10:1 warning: preexisting lint\n")
+    (repo / "Cargo.toml").write_text("[package]\nname = 'x'\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "checkout", "-q", "-b", "feature")
+
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(repo)
+        (repo / "findings.txt").write_text(
+            "src/lib.rs:10:1 warning: preexisting lint\n"
+            "src/new.rs:5:1 warning: newly introduced lint\n"
+        )
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", "add clippy violation")
+        r = cli.gate_repo_native("clippy", {"SCOPE_RUST": True}, ["src/new.rs"], "main")
+        assert r.status == cli.FAIL
+        assert "newly introduced lint" in r.detail
+        assert r.detail != "net-new findings"
+    finally:
+        _os.chdir(cwd)
+
+
+def test_cargo_deny_passes_with_no_dependency_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """cargo-deny only inspects the dependency tree; a code-only diff must PASS."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_cargo(bin_dir, monkeypatch)
+
+    repo = _new_repo(tmp_path)
+    (repo / "Cargo.toml").write_text("[package]\nname = 'x'\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "checkout", "-q", "-b", "feature")
+
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(repo)
+        (repo / "src").mkdir()
+        (repo / "src" / "lib.rs").write_text("pub fn f() {}\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", "code-only change, no Cargo.toml/lock edit")
+        r = cli.gate_repo_native("cargo-deny", {"SCOPE_RUST": True}, ["src/lib.rs"], "main")
+        assert r.status == cli.PASS, r.detail
+    finally:
+        _os.chdir(cwd)
+
+
+def test_cargo_subcommand_missing_is_distinct_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`cargo` is on PATH but the `mutants` subcommand plugin is not installed: this
+    must surface as a distinct tool-unavailable ERROR, never a false "net-new
+    findings" FAIL."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_cargo(bin_dir, monkeypatch)
+
+    repo = _new_repo(tmp_path)
+    (repo / "Cargo.toml").write_text("[package]\nname = 'x'\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(repo)
+        r = cli.gate_repo_native("cargo-mutants", {"SCOPE_RUST": True}, ["src/lib.rs"], "main")
+        assert r.status == cli.ERROR
+        assert "net-new findings" not in r.detail
+    finally:
+        _os.chdir(cwd)
+
+
+def test_gate_repo_native_does_not_depend_on_bin_konjo_newonly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression test for the packaging bug: gate_repo_native used to shell out to
+    `KIBAN_ROOT / "bin" / "konjo-newonly"`, a path that does not exist once kiban is
+    pip-installed (bin/ ships with no package/scripts declaration). Pointing
+    KIBAN_ROOT at an empty directory with no bin/ at all must not break the gate --
+    it now calls lib.newonly.net_new in-process."""
+    monkeypatch.setattr(cli, "KIBAN_ROOT", tmp_path / "nonexistent-root")
+    assert not (cli.KIBAN_ROOT / "bin" / "konjo-newonly").exists()
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_cargo(bin_dir, monkeypatch)
+
+    repo = _new_repo(tmp_path)
+    (repo / "Cargo.toml").write_text("[package]\nname = 'x'\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "checkout", "-q", "-b", "feature")
+
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(repo)
+        (repo / "README.md").write_text("docs only\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", "unrelated doc change")
+        r = cli.gate_repo_native("clippy", {"SCOPE_RUST": True}, ["README.md"], "main")
+        assert r.status == cli.PASS, r.detail
+    finally:
+        _os.chdir(cwd)
 
 
 def test_unsafe_budget_gate_net_new_blocks() -> None:
