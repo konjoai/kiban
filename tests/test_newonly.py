@@ -6,6 +6,7 @@ file, so the base has a pre-existing finding and HEAD adds one.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -128,6 +129,84 @@ def test_absolute_path_finding_on_untouched_file_is_not_net_new(tmp_path: Path) 
     (repo / "README.md").write_text("unrelated doc change\n")
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "unrelated change; untouched.rs's finding is pre-existing")
+    result = subprocess.run(
+        [sys.executable, str(BIN), "--base", base, "--", *scanner],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no net-new findings" in result.stdout
+
+
+def test_shared_cargo_target_dir_does_not_leak_state_across_scans(tmp_path: Path) -> None:
+    """Regression test: cargo-based tools (clippy, cargo-mutants) build the crate, so
+    they read $CARGO_TARGET_DIR. CI commonly sets it globally to share a build cache
+    across jobs. Left untouched, the HEAD scan (real checkout) and the base-ref scan
+    (a throwaway worktree at an unrelated absolute path) would both write into that
+    same directory back-to-back -- letting one scan's cached/incremental state leak
+    into the other's and produce a different result for genuinely unmodified source, an
+    unremovable false net-new. `net_new` must scrub CARGO_TARGET_DIR so each scan gets
+    its own cwd-relative default instead.
+
+    The stub scanner below stands in for a compiling tool: it leaves a marker file in
+    whatever it resolves as its target dir and reports whether the marker was already
+    there from an earlier invocation ("contaminated") or not ("clean"). If
+    CARGO_TARGET_DIR leaks across scans, HEAD's scan leaves the marker and the base
+    scan -- of genuinely unmodified source -- sees it and reports a different finding
+    than HEAD did: a spurious diff on code that never changed.
+    """
+    repo, base = _make_repo(tmp_path)
+    (repo / "findings.txt").write_text("")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qam", "unrelated change; findings.txt scanner output unaffected")
+
+    shared_target = tmp_path / "shared-cargo-target"
+    scanner = [
+        sys.executable, "-c",
+        "import os;"
+        "d=os.environ.get('CARGO_TARGET_DIR') or os.path.join(os.getcwd(), 'target');"
+        "os.makedirs(d, exist_ok=True);"
+        "f=os.path.join(d, 'marker');"
+        "contaminated=os.path.exists(f);"
+        "open(f, 'w').close();"
+        "print('finding-contaminated' if contaminated else 'finding-clean')",
+    ]
+    env = dict(os.environ, CARGO_TARGET_DIR=str(shared_target))
+    result = subprocess.run(
+        [sys.executable, str(BIN), "--base", base, "--", *scanner],
+        cwd=str(repo), capture_output=True, text=True, env=env,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no net-new findings" in result.stdout
+
+
+def test_compile_duration_suffix_does_not_look_net_new(tmp_path: Path) -> None:
+    """Regression test (reported from a real `konjoai/pdfree` CI run): `cargo`'s own
+    build output prints wall-clock durations with a unit suffix glued directly onto the
+    digits -- "Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.94s",
+    cargo-mutants' "MISSED ... in 1s build + 5s test" -- and a digit immediately
+    followed by a letter is a word-to-word transition, not a `\\b` boundary, so the old
+    `\\b\\d+\\b` normalization left the whole token untouched. Since compile/test time
+    is never identical between the HEAD scan and the base-ref scan, every line
+    containing one of these durations compared as different and was reported as a
+    false net-new finding on every single run, for any tool that compiles (clippy,
+    cargo-mutants) -- never for one that doesn't (fmt-check, cargo-deny), which matches
+    exactly which gates stayed broken after the v1.1.2 root-stripping fix.
+    """
+    repo, base = _make_repo(tmp_path)
+    (repo / "findings.txt").write_text("")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qam", "unrelated change; findings.txt scanner output unaffected")
+
+    # A scanner that reports the same finding every time, but with a different,
+    # realistic compile-duration suffix glued onto the digits -- exactly the shape of
+    # cargo's own timing output, and different on every invocation as real wall-clock
+    # timing would be.
+    scanner = [
+        sys.executable, "-c",
+        "import random;"
+        "print(f'Finished `dev` profile [unoptimized + debuginfo] target(s) "
+        "in {random.uniform(1, 99):.2f}s')",
+    ]
     result = subprocess.run(
         [sys.executable, str(BIN), "--base", base, "--", *scanner],
         cwd=str(repo), capture_output=True, text=True,

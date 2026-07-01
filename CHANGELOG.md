@@ -4,6 +4,46 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-07-01
+
+Fixes the last piece of the `repo:*` net-new false-positive saga (`v1.1.1`-`v1.1.3`):
+`repo:clippy` and `repo:cargo-mutants` -- the two `lang/rust` gates that actually
+compile the crate -- kept reporting pre-existing, unmodified findings as net-new even
+after the `v1.1.2` root-stripping fix, while `repo:fmt-check`/`repo:cargo-deny` (which
+never compile anything) stayed clean. Reproduced from a real `konjoai/pdfree` CI run:
+`repo:clippy` failed with a single "net-new finding" that was not a lint at all -- it
+was `cargo`'s own build-status line, "Finished \`dev\` profile [...] target(s) in
+12.94s", half-normalized to "... in N.94s".
+
+### Fixed
+
+- `lib/newonly.py`: `_NUM_RE` was `\b\d+\b`, which requires a word boundary on both
+  sides of the digit run. A digit run immediately followed by a letter -- a unit
+  suffix, as in every compile/test duration cargo prints ("12.94s", "1s build + 5s
+  test", "12m") -- is a word-to-word transition, not a boundary, so the trailing `\b`
+  never matched and the duration was left completely untouched (or, for a decimal like
+  "12.94s", only the whole-number part before the "." was stripped). Since wall-clock
+  duration is never identical between the HEAD scan and the base-ref scan, any line
+  containing one produced a permanent false net-new -- and `cargo-mutants` prints one
+  in nearly every `MISSED`/`CAUGHT` line, not just a build-summary footer, so this was
+  effectively 100% false positives for that gate. `_NUM_RE` now consumes a recognized
+  unit suffix (`ms`, `min`, `ns`, `s`, `m`, `h`) as part of the digit token before
+  checking the trailing boundary, so the whole duration collapses to a single `N`
+  regardless of its actual value.
+- `lib/newonly.py`: `_run` now scrubs `CARGO_TARGET_DIR` from the scanner's environment
+  before invoking it. Left inherited, a CI job that sets it globally (a common caching
+  optimization) would point the HEAD scan (the real checkout) and the base-ref scan (a
+  throwaway `git worktree` at an unrelated path) at the *same* build/incremental cache
+  directory, scanned back-to-back -- letting one compilation's cached state leak into
+  the other's for a compiling tool (`clippy`, `cargo-mutants`) and produce a spurious
+  diff on genuinely unmodified source. Removing the var (rather than repointing it)
+  lets each tool fall back to its own cwd-relative default, isolating the two scans
+  regardless of the ambient environment.
+- Added regression tests in `tests/test_newonly.py`: one reproduces the exact
+  half-normalized duration string from the `pdfree` CI log and confirms it no longer
+  looks net-new; another simulates a compiling tool leaking state through a shared
+  `CARGO_TARGET_DIR` and confirms the two scans no longer contaminate each other.
+
 ## [1.1.3] - 2026-07-01
 
 Fixes a robustness gap flagged while chasing the `v1.1.1`/`v1.1.2` `repo:*` gate bugs
