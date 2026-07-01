@@ -542,3 +542,24 @@ def test_one_way_gate_unacknowledged_fails_and_acknowledged_passes(tmp_path: Pat
         assert acked.status == cli.PASS
     finally:
         _os.chdir(cwd)
+
+
+def test_diff_text_survives_non_utf8_bytes(tmp_path: Path) -> None:
+    # A binary file with no NUL byte in git's sniffed prefix (git only inspects the
+    # first ~8000 bytes) is treated as text, so raw non-UTF-8 bytes can land directly
+    # in `git diff` output. `_diff_text` must not crash decoding them.
+    repo = _new_repo(tmp_path)
+    _git(repo, "commit", "--allow-empty", "-qm", "base")
+    (repo / "blob.bin").write_bytes(b"a" * 8000 + b"\xff\xfe\x00\x01")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add binary-ish file")
+
+    cwd = Path.cwd()
+    import os as _os
+
+    try:
+        _os.chdir(repo)
+        diff = cli._diff_text("HEAD~1")
+        assert "blob.bin" in diff
+    finally:
+        _os.chdir(cwd)

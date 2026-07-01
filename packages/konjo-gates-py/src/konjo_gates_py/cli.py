@@ -127,7 +127,7 @@ class GateResult:
 
 
 def _git(args: list[str]) -> str:
-    proc = subprocess.run(["git", *args], capture_output=True, text=True)
+    proc = subprocess.run(["git", *args], capture_output=True, text=True, errors="replace")
     return proc.stdout
 
 
@@ -155,7 +155,9 @@ def _diff_text(base: str) -> str:
 
 
 def _base_file(base: str, path: str) -> str:
-    proc = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True, text=True)
+    proc = subprocess.run(
+        ["git", "show", f"{base}:{path}"], capture_output=True, text=True, errors="replace"
+    )
     return proc.stdout if proc.returncode == 0 else ""
 
 
