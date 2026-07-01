@@ -92,3 +92,45 @@ def test_no_new_finding_passes(tmp_path: Path) -> None:
     result = _run(repo, base)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "no net-new findings" in result.stdout
+
+
+def _make_abspath_repo(tmp_path: Path) -> tuple[Path, str]:
+    """A repo with an untouched file carrying a pre-existing finding, scanned by a
+    tool (like real `cargo fmt --check`) that prints its OWN absolute cwd in the
+    finding line rather than a repo-relative path."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "untouched.rs").write_text("fn f() {}\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                         capture_output=True, text=True).stdout.strip()
+    _git(repo, "checkout", "-qb", "work")
+    return repo, base
+
+
+def test_absolute_path_finding_on_untouched_file_is_not_net_new(tmp_path: Path) -> None:
+    """Regression test (kiban#18): a scanner that prints an absolute path rooted at
+    its own cwd -- exactly what `cargo fmt --check` / `cargo clippy` / `cargo deny
+    check` do -- must not have every pre-existing finding look net-new merely
+    because HEAD is scanned in the real checkout and the base ref is scanned in a
+    throwaway git-worktree tmp directory with a different absolute root."""
+    repo, base = _make_abspath_repo(tmp_path)
+    # A scanner that prints the finding rooted at its OWN cwd, mirroring `cargo fmt
+    # --check`'s `Diff in <abs path>:<line>:` output.
+    scanner = [sys.executable, "-c",
+              "import pathlib,os,sys;"
+              "p=pathlib.Path('untouched.rs');"
+              "sys.stdout.write(f'Diff in {os.getcwd()}/{p}:12:\\n') if p.exists() else None"]
+    (repo / "README.md").write_text("unrelated doc change\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "unrelated change; untouched.rs's finding is pre-existing")
+    result = subprocess.run(
+        [sys.executable, str(BIN), "--base", base, "--", *scanner],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no net-new findings" in result.stdout

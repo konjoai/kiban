@@ -4,6 +4,35 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-07-01
+
+Fixes a second, independent bug that `v1.1.1` unmasked: after fixing the packaging
+defect that stopped the `repo:*` cargo gates from running at all, re-running `gates` on
+a real VECTRO Rust PR still failed `fmt-check`, `clippy`, and `cargo-deny` -- this time
+against the *entire* repo's pre-existing lint backlog (46 files), not the PR's own diff,
+and `cargo-deny` again "failed" with no dependency change in the diff.
+
+### Fixed
+
+- `lib/newonly.py`: `cargo fmt --check`, `cargo clippy`, and `cargo deny check` all print
+  **absolute** file paths, rooted at whatever directory the tool was invoked from. HEAD
+  is scanned in the real checkout; the base ref is scanned in a throwaway `git worktree`
+  under a fresh `tempfile.mkdtemp()` path -- a different absolute root on every run. A
+  finding on a file the PR never touched, on the identical line, therefore never matched
+  between the two scans: the leading absolute path differed, so `_normalize` (which only
+  ever collapsed line/column numbers) left every one of those findings looking net-new
+  forever. `_normalize` now also takes the root each scan actually ran from and strips
+  it, so head/base findings for an untouched file compare equal regardless of which
+  absolute directory each scan used.
+  - `_findings_at_base`: a failed `git worktree add` used to return an empty set,
+    silently treating "the scan didn't run" as "nothing was found" -- which would flag
+    every HEAD-side finding as net-new for the same reason. It now returns `None`, and
+    `net_new` reports a real ERROR instead of a false-positive net-new FAIL.
+  - Added regression tests in `tests/test_newonly.py` and `tests/test_konjo_gates.py`: a
+    scanner that prints an absolute path rooted at its own cwd (mirroring real `cargo
+    fmt --check` output) confirms a pre-existing finding on an untouched file passes,
+    while a genuinely new finding on a changed file still fails.
+
 ## [1.1.1] - 2026-07-01
 
 Fixes a bug reported from the real VECTRO repo: the `repo:*` gates that shell out to
