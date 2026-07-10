@@ -34,7 +34,10 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
+
+from lib import progress
 
 _LOCATION_RE = re.compile(r"^([^\s:]+):\d+(?::\d+)?")
 # \b requires a boundary on BOTH sides of the digit run, but a digit immediately
@@ -243,8 +246,30 @@ def net_new(scanner: list[str], base: str) -> NetNewResult:
         )
 
     head_root = _git(["rev-parse", "--show-toplevel"]) or "."
+
+    # Each net-new scan runs the scanner TWICE -- once here at HEAD, once at the base ref
+    # in a throwaway worktree -- which is where a compiling/mutation tool's minutes go.
+    # Log the argv and each pass's duration under --verbose so the CI log shows why a gate
+    # is slow, instead of one silent multi-minute block.
+    cmd = " ".join(scanner)
+    progress.vlog(f"    net-new scan (2 passes): {cmd}")
+
+    progress.vlog("    pass 1/2: scanning HEAD...")
+    started = time.monotonic()
     head_findings = _findings_at_head(scanner, head_root)
+    progress.vlog(
+        f"    pass 1/2: HEAD done ({progress.fmt_elapsed(time.monotonic() - started)}, "
+        f"{len(head_findings)} finding(s))"
+    )
+
+    progress.vlog(f"    pass 2/2: scanning base {merge_base[:12]} in a worktree...")
+    started = time.monotonic()
     base_findings = _findings_at_base(merge_base, scanner)
     if base_findings is None:
+        progress.vlog("    pass 2/2: base scan could not be established")
         return NetNewResult(ok=False, error=f"could not scan the base ref ({merge_base})")
+    progress.vlog(
+        f"    pass 2/2: base done ({progress.fmt_elapsed(time.monotonic() - started)}, "
+        f"{len(base_findings)} finding(s))"
+    )
     return NetNewResult(ok=True, net_new=sorted(head_findings - base_findings))

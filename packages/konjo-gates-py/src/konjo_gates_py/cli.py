@@ -9,9 +9,15 @@ Single source of truth: this orchestrator imports the real lib/ and evals/ engin
 reimplements no review, redact, prose, or diff_scope logic. The CI plane never reads
 ~/.konjo.
 
+Progress: a per-gate heartbeat (which gate is running, and each gate's elapsed time) is
+always written to stderr, so a run is never silent -- an operator can see which gate is
+eating the wall-clock instead of watching a job hang for minutes and fail with no clue.
+`--verbose` (or KONJO_GATES_VERBOSE=1) adds per-scanner detail: the exact argv and each of
+the two HEAD/base scan passes with its own duration.
+
 Usage:
   konjo-gates --profile .konjo/profile.yml [--base origin/main]
-              [--changed FILE ...] [--mode daily|deep] [--no-self-test]
+              [--changed FILE ...] [--mode daily|deep] [--no-self-test] [--verbose]
 """
 
 from __future__ import annotations
@@ -22,7 +28,10 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 
@@ -54,6 +63,7 @@ from lib import (  # noqa: E402
     diff_scope,
     newonly,
     oneway,
+    progress,
     prose_lint,
     redact,
     review_log,
@@ -540,6 +550,56 @@ def gate_repo_native(
 # --------------------------------------------------------------------------- driver
 
 
+def _gate_plan(
+    profile: dict,
+    profile_path: str,
+    *,
+    base: str,
+    changed: list[str],
+    diff_text: str,
+    mode: str,
+    self_test: bool,
+    flags: dict[str, bool],
+) -> list[tuple[str, Callable[[], GateResult]]]:
+    """The ordered list of (label, thunk) gates to run.
+
+    Building the plan up front -- rather than calling each gate inline -- lets the driver
+    announce a gate's label *before* it runs, so the heartbeat log names the gate that is
+    currently eating wall-clock instead of only the ones that already finished.
+    """
+    article_globs = list(profile.get("prose_article_globs", []))
+
+    plan: list[tuple[str, Callable[[], GateResult]]] = [
+        ("prose", lambda: gate_prose(changed, base, article_globs)),
+        ("secrets", lambda: gate_secrets(diff_text)),
+        ("one_way_door", lambda: gate_one_way_door(changed, diff_text, base)),
+        ("prove", lambda: gate_prove(changed, flags, profile, base)),
+        ("longrun", lambda: gate_longrun(changed, profile)),
+    ]
+    if self_test:
+        plan.append(("self_test", lambda: gate_self_test(profile_path, mode)))
+    plan.append(("verify_cmd", lambda: gate_verify_cmd(profile)))
+    plan.append(("context_budget", lambda: gate_context_budget(profile)))
+    plan.append(("skill_size", lambda: gate_skill_size(profile)))
+    plan.append(("specialist_stats", lambda: gate_specialist_stats()))
+
+    repo_tools = list(profile.get("format_lint", [])) + list(profile.get("contract_gates", []))
+    mutation = profile.get("mutation", "")
+    if isinstance(mutation, str) and mutation and not mutation.startswith("none"):
+        repo_tools.append(mutation)
+    for tool in repo_tools:
+        if tool not in _TOOL_SCOPE:
+            continue
+        if tool in _NATIVE_TOOLS:
+            if tool == "unsafe-budget":
+                plan.append((f"repo:{tool}", partial(gate_unsafe_budget, flags, diff_text)))
+            continue
+        # partial binds `tool` now, so each thunk runs its own tool -- not the loop's last,
+        # which a late-bound `lambda: gate_repo_native(tool, ...)` would.
+        plan.append((f"repo:{tool}", partial(gate_repo_native, tool, flags, changed, base)))
+    return plan
+
+
 def run_gates(
     profile: dict,
     profile_path: str,
@@ -551,34 +611,26 @@ def run_gates(
     self_test: bool,
 ) -> list[GateResult]:
     flags = diff_scope.scope(changed, diff_text)
-    article_globs = list(profile.get("prose_article_globs", []))
+    plan = _gate_plan(
+        profile,
+        profile_path,
+        base=base,
+        changed=changed,
+        diff_text=diff_text,
+        mode=mode,
+        self_test=self_test,
+        flags=flags,
+    )
 
-    results: list[GateResult] = [
-        gate_prose(changed, base, article_globs),
-        gate_secrets(diff_text),
-        gate_one_way_door(changed, diff_text, base),
-        gate_prove(changed, flags, profile, base),
-        gate_longrun(changed, profile),
-    ]
-    if self_test:
-        results.append(gate_self_test(profile_path, mode))
-    results.append(gate_verify_cmd(profile))
-    results.append(gate_context_budget(profile))
-    results.append(gate_skill_size(profile))
-    results.append(gate_specialist_stats())
-
-    repo_tools = list(profile.get("format_lint", [])) + list(profile.get("contract_gates", []))
-    mutation = profile.get("mutation", "")
-    if isinstance(mutation, str) and mutation and not mutation.startswith("none"):
-        repo_tools.append(mutation)
-    for tool in repo_tools:
-        if tool not in _TOOL_SCOPE:
-            continue
-        if tool in _NATIVE_TOOLS:
-            if tool == "unsafe-budget":
-                results.append(gate_unsafe_budget(flags, diff_text))
-            continue
-        results.append(gate_repo_native(tool, flags, changed, base))
+    total = len(plan)
+    results: list[GateResult] = []
+    for i, (label, thunk) in enumerate(plan, 1):
+        progress.log(f"[{i}/{total}] {label}: running...")
+        started = time.monotonic()
+        result = thunk()
+        elapsed = progress.fmt_elapsed(time.monotonic() - started)
+        progress.log(f"[{i}/{total}] {label}: {result.status} ({elapsed})")
+        results.append(result)
     return results
 
 
@@ -589,7 +641,18 @@ def main() -> int:
     parser.add_argument("--changed", nargs="*", default=[])
     parser.add_argument("--mode", default="daily", choices=["daily", "deep"])
     parser.add_argument("--no-self-test", action="store_true")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="stream per-scanner detail (the exact argv and each HEAD/base scan pass with "
+        "its duration) to stderr. The per-gate progress heartbeat is always on; this adds "
+        "the sub-gate detail. Equivalent to exporting KONJO_GATES_VERBOSE=1.",
+    )
     args = parser.parse_args()
+
+    if args.verbose:
+        progress.set_verbose(True)
 
     with open(args.profile, encoding="utf-8") as fh:
         profile = yaml.safe_load(fh) or {}
@@ -597,6 +660,11 @@ def main() -> int:
     changed = _changed_files(args.base, args.changed)
     diff_text = _diff_text(args.base)
 
+    started = time.monotonic()
+    progress.log(
+        f"starting: {len(changed)} changed file(s), base {args.base}, mode {args.mode}"
+        + ("" if progress.is_verbose() else " (pass --verbose for per-scanner detail)")
+    )
     results = run_gates(
         profile,
         args.profile,
@@ -606,6 +674,8 @@ def main() -> int:
         mode=args.mode,
         self_test=not args.no_self_test,
     )
+    total_elapsed = progress.fmt_elapsed(time.monotonic() - started)
+    progress.log(f"finished all {len(results)} gate(s) in {total_elapsed}")
 
     print(f"konjo-gates: {len(changed)} changed file(s), base {args.base}")
     blocking = 0

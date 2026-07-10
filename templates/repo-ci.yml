@@ -37,5 +37,10 @@ jobs:
       - name: Install pinned kiban
         run: pip install "kiban @ git+https://github.com/konjoai/kiban.git@${KIBAN_REF}"
 
+      # konjo-gates writes a per-gate progress heartbeat to stderr (which gate is running
+      # and each gate's elapsed time), so this step is never silent even while a slow
+      # compiling/mutation gate runs. Add --verbose (or set KONJO_GATES_VERBOSE=1 above)
+      # to also stream the exact scanner argv and each HEAD/base scan pass with its
+      # duration -- useful when a single gate is unexpectedly slow.
       - name: Run gates against the repo profile
         run: konjo-gates --profile .konjo/profile.yml --base "origin/${{ github.base_ref || 'main' }}"
