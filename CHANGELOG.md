@@ -4,6 +4,41 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-10
+
+A consuming repo (`konjoai/pdfree`) reported a `konjo-gates` CI job that ran for ~20
+minutes producing no output at all and then failed, with no way to tell which gate was
+responsible or where the wall-clock went. The cause was structural, not a bug: the
+orchestrator runs ~a dozen gates back to back, several of which shell a scanner out
+*twice* (once at HEAD, once at the base ref in a throwaway worktree) with the child's
+output captured rather than streamed, and it prints the per-gate result table only once
+every gate has finished. A slow compiling or mutation gate (`clippy`, `cargo-mutants`,
+`mutmut`, `stryker`) therefore blocked in silence, and a failure surfaced only at the very
+end. To an operator that reads as a hung job.
+
+### Added
+
+- `lib/progress.py`: the single source of truth for CI-plane heartbeat logging. Emits to
+  stderr, flushed per line, with a `log()` always-on level and a `vlog()` verbose level,
+  plus `fmt_elapsed` so a 20-minute gate renders as `20m04s` at a glance.
+- `konjo-gates` now writes an **always-on** per-gate heartbeat to stderr: a
+  `[i/total] <gate>: running...` line as each gate starts and a
+  `[i/total] <gate>: <status> (<elapsed>)` line when it finishes, bracketed by a startup
+  banner and a total-elapsed line. No consuming-repo change is required -- bumping the pin
+  is enough. The CI log now shows which gate is in flight and where the time goes.
+- `konjo-gates --verbose` (or `KONJO_GATES_VERBOSE=1`, which also reaches child modules and
+  subprocesses) adds per-scanner detail from `lib/newonly.py`: the exact scanner argv and
+  each of the two HEAD/base scan passes with its own duration and finding count -- the
+  concrete answer to "why is *this one* gate slow" (it runs the scanner twice).
+
+### Changed
+
+- `konjo-gates` builds its gate list as an ordered plan of `(label, thunk)` pairs and runs
+  them through a single timed, logged loop, so a gate's label is announced *before* it
+  runs. Repo-native gate thunks bind their tool with `functools.partial` (not a late-bound
+  loop closure), preserving correct per-tool dispatch.
+- `templates/repo-ci.yml`: documents the heartbeat and how to enable `--verbose`.
+
 ## [1.1.5] - 2026-07-01
 
 The `v1.1.4` fix closed the compile-duration and shared-cache false-positive modes, but
