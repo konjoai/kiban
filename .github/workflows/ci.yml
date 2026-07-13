@@ -1,0 +1,43 @@
+# CI for kiban itself (distinct from templates/repo-ci.yml, which is what *consuming*
+# repos drop in to run konjo-gates). This runs kiban's own quality bar -- the exact three
+# checks its pyproject.toml configures -- on every pull request and every push to main, so
+# a change can no longer merge without lint, types, and the test suite passing.
+#
+# The dev tools (ruff, mypy, pytest) are pinned so a new upstream release of one of them
+# can't turn an unrelated PR red on its own; bump them deliberately, the same way the
+# release ref is pinned for consuming repos.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Editable install pulls in the runtime dep (PyYAML) and registers the engine and
+      # the konjo_gates_py entry-point package so imports resolve exactly as they do
+      # in a real install; the dev tools are pinned alongside it.
+      - name: Install kiban and dev tools
+        run: pip install -e . ruff==0.15.8 mypy==1.19.1 pytest==9.1.1
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      # mypy over the shipped source only. Config (tool.mypy) already excludes the rs/js
+      # stubs and scratch; tests carry deliberately loose typing and are not type-checked.
+      - name: Type-check (mypy)
+        run: mypy lib ledger evals packages/konjo-gates-py/src/konjo_gates_py
+
+      - name: Tests (pytest)
+        run: pytest -q
