@@ -24,10 +24,12 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -459,8 +461,47 @@ def gate_specialist_stats() -> GateResult:
     return GateResult("specialist_stats", PASS, "\n" + table)
 
 
-def _tool_argv(tool: str, py_files: list[str]) -> list[str] | None:
+# cargo-mutants defaults. Mutation testing is the single most expensive gate: without
+# `--in-diff` it mutates the *entire* crate (the ~20-minute silent CI block that motivated
+# the progress heartbeat), and every surviving mutant then has to be re-derived twice by
+# the HEAD/base net-new scan. `--in-diff` scopes mutation to the changed lines only -- this
+# is what konjo-gate.yml's G3 gate (`cargo mutants --in-diff`) already does. `--jobs`
+# parallelizes the surviving mutants across cores, and `--timeout` bounds each mutant's test
+# run so a mutation that induces an infinite loop can't hang the gate forever. Both are
+# overridable per-repo via env vars so a consuming repo can tune them in CI without a
+# profile-schema change.
+_MUTANTS_DEFAULT_JOBS = 4
+_MUTANTS_DEFAULT_TIMEOUT = 120  # seconds allowed for a single mutant's test run
+
+
+def _mutants_int(env_var: str, default: int) -> int:
+    """A positive-int cargo-mutants tuning value from the environment, or the default."""
+    raw = os.environ.get(env_var, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _tool_argv(
+    tool: str, py_files: list[str], mutants_diff: str | None = None
+) -> list[str] | None:
     files = py_files or ["."]
+    if tool == "cargo-mutants":
+        # `--in-diff <file>` restricts mutation to the changed lines (G3 parity); it is
+        # omitted only when the caller could not produce a diff, in which case cargo-mutants
+        # falls back to its whole-crate default.
+        argv = ["cargo", "mutants"]
+        if mutants_diff is not None:
+            argv += ["--in-diff", mutants_diff]
+        argv += [
+            "--jobs", str(_mutants_int("KONJO_MUTANTS_JOBS", _MUTANTS_DEFAULT_JOBS)),
+            "--timeout", str(_mutants_int("KONJO_MUTANTS_TIMEOUT", _MUTANTS_DEFAULT_TIMEOUT)),
+        ]
+        return argv
     table: dict[str, list[str]] = {
         "ruff": ["ruff", "check", *files],
         "ruff-format": ["ruff", "format", "--check", *files],
@@ -475,7 +516,6 @@ def _tool_argv(tool: str, py_files: list[str]) -> list[str] | None:
         "clippy": ["cargo", "clippy", "--", "-D", "warnings"],
         "fmt-check": ["cargo", "fmt", "--check"],
         "cargo-deny": ["cargo", "deny", "check"],
-        "cargo-mutants": ["cargo", "mutants"],
         # TypeScript tools operate on the whole project; they take no file list. Each still
         # runs through konjo-newonly so only net-new findings block. npm-audit is the JS
         # realization of the supply_chain universal gate.
@@ -515,6 +555,39 @@ def gate_unsafe_budget(flags: dict[str, bool], diff_text: str) -> GateResult:
     )
 
 
+def _write_mutants_in_diff(base: str) -> str | None:
+    """Write the base->working-tree diff to a temp file for `cargo mutants --in-diff`.
+
+    Mirrors what the net-new scan compares against: the diff of the merge-base of HEAD and
+    `base` against the current working tree (committed plus any local changes). cargo-mutants
+    reads this file and generates mutants only for lines inside the diff, so the gate mutates
+    the changed lines rather than the whole crate. The path is absolute so it resolves from
+    both the HEAD checkout and the throwaway base worktree the scan runs in.
+
+    Returns None only when git cannot produce a diff at all (no merge-base, git failure), so
+    the caller can fall back to cargo-mutants' whole-crate default rather than a broken run.
+    An *empty* diff is still written and returned: nothing changed means nothing to mutate,
+    which cargo-mutants reports as a fast no-op -- exactly what we want, not a full-crate run.
+    """
+    mb = subprocess.run(
+        ["git", "merge-base", "HEAD", base], capture_output=True, text=True
+    )
+    ref = mb.stdout.strip() if mb.returncode == 0 and mb.stdout.strip() else base
+    diff = subprocess.run(
+        ["git", "diff", ref], capture_output=True, text=True, errors="replace"
+    )
+    if diff.returncode != 0:
+        return None
+    fd, path = tempfile.mkstemp(prefix="konjo-mutants-", suffix=".diff")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(diff.stdout)
+    except OSError:
+        os.unlink(path)
+        return None
+    return path
+
+
 def gate_repo_native(
     tool: str, flags: dict[str, bool], changed: list[str], base: str
 ) -> GateResult:
@@ -535,10 +608,20 @@ def gate_repo_native(
             f"`{' '.join(probe)}` failed; the cargo subcommand for {tool!r} is not "
             f"installed (run `cargo install {tool.removeprefix('cargo-')}`)",
         )
-    argv = _tool_argv(tool, [c for c in changed if c.endswith(".py")])
-    if argv is None:
-        return GateResult(f"repo:{tool}", WARN, "no runner mapping; skipped")
-    result = newonly.net_new(argv, base)
+    mutants_diff = _write_mutants_in_diff(base) if tool == "cargo-mutants" else None
+    try:
+        argv = _tool_argv(
+            tool, [c for c in changed if c.endswith(".py")], mutants_diff=mutants_diff
+        )
+        if argv is None:
+            return GateResult(f"repo:{tool}", WARN, "no runner mapping; skipped")
+        result = newonly.net_new(argv, base)
+    finally:
+        if mutants_diff is not None:
+            try:
+                os.unlink(mutants_diff)
+            except OSError:
+                pass
     if not result.ok:
         return GateResult(f"repo:{tool}", ERROR, f"could not run {tool}: {result.error}")
     if not result.net_new:
