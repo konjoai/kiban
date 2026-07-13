@@ -4,6 +4,33 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-13
+
+The `repo:cargo-mutants` gate ran `cargo mutants` with no scoping, so every Rust PR
+mutation-tested the *entire* crate -- the single most expensive gate, and (per the 1.2.0
+heartbeat work) the classic ~20-minute silent CI block. The consuming repo's own CI already
+solved this: `konjo-gate.yml`'s G3 gate runs `cargo mutants --in-diff`, mutating only the
+changed lines. This release brings the kiban gate to G3 parity.
+
+### Changed
+
+- `repo:cargo-mutants` now runs `cargo mutants --in-diff <diff> --jobs N --timeout SECS`.
+  `--in-diff` restricts mutation to the lines changed in the PR (the merge-base-to-working-tree
+  diff, matching what the net-new scan already compares against), so the gate mutates a handful
+  of lines instead of the whole crate. `--jobs` parallelizes the surviving mutants across cores;
+  `--timeout` bounds each mutant's test run so a mutation that induces an infinite loop can't
+  hang the gate forever. This is the same scoping `konjo-gate.yml` G3 already applies.
+  - The diff is written to a temp file whose absolute path is handed to cargo-mutants and
+    cleaned up when the gate returns; it resolves from both the HEAD checkout and the throwaway
+    base worktree the net-new scan runs in. An empty diff (nothing changed) is passed through as
+    a fast no-op rather than falling back to a whole-crate run. If git cannot produce a diff at
+    all, the gate falls back to cargo-mutants' whole-crate default.
+  - `--jobs` and `--timeout` default to `4` and `120` seconds and are overridable per-repo via
+    `KONJO_MUTANTS_JOBS` / `KONJO_MUTANTS_TIMEOUT` (a non-numeric or non-positive value falls
+    back to the default rather than breaking the gate), so a consuming repo can tune them in CI
+    without a profile-schema change. No consuming-repo change is required otherwise -- bumping
+    the pin is enough.
+
 ## [1.2.0] - 2026-07-10
 
 A consuming repo (`konjoai/pdfree`) reported a `konjo-gates` CI job that ran for ~20

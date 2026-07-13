@@ -119,6 +119,95 @@ def test_rust_tools_route_to_cargo() -> None:
         assert cli._tool_argv(tool, [])[0] == "cargo"
 
 
+def test_cargo_mutants_argv_carries_in_diff_jobs_timeout() -> None:
+    """G3 parity: `cargo mutants` runs `--in-diff <file> --jobs N --timeout SECS`, with
+    --in-diff pointing at the diff file the caller produced."""
+    argv = cli._tool_argv("cargo-mutants", [], mutants_diff="/tmp/change.diff")
+    assert argv[:2] == ["cargo", "mutants"]
+    assert argv[2:4] == ["--in-diff", "/tmp/change.diff"]
+    assert "--jobs" in argv and "--timeout" in argv
+    # every flag carries a value
+    assert argv[argv.index("--jobs") + 1].isdigit()
+    assert argv[argv.index("--timeout") + 1].isdigit()
+
+
+def test_cargo_mutants_argv_without_diff_omits_in_diff() -> None:
+    """No diff available -> fall back to cargo-mutants' whole-crate default (no --in-diff),
+    but --jobs/--timeout still bound the run."""
+    argv = cli._tool_argv("cargo-mutants", [], mutants_diff=None)
+    assert "--in-diff" not in argv
+    assert "--jobs" in argv and "--timeout" in argv
+
+
+def test_mutants_int_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KONJO_MUTANTS_JOBS", "8")
+    assert cli._mutants_int("KONJO_MUTANTS_JOBS", cli._MUTANTS_DEFAULT_JOBS) == 8
+    # a non-positive or non-numeric value falls back to the default, never crashes the gate
+    for bad in ("0", "-3", "abc", ""):
+        monkeypatch.setenv("KONJO_MUTANTS_JOBS", bad)
+        assert cli._mutants_int("KONJO_MUTANTS_JOBS", cli._MUTANTS_DEFAULT_JOBS) == (
+            cli._MUTANTS_DEFAULT_JOBS
+        )
+
+
+def test_gate_cargo_mutants_scopes_to_in_diff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mutants gate hands newonly a `--in-diff <file>` argv whose diff file exists at
+    scan time (it is a temp file, cleaned up afterward)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    # A cargo whose `mutants --version` probe succeeds so the gate reaches the scan.
+    stub = bin_dir / "cargo"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "mutants" ] && [ "$2" = "--version" ]; then\n'
+        '  echo "cargo-mutants 1.0"; exit 0\n'
+        "fi\n"
+        "exit 0\n"
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+
+    repo = _new_repo(tmp_path)
+    (repo / "Cargo.toml").write_text("[package]\nname = 'x'\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "checkout", "-q", "-b", "feature")
+
+    captured: dict[str, object] = {}
+
+    def _fake_net_new(argv: list[str], base: str) -> cli.newonly.NetNewResult:
+        captured["argv"] = argv
+        idx = argv.index("--in-diff")
+        # the diff file must be readable while the scan runs
+        captured["diff_exists"] = Path(argv[idx + 1]).is_file()
+        return cli.newonly.NetNewResult(ok=True, net_new=[])
+
+    monkeypatch.setattr(cli.newonly, "net_new", _fake_net_new)
+
+    cwd = Path.cwd()
+    import os as _os
+
+    try:
+        _os.chdir(repo)
+        (repo / "src").mkdir()
+        (repo / "src" / "lib.rs").write_text("pub fn f() -> i32 { 1 }\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", "add code")
+        r = cli.gate_repo_native("cargo-mutants", {"SCOPE_RUST": True}, ["src/lib.rs"], "main")
+    finally:
+        _os.chdir(cwd)
+
+    assert r.status == cli.PASS, r.detail
+    argv = captured["argv"]
+    assert "--in-diff" in argv and "--jobs" in argv and "--timeout" in argv
+    assert captured["diff_exists"] is True
+    # the temp diff file is cleaned up once the gate returns
+    diff_path = argv[argv.index("--in-diff") + 1]
+    assert not Path(diff_path).exists()
+
+
 def _stub_cargo(bin_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Fake `cargo` on PATH: `clippy` prints `findings.txt` in cwd and exits nonzero
     when it is non-empty (mirroring clippy's real deny-warnings exit code); `deny
