@@ -4,6 +4,54 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-24
+
+A source-level audit of `konjoai/lopi` found a roadmap doc asserting four capability
+gaps (no MCP, no real worktrees, no runtime skill engine, no maker/checker split) that
+were all closed on `main`. The cause was structural: `konjo-ship`'s Sprint Completion
+Checklist enumerates three filenames by name, so every doc created after the checklist
+was written is born unmaintained. This release makes "what the docs claim about
+current state" a gate a sprint can check instead of prose a sprint has to trust.
+
+### Added
+
+- The `decays:` front-matter convention (documented in
+  `plugins/konjo/skills/craft/SKILL.md`): every doc that asserts current-state facts
+  declares a class — `state` (decays every sprint, highest harm when stale),
+  `reference` (moderate horizon), `intent` (long horizon), or `historical` (append-only,
+  never decays, exempt by declaration). A worked example for each class, including the
+  case for an expiry banner on an otherwise-honest dated snapshot.
+- `lib/doc_staleness.py` + `bin/konjo-doc-staleness`: scans a repo for `decays: state`
+  docs and fails the ones whose `verified-against` has fallen too far behind `HEAD`
+  (default 20 commits / 14 days). A `state` doc with no `verified-against` stamp at all
+  is a hard fail — the unstamped case that caused this whole sprint. `historical` docs
+  are exempt but warn if they lack a visible dated banner; `intent`/`reference` warn
+  only, regardless of age; a doc with no front matter at all is reported, not crashed
+  on. 19 unit tests, plus a live integration check against a real `konjoai/lopi` clone:
+  the repo currently has zero stamped docs (an honest finding, not a bug), and a
+  scratch copy of its roadmap stamped as it would have been at the commit that
+  introduced it fails loudly — 440 commits / 32 days behind `HEAD`.
+- `Konjo-Doc-Verified` commit trailer, joining `Konjo-Acknowledged-Oneway`
+  (`lib/oneway.py`) and `Konjo-Prove-Merge` (`lib/prove.py`) on the same
+  record-and-check path (`oneway.make_trailer`/`find_trailer`,
+  `oneway.fingerprint(doc_paths)`) rather than a fourth ad hoc format.
+- `plugins/konjo/skills/konjo-ship/SKILL.md`: the sprint completion checklist and
+  session handoff template, absorbed into the global plane (see `LEDGER.md`). It
+  previously existed only as a hand-copied, byte-identical `.claude/skills/konjo-ship`
+  in `konjoai/lopi` and `konjoai/miru`, with no canonical source and no distribution
+  path. The checklist no longer names filenames: it requires `CHANGELOG.md`,
+  `LEDGER.md`, and re-verifying every `decays: state` doc a sprint touched
+  (`konjo-doc-staleness scan` is the discovery step, not memory), plus the property
+  "no doc in the repo asserts a capability state that contradicts the code."
+- Per-repo override path documented in `docs/DISTRIBUTION.md`: a repo-scoped
+  `.claude/skills/<name>/SKILL.md` wins over an identically-named global skill, using
+  Claude Code's existing most-specific-wins skill resolution — no new plumbing.
+
+### Changed
+
+- `plugins/konjo/skills/konjo/SKILL.md` (the always-on umbrella skill) now routes to
+  `konjo-ship` alongside `craft`, `decide`, `recall`, `longrun`, and `konjo-prose`.
+
 ## [1.3.0] - 2026-07-13
 
 The `repo:cargo-mutants` gate ran `cargo mutants` with no scoping, so every Rust PR

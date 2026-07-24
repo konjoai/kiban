@@ -34,6 +34,7 @@ The update is a no-op when:
   call or repeating a known mistake.
 - `longrun`: make a benchmark or training script resumable (the checkpoint/resume contract).
 - `craft`: how to build, the Konjo way (the ten build field notes plus the verify-loop).
+- `konjo-ship`: the sprint completion checklist and session handoff template.
 - `konjo-prose`: editorial lint (no em dashes, no AI-tell vocabulary).
 
 ## Ethos (do not weaken)

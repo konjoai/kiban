@@ -1,0 +1,297 @@
+"""Tests for the doc staleness gate (lib/doc_staleness.py)."""
+
+from __future__ import annotations
+
+import subprocess
+from datetime import date, timedelta
+from pathlib import Path
+
+from lib import doc_staleness, oneway
+
+TODAY = date(2026, 7, 24)
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _init_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    return repo
+
+
+def _commit(repo: Path, name: str, contents: str, msg: str = "commit") -> str:
+    (repo / name).write_text(contents)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", msg)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _bump(repo: Path, n: int) -> None:
+    """Add n throwaway commits so HEAD moves n commits past whatever came before."""
+    for i in range(n):
+        _commit(repo, f"filler-{i}.txt", "x", f"filler {i}")
+
+
+# ---------------------------------------------------------------------------
+# parse_front_matter
+# ---------------------------------------------------------------------------
+
+
+def test_parse_front_matter_basic() -> None:
+    text = "---\ndecays: state\nverified-against: abc123\n---\n\n# Body\n"
+    fm, body = doc_staleness.parse_front_matter(text)
+    assert fm == {"decays": "state", "verified-against": "abc123"}
+    assert body.strip() == "# Body"
+
+
+def test_parse_front_matter_absent() -> None:
+    fm, body = doc_staleness.parse_front_matter("# Just a doc\nno front matter here\n")
+    assert fm is None
+    assert body == "# Just a doc\nno front matter here\n"
+
+
+def test_parse_front_matter_malformed_yaml_does_not_crash() -> None:
+    text = "---\ndecays: [unterminated\n---\nbody\n"
+    fm, body = doc_staleness.parse_front_matter(text)
+    assert fm == {}
+    assert "body" in body
+
+
+def test_parse_front_matter_non_mapping_yaml_does_not_crash() -> None:
+    text = "---\n- just\n- a\n- list\n---\nbody\n"
+    fm, _ = doc_staleness.parse_front_matter(text)
+    assert fm == {}
+
+
+# ---------------------------------------------------------------------------
+# check_document — the five required scenarios
+# ---------------------------------------------------------------------------
+
+
+def test_fresh_state_doc_passes(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed.txt", "seed")
+    head = _git(repo, "rev-parse", "HEAD")
+    doc = repo / "ROADMAP.md"
+    doc.write_text(
+        f"---\ndecays: state\nverified-against: {head}\nverified-date: '2026-07-24'\n---\n"
+        "# Roadmap\nEverything here was true at the stamped commit.\n"
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add roadmap")
+    # HEAD has moved on by one commit (the doc's own commit) — well within any threshold.
+    result = doc_staleness.check_document(doc, repo_root=repo, today=TODAY)
+    assert result.verdict == doc_staleness.OK
+    assert result.commits_behind is not None
+    assert result.commits_behind <= doc_staleness.DEFAULT_STALE_COMMITS
+
+
+def test_stale_state_doc_fails_on_commits(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    stamped_sha = _commit(repo, "seed.txt", "seed")
+    doc = repo / "ROADMAP.md"
+    doc.write_text(
+        f"---\ndecays: state\nverified-against: {stamped_sha}\nverified-date: '2026-07-24'\n---\n"
+        "# Roadmap\n"
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add roadmap")
+    _bump(repo, 5)  # push HEAD well past the stamp
+
+    result = doc_staleness.check_document(
+        doc, repo_root=repo, today=TODAY, stale_commits=2, stale_days=365
+    )
+    assert result.verdict == doc_staleness.FAIL
+    assert "stale" in result.reason
+
+
+def test_stale_state_doc_fails_on_days(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    head = _commit(repo, "seed.txt", "seed")
+    doc = repo / "ROADMAP.md"
+    old_date = (TODAY - timedelta(days=60)).isoformat()
+    doc.write_text(
+        f"---\ndecays: state\nverified-against: {head}\n"
+        f"verified-date: '{old_date}'\n---\n# Roadmap\n"
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add roadmap")
+
+    result = doc_staleness.check_document(
+        doc, repo_root=repo, today=TODAY, stale_commits=1000, stale_days=14
+    )
+    assert result.verdict == doc_staleness.FAIL
+    assert result.days_behind is not None and result.days_behind > 14
+
+
+def test_unstamped_state_doc_hard_fails(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed.txt", "seed")
+    doc = repo / "ROADMAP.md"
+    doc.write_text("---\ndecays: state\n---\n# Roadmap\nNo stamp at all.\n")
+    result = doc_staleness.check_document(doc, repo_root=repo, today=TODAY)
+    assert result.verdict == doc_staleness.FAIL
+    assert "unstamped" in result.reason
+
+
+def test_historical_doc_exempt_regardless_of_age(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    old_sha = _commit(repo, "seed.txt", "seed")
+    doc = repo / "FEATURE_STATE_FINAL.md"
+    doc.write_text(
+        f"---\ndecays: historical\nverified-against: {old_sha}\n---\n"
+        "# Feature state\n\n**Baseline:** main @ deadbeef, **Date:** 2020-01-01\n"
+        "Long since superseded, but honest about when it was true.\n"
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add snapshot")
+    _bump(repo, 50)  # far more commits than any state threshold would tolerate
+
+    result = doc_staleness.check_document(
+        doc, repo_root=repo, today=TODAY, stale_commits=1, stale_days=1
+    )
+    assert result.verdict == doc_staleness.OK
+    assert "exempt" in result.reason
+
+
+def test_historical_doc_without_dated_banner_warns_not_fails(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed.txt", "seed")
+    doc = repo / "OLD_NOTES.md"
+    doc.write_text(
+        "---\ndecays: historical\n---\n# Notes\nNo date visible anywhere near the top.\n"
+    )
+    result = doc_staleness.check_document(doc, repo_root=repo, today=TODAY)
+    assert result.verdict == doc_staleness.WARN
+    assert "dated banner" in result.reason
+
+
+def test_doc_with_no_front_matter_reported_not_crash(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed.txt", "seed")
+    doc = repo / "README.md"
+    doc.write_text("# Just a normal doc\nNothing special.\n")
+    result = doc_staleness.check_document(doc, repo_root=repo, today=TODAY)
+    assert result.verdict == doc_staleness.SKIP
+
+
+# ---------------------------------------------------------------------------
+# intent / reference — warn only, never fail
+# ---------------------------------------------------------------------------
+
+
+def test_reference_doc_never_fails_even_when_very_old(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    old_sha = _commit(repo, "seed.txt", "seed")
+    doc = repo / "README.md"
+    old_date = (TODAY - timedelta(days=3000)).isoformat()
+    doc.write_text(
+        f"---\ndecays: reference\nverified-against: {old_sha}\nverified-date: '{old_date}'\n---\n"
+        "# README\n"
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add readme")
+    _bump(repo, 50)
+
+    result = doc_staleness.check_document(
+        doc, repo_root=repo, today=TODAY, stale_commits=1, stale_days=1
+    )
+    assert result.verdict == doc_staleness.WARN
+
+
+def test_intent_doc_with_no_stamp_warns(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed.txt", "seed")
+    doc = repo / "VISION.md"
+    doc.write_text("---\ndecays: intent\n---\n# Vision\n")
+    result = doc_staleness.check_document(doc, repo_root=repo, today=TODAY)
+    assert result.verdict == doc_staleness.WARN
+    assert "warn only" in result.reason
+
+
+# ---------------------------------------------------------------------------
+# malformed stamps
+# ---------------------------------------------------------------------------
+
+
+def test_unresolvable_verified_against_sha_fails(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed.txt", "seed")
+    doc = repo / "ROADMAP.md"
+    doc.write_text("---\ndecays: state\nverified-against: 0000000notreal\n---\n# Roadmap\n")
+    result = doc_staleness.check_document(doc, repo_root=repo, today=TODAY)
+    assert result.verdict == doc_staleness.FAIL
+    assert "not found" in result.reason
+
+
+def test_malformed_verified_date_fails(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    head = _commit(repo, "seed.txt", "seed")
+    doc = repo / "ROADMAP.md"
+    doc.write_text(
+        f"---\ndecays: state\nverified-against: {head}\n"
+        "verified-date: 'not-a-date'\n---\n# Roadmap\n"
+    )
+    result = doc_staleness.check_document(doc, repo_root=repo, today=TODAY, stale_commits=1000)
+    assert result.verdict == doc_staleness.FAIL
+    assert "not a valid" in result.reason
+
+
+def test_no_recognized_decays_value_is_skip(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed.txt", "seed")
+    doc = repo / "WEIRD.md"
+    doc.write_text("---\ndecays: someday\n---\n# Weird\n")
+    result = doc_staleness.check_document(doc, repo_root=repo, today=TODAY)
+    assert result.verdict == doc_staleness.SKIP
+
+
+# ---------------------------------------------------------------------------
+# scan_repo
+# ---------------------------------------------------------------------------
+
+
+def test_check_document_path_outside_repo_root_does_not_crash(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    head = _commit(repo, "seed.txt", "seed")
+    outside = tmp_path / "elsewhere" / "STAMPED.md"
+    outside.parent.mkdir()
+    outside.write_text(f"---\ndecays: state\nverified-against: {head}\n---\n# Doc\n")
+    result = doc_staleness.check_document(outside, repo_root=repo, today=TODAY)
+    assert result.verdict == doc_staleness.OK
+    assert result.path == str(outside)
+
+
+def test_scan_repo_skips_git_dir_and_finds_docs(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed.txt", "seed")
+    (repo / "PLAIN.md").write_text("# Plain\n")
+    (repo / "STATE.md").write_text("---\ndecays: state\n---\n# unstamped\n")
+    results = doc_staleness.scan_repo(repo, today=TODAY)
+    paths = {r.path for r in results}
+    assert "PLAIN.md" in paths
+    assert "STATE.md" in paths
+    assert not any(p.startswith(".git") for p in paths)
+    state_result = next(r for r in results if r.path == "STATE.md")
+    assert state_result.verdict == doc_staleness.FAIL
+
+
+# ---------------------------------------------------------------------------
+# Konjo-Doc-Verified trailer
+# ---------------------------------------------------------------------------
+
+
+def test_doc_verified_trailer_roundtrip() -> None:
+    fp = oneway.fingerprint(["ROADMAP.md", "PLAN.md"])
+    trailer = doc_staleness.doc_verified_trailer(fp)
+    assert trailer == f"Konjo-Doc-Verified: {fp}"
+    msgs = f"docs: re-verify state docs\n\n{trailer}\n"
+    assert doc_staleness.find_doc_verified(msgs, fp)
+    assert not doc_staleness.find_doc_verified("no trailer here", fp)

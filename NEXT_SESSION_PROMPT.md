@@ -1,3 +1,48 @@
+# Next session: Doc Integrity follow-ups, then post-1.0.0 pilots and activation
+
+## Doc Integrity Gate follow-ups (1.4.0)
+
+This release built the `decays:` convention and `lib/doc_staleness.py` (see
+`CHANGELOG.md` and `LEDGER.md`). What's deliberately not done here:
+
+1. **Layer 4 — generating state tables from code probes, not front-matter honesty
+   alone.** `doc_staleness.py` only checks whether a `state` doc's *stamp* is current;
+   it cannot tell whether the doc's *claims* are true. That's real and valuable, and it
+   belongs in `lopi`, where the four wrong claims this sprint's audit found (no MCP, no
+   real worktrees, no runtime skill engine, no maker/checker split) are mechanically
+   checkable against a real codebase — `src/mcp_commands.rs`, `crates/lopi-git/src/
+   worktree.rs`, `crates/lopi-skill/`, the isolated `VerifierAgent`. Do not attempt this
+   in kiban; it is out of scope here by design.
+2. **The `lopi` sprint this checker is for.** `konjoai/lopi` currently has zero docs
+   using the `decays:` convention (confirmed this sprint — `konjo-doc-staleness scan`
+   against a real clone at `63908a5` reports 72 `SKIP`, 0 `FAIL`; that is an honest
+   finding, not a clean bill of health). A follow-up `lopi` sprint should: adopt
+   `decays:` front matter on `docs/LOOP_ENGINEERING_ROADMAP.md` and its siblings,
+   reclassify the ones that are actually done (`historical`, with a superseded banner)
+   rather than re-verifying claims that are simply wrong, and wire
+   `konjo-doc-staleness` into `lopi`'s own CI once its docs are stamped. This sprint
+   does not reclassify any of lopi's docs — that is lopi's sprint's job.
+3. **The rest of the konjo-* family.** `konjo-ship` moved into
+   `plugins/konjo/skills/` this sprint (see `LEDGER.md` for the plane decision).
+   `konjo-boot`, `konjo-philosophy`, `konjo-quality`, and `konjo-retrofit` did not:
+   `konjo-quality`/`konjo-retrofit` are Rust-quality-framework specific (hardcoded
+   `cargo`/`clippy` commands, a lopi/miru-specific repo-type checklist) and need real
+   generalization, not a file move. `lopi` and `miru` still carry their local
+   `.claude/skills/konjo-ship/` copies, now shadowing the global one for those two
+   repos specifically — removing the stale local copy is each repo's own call, not
+   this sprint's (per "do not hand-edit consuming repos").
+4. **Optional: wire `doc_staleness` into `konjo-gates` as a report-only gate**, the
+   way `gate_context_budget`/`gate_skill_size` are report-only until calibrated. Not
+   done here because doing it before any repo has adopted `decays:` would either warn
+   on everything (noise) or check nothing (a no-op) — wait for a repo to actually stamp
+   docs first, per the "optional hardening" discipline below.
+5. **kiban's own docs haven't adopted `decays:` either.** `README.md` and
+   `DISTRIBUTION.md` are natural `reference`-class candidates; `NEXT_SESSION_PROMPT.md`
+   itself is arguably `state`. Worth dogfooding once the convention has seen one real
+   consuming-repo adoption, so the worked examples aren't purely synthetic.
+
+---
+
 # Next session: post-1.0.0 (pilots and activation, not new phases)
 
 kiban reached 1.0.0. The evolution plan's twelve phases are all shipped: the substrate and

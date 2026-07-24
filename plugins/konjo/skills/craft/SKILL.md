@@ -3,9 +3,10 @@ name: craft
 description: How to build, the Konjo way. The build behaviors from Karpathy's field notes (read before you write, think before coding, simplicity, surgical changes, verification, goal-driven execution, debugging, dependencies, communication, and the common failure modes) plus the verify-loop. Opt-in per repo. Invoke before a non-trivial build step.
 ---
 
-<!-- konjo-skill-size-ok: carries all ten Karpathy build field notes by design; it is opt-in
-(loaded only when invoked), so its length does not count against the always-on context budget.
-Trimming below the line cap would drop a behavior. This length is a recorded one-way door. -->
+<!-- konjo-skill-size-ok: carries all ten Karpathy build field notes plus the document decay
+convention by design; it is opt-in (loaded only when invoked), so its length does not count
+against the always-on context budget. Trimming below the line cap would drop a behavior. This
+length is a recorded one-way door. -->
 
 
 # craft
@@ -61,6 +62,51 @@ command, a browser path for a web UI, a simulator for iOS). Run that loop before
 done. Test behavior that can actually break, not that a constructor sets a field. If something
 is hard to test, that is information about the design, not permission to skip it. A repo with
 no `verify_cmd` is a surfaced gap (the gate warns), the way a missing prove threshold is.
+
+## Document decay (the `decays:` convention)
+
+A doc that asserts current-state facts ("no MCP", "no worktrees") is a claim, and an
+unstamped claim decays silently. A checklist that names three filenames catches drift in
+those three files and nothing else; every doc written after the checklist is born
+unmaintained. So the unit that decays is not a filename, it is a class of claim. Every
+doc that makes one declares its class in front matter:
+
+```yaml
+---
+decays: state          # state | reference | intent | historical
+verified-against: 63908a5
+verified-date: 2026-07-24
+---
+```
+
+Four classes, because they age differently and the class is the whole point:
+
+- **`state`** — what is and isn't built right now (a roadmap gap table, a feature
+  matrix, a parity audit). Decays every sprint; highest harm when stale, because plans
+  get built on it. `lib/doc_staleness.py` fails a `state` doc once `verified-against`
+  falls too far behind `HEAD`, and fails it hard if `verified-against` is missing
+  entirely — an unstamped `state` claim is exactly the failure this convention exists to
+  catch. Example: a roadmap's "current state — audited" table, re-stamped every time it
+  is checked against the code.
+- **`reference`** — how to use the thing now (`README.md`, `CLAUDE.md`). Moderate
+  horizon: the checker warns on drift, never fails, because a reference doc going stale
+  degrades usability, it does not make anyone build on a fiction.
+- **`intent`** — why-docs, vision, the seven pillars. Long horizon: warn only. Intent
+  does not stop being true just because the code has not caught up to it yet.
+- **`historical`** — append-only claims about the past (`CHANGELOG.md`, `LEDGER.md`, a
+  dated audit snapshot). Never decays; the past does not change, so it is exempt from
+  the staleness check by declaration. It still needs a dated banner near the top (a
+  baseline SHA and date a reader can see without running `git log`) or the checker
+  warns. A real, correct instance: lopi's `docs/ops/FEATURE_STATE_FINAL.md` opens with
+  its baseline SHA and date before a single claim — honest about when it was true. Its
+  only flaw is that nothing marks it as a point-in-time snapshot that may since be
+  superseded; a snapshot without an expiry banner reads as current to someone skimming
+  it six months later, even though the class says it never had to.
+
+Stamp a `state` doc when you write it, re-stamp it when a sprint touches the ground it
+describes, and reclassify it to `historical` with a superseded banner the moment it
+stops being maintained — silence is what turned lopi's own roadmap fourteen versions
+stale.
 
 ## Goal-driven execution
 
