@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from lib import oneway
 
@@ -160,9 +160,10 @@ def check_document(
     if fm is None:
         return DocCheck(rel, SKIP, "no decays: front matter; convention not adopted")
 
-    decays = fm.get("decays")
-    if decays not in _VALID_DECAYS:
-        return DocCheck(rel, SKIP, f"no recognized decays: value ({decays!r})")
+    decays_raw = fm.get("decays")
+    if not isinstance(decays_raw, str) or decays_raw not in _VALID_DECAYS:
+        return DocCheck(rel, SKIP, f"no recognized decays: value ({decays_raw!r})")
+    decays: str = decays_raw
 
     verified_against = fm.get("verified-against")
     verified_date = fm.get("verified-date")
