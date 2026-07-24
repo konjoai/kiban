@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""konjo-doc-staleness: scan a repo for decays: state docs and fail the stale ones.
+
+  konjo-doc-staleness scan [--repo PATH] [--stale-commits N] [--stale-days D] [--json]
+      Scan every *.md doc under --repo (default: cwd) for decays: front matter. Prints one
+      line per doc that isn't OK/SKIP, a summary count, and exits 1 if any FAIL survives.
+      SKIP (no decays: front matter) is not printed by default; pass --verbose to see it.
+
+  konjo-doc-staleness trailer --docs F [F ...]
+      Print the Konjo-Doc-Verified commit trailer for this set of re-verified docs — the
+      fingerprint is oneway.fingerprint(docs), the same scheme every other trailer uses.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from lib import doc_staleness, oneway  # noqa: E402
+
+
+def cmd_scan(args: argparse.Namespace) -> int:
+    repo_root = pathlib.Path(args.repo).resolve()
+    results = doc_staleness.scan_repo(
+        repo_root,
+        stale_commits=args.stale_commits,
+        stale_days=args.stale_days,
+    )
+    shown = [r for r in results if args.verbose or r.verdict != doc_staleness.SKIP]
+
+    if args.json:
+        print(json.dumps([r.__dict__ for r in shown], indent=2))
+    else:
+        for r in shown:
+            print(f"[{r.verdict}] {r.path} — {r.reason}")
+        n_fail = sum(1 for r in results if r.verdict == doc_staleness.FAIL)
+        n_warn = sum(1 for r in results if r.verdict == doc_staleness.WARN)
+        n_ok = sum(1 for r in results if r.verdict == doc_staleness.OK)
+        print(f"\n{n_ok} OK, {n_warn} WARN, {n_fail} FAIL ({len(results)} docs scanned)")
+
+    return 1 if any(r.verdict == doc_staleness.FAIL for r in results) else 0
+
+
+def cmd_trailer(args: argparse.Namespace) -> int:
+    fp = oneway.fingerprint(args.docs)
+    print(doc_staleness.doc_verified_trailer(fp))
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="konjo-doc-staleness")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_scan = sub.add_parser("scan", help="scan a repo for stale decays: state docs")
+    p_scan.add_argument("--repo", default=".")
+    p_scan.add_argument("--stale-commits", type=int, default=doc_staleness.DEFAULT_STALE_COMMITS)
+    p_scan.add_argument("--stale-days", type=int, default=doc_staleness.DEFAULT_STALE_DAYS)
+    p_scan.add_argument("--json", action="store_true")
+    p_scan.add_argument("--verbose", action="store_true", help="also print SKIP docs")
+    p_scan.set_defaults(func=cmd_scan)
+
+    p_trailer = sub.add_parser("trailer", help="print the Konjo-Doc-Verified trailer")
+    p_trailer.add_argument("--docs", nargs="+", required=True)
+    p_trailer.set_defaults(func=cmd_trailer)
+
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

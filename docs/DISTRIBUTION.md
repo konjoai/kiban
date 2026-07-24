@@ -45,6 +45,33 @@ State syncs across machines through a separate private repo. It is redact-scanne
 (`lib/redact.py`) before every push: HIGH-tier secrets block the push. The kiban repo
 itself carries no state.
 
+## The konjo-* skill family (absorbed into the session plane)
+
+Before the Doc Integrity sprint, `konjo-boot`, `konjo-philosophy`, `konjo-quality`,
+`konjo-retrofit`, and `konjo-ship` lived only as hand-copied `.claude/skills/` files
+inside consuming repos (`lopi`, `miru`), with no canonical source anywhere and no
+distribution mechanism — `self_update.sh` only ever fast-forwards the global clone
+itself, never a consuming repo's `.claude/skills/`. The copies drifted: `konjo-ship`'s
+Sprint Completion Checklist was byte-identical between `lopi` and `miru` (a hand-copy
+that had never been re-synced), and it enumerated three filenames as the definition of
+"sprint complete," which is exactly the kind of claim this sprint's `decays:`
+convention exists to keep from going stale unnoticed. See `LEDGER.md` for the decision
+record.
+
+`konjo-ship` is the first of the family moved into `plugins/konjo/skills/` here: one
+canonical file, distributed the same way `craft` and `decide` already are, rather than
+N per-repo copies to keep in sync by hand. The other four (`konjo-boot`,
+`konjo-philosophy`, `konjo-quality`, `konjo-retrofit`) are not migrated by this sprint —
+`konjo-quality`/`konjo-retrofit` in particular are Rust-quality-framework specific and
+need real generalization work, not a file move. See `NEXT_SESSION_PROMPT.md`.
+
+**Override path.** A consuming repo that needs a genuinely different version of a
+global skill keeps a repo-scoped `.claude/skills/<name>/SKILL.md`. Skill resolution
+already prefers the more specific match when both a repo-scoped and an unscoped
+(global) skill share a name, so the repo-local copy wins there with no extra plumbing.
+This is deliberately visible, not silent: an override is a file that exists and can be
+diffed against the global version, not a fork nobody remembers making.
+
 ## Per-repo version pinning
 
 A consuming repo pins a kiban ref two ways:
