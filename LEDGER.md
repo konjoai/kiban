@@ -8,6 +8,55 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Wall-3-Multi-Run-1: the live review gate now costs 3x per PR -- a default change logged because both cost and behavior change
+
+**Default change with a real, ongoing cost, worth logging on that basis alone.**
+`review_diff`'s multi-run machinery (`for _ in range(runs)`, the deduped union,
+`per_run`) was fully built but the live gate defaulted to `runs=1` --
+`bin/konjo-review` and `lib/review.py`'s own keyword default both said one pass is
+enough for the single most consequential judgment in the framework: is this diff safe
+to merge. It never was. The reviewer is an LLM; `evals/runner.py` has run every
+fixture `DEFAULT_RUNS` (3) times since the eval harness shipped, on the explicit
+premise that a single sample of a noisy process is not evidence -- the same premise
+`prove.py` applies to a noisy perf measurement with 30 paired trials. The live gate
+sampled the noisiest, highest-stakes question exactly once, the one place in the
+framework where that premise mattered most.
+
+Pre-flight confirmed before touching anything: (1) the split was real --
+`evals/runner.py:34` defines `DEFAULT_RUNS = 3`; `bin/konjo-review`'s `--runs`
+argparse default and `lib/review.py`'s `review_diff(..., runs=1)` keyword default
+were both `1`; (2) the aggregation (`lib/review.py` ~340-380 pre-fix) already unions
+`per_run` findings via `dedup()` -- more runs raise recall, they do not add noise, and
+`per_run` is preserved so detection rate stays measurable; (3) the prior sprint
+(`Wall-3-Fail-Closed-1`, `1.5.0`) had already landed, so an incomplete dispatch inside
+one run of a multi-run review still surfaces as `ReviewResult.incomplete` overall --
+confirmed by reading `review_diff`'s loop, not assumed, before raising the default
+and thereby raising the number of chances for a specialist to fail mid-review.
+
+**The fix**: `DEFAULT_LIVE_RUNS = 3` (new constant in `lib/review.py`), matching
+`evals/runner.py`'s `DEFAULT_RUNS` on the principle that the blocking merge review
+must not sample the reviewer process less than the eval that validates its own
+detection rate. Both `review_diff`'s `runs` keyword and `bin/konjo-review`'s `--runs`
+flag now default to it, and both stay overridable (`runs=1` / `--runs 1`) for a
+fast/daily manual check. **This is the log-worthy part**: every consuming repo's CI
+now makes ~3x the specialist model calls per blocking review by default, with no
+action from that repo -- a real, ongoing cost change riding on a default, not a
+one-time migration. Scoped deliberately to 2-3 runs, not `prove.py`'s 30: this is
+self-consistency damping variance on a categorical judgment, not a numeric
+significance test needing statistical power. No change to the specialist set, lens
+set, severity model, or fail-closed behavior from `1.5.0`.
+
+**Companion confidence refinement, additive and non-blocking**: a finding's
+`recurrence` (how many of the run's independent passes produced it) now bumps its
+merged confidence -- unanimous +2, majority +1, single-run +0 -- using data `per_run`
+already captured. Deliberately does *not* suppress or demote a single-run finding in
+the blocking review: recall is the priority on the merge path, so a defect a
+specialist happened to catch on only one of three passes still surfaces exactly as it
+would have before this sprint. Recurrence only raises confidence for what already
+cleared the per-run gate; it never gate-keeps existence. This is a heuristic, not a
+second `prove.py`-style hypothesis test -- deliberately not over-engineered per the
+sprint's own scope line.
+
 ## Wall-3-Fail-Closed-1: a specialist that doesn't complete now blocks the merge it used to pass
 
 **One-way door, confirmed before any code was written:** every downstream repo's

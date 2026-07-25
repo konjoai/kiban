@@ -4,6 +4,46 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-07-25
+
+Wall 3's live gate sampled its own noisiest, highest-stakes judgment -- is this diff
+safe to merge -- exactly once. The reviewer is an LLM: a real defect a specialist
+catches 60% of the time is missed 40% of the time, silently, on a single pass. The
+eval harness already refused to trust one sample (`evals/runner.py`'s `DEFAULT_RUNS`
+is 3, and has been since the eval harness shipped); this release brings the live gate
+up to the same bar, and adds a small confidence refinement on top of the union/`per_run`
+machinery `review_diff` already had.
+
+### Changed
+
+- `lib/review.py`: `review_diff`'s `runs` default changes from `1` to the new
+  `DEFAULT_LIVE_RUNS = 3`, matching `evals/runner.py`'s `DEFAULT_RUNS` -- the blocking
+  merge review must not sample the noisy reviewer process less than the eval that
+  validates its detection rate. `bin/konjo-review`'s `--runs` default follows suit
+  (was `1`, now `review.DEFAULT_LIVE_RUNS`). Both remain overridable: pass `runs=1` /
+  `--runs 1` for a fast/daily manual check where a single pass is an acceptable
+  tradeoff. **Cost**: each additional run is a full extra specialist dispatch per
+  selected specialist -- a real model call in every consuming repo's CI -- so this is
+  a considered ~3x cost multiplier on the blocking review, not a silent one. Cheap
+  insurance on the merge path, which is the whole point: Wall 3 runs once per PR, not
+  once per keystroke.
+- `Finding` gains a `recurrence: int` field (default `1`): the number of the review's
+  runs that independently produced this finding (post per-run confidence gate,
+  pre-dedup). `review_diff` now bumps a merged finding's confidence based on
+  recurrence across `per_run` -- unanimous agreement (+2, capped at 10), a majority
+  of runs (+1), a single run (+0) -- via the new `_apply_recurrence` step run after
+  the union/dedup. **Recall is unaffected**: a finding produced on only one of N runs
+  is never dropped from the blocking review; recurrence only raises confidence for a
+  finding that already cleared the per-run gate, it never gate-keeps existence. No
+  change to the specialist set, lens set, or severity model.
+- `Finding.to_record()` includes `recurrence` in its output (the CLI `--json` output
+  and `review_log` entries now carry it). The prior-findings context embedded in the
+  red-team specialist's prompt (`_user_prompt`) explicitly excludes `recurrence` when
+  serializing prior findings -- that stat is only meaningful after all runs merge (it
+  is always `1` mid-run) and including it would have shifted every recorded
+  cassette's prompt hash for no reason. Cassettes recorded before this release remain
+  valid.
+
 ## [1.5.0] - 2026-07-25
 
 Wall 3 (the specialist review gate) is the last line of defense -- a different model
