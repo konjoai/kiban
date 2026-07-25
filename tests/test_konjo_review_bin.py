@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.review import Finding, ReviewResult, SpecialistReport
+from lib.review import DEFAULT_LIVE_RUNS, Finding, ReviewResult, SpecialistReport
 
 _BIN = Path(__file__).resolve().parent.parent / "bin" / "konjo-review"
 
@@ -59,6 +59,28 @@ def _clean_result() -> ReviewResult:
         threshold=8,
         selected=["numerics"],
     )
+
+
+def test_cli_defaults_to_multi_run_live_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, konjo_review
+) -> None:
+    # The live gate must not be weaker than DEFAULT_LIVE_RUNS without an explicit
+    # --runs override -- confirm the CLI actually passes that default through to
+    # review_diff, not just that the library default exists.
+    diff_file = tmp_path / "d.patch"
+    diff_file.write_text("+++ b/x.py\n+pass\n")
+    captured: dict[str, object] = {}
+
+    def _fake_review_diff(*_a: object, **kw: object) -> ReviewResult:
+        captured.update(kw)
+        return _clean_result()
+
+    monkeypatch.setattr(konjo_review.review, "review_diff", _fake_review_diff)
+    monkeypatch.setattr(konjo_review.review_log, "record", lambda *a, **kw: "ignored")
+
+    rc = konjo_review.main(["--diff-file", str(diff_file), "--no-log"])
+    assert rc == 0
+    assert captured["runs"] == DEFAULT_LIVE_RUNS
 
 
 def test_incomplete_review_blocks_even_with_zero_findings(

@@ -1,10 +1,18 @@
 """The keystone review interface shared by the live gate and the eval harness.
 
-    review_diff(diff_text, profile, specialists=None, *, runs=1) -> ReviewResult
+    review_diff(diff_text, profile, specialists=None, *, runs=DEFAULT_LIVE_RUNS) -> ReviewResult
 
 One function, two callers. The live review CLI passes the working diff; the eval harness
 passes each fixture's diff.patch. They share this exact path so the eval exercises the
 real gate, not a parallel mock.
+
+The reviewer is an LLM: findings vary run to run, so a single pass silently misses
+whatever the model didn't catch on that particular sample. `runs` repeats the review
+and unions the findings (more runs raise recall, they never hide a finding a smaller
+run count would have shown) -- the same self-consistency principle `prove.py` applies
+to a noisy perf measurement, applied to the noisiest, highest-stakes judgment in the
+framework: is this diff safe to merge. See `DEFAULT_LIVE_RUNS` below for the default
+and its cost tradeoff.
 
 Specialists are prompt-driven reviewers invoked through a backend: the Claude CLI in
 production, a scripted backend in tests. Findings carry a stable fingerprint (path,
@@ -64,6 +72,18 @@ logger = logging.getLogger("kiban.review")
 # almost everything for a careful human pass.
 MODE_THRESHOLDS = {"daily": 8, "deep": 2}
 DEFAULT_MODE = "daily"
+
+# The live gate's default self-consistency pass count. A single pass silently misses
+# whatever the reviewer LLM happened not to catch on that one sample -- the same reason
+# `prove.py` refuses a verdict from a single trial. Matches `evals/runner.py`'s
+# `DEFAULT_RUNS` (3): the blocking merge review must not sample the noisy reviewer
+# process less than the eval harness that validates the gate's own detection rate.
+# Cost tradeoff, stated so it is a considered decision: each additional run is a full
+# extra specialist dispatch per selected specialist -- a real model call in production
+# -- so this is a deliberate ~3x cost multiplier on the review. That is acceptable
+# because Wall 3 runs on the merge path, not on every keystroke; a `daily` fast mode
+# can still override with `runs=1` (see `bin/konjo-review --runs`).
+DEFAULT_LIVE_RUNS = 3
 
 
 # --------------------------------------------------------------------------- backends
@@ -169,6 +189,7 @@ class Finding:
     specialist: str
     fingerprint: str = ""
     specialists: tuple[str, ...] = ()
+    recurrence: int = 1
 
     def __post_init__(self) -> None:
         if not self.fingerprint:
@@ -187,6 +208,7 @@ class Finding:
             "summary": self.summary,
             "specialist": self.specialist,
             "specialists": list(self.specialists),
+            "recurrence": self.recurrence,
         }
 
 
@@ -353,13 +375,47 @@ def _gate(findings: list[Finding], threshold: int) -> list[Finding]:
     return [f for f in findings if f.confidence >= threshold]
 
 
+def _apply_recurrence(
+    findings: list[Finding], per_run: list[list[Finding]], total_runs: int
+) -> list[Finding]:
+    """Raise confidence for a finding that recurs across runs; a defect a reviewer
+    catches on every pass is more likely real than one caught on a single pass.
+
+    Recall is the priority on the merge path, so this never drops a finding -- a
+    once-in-N finding still surfaces in the blocking review, just without the bump.
+    Not a statistical test: a coarse heuristic (unanimous > majority > single) that
+    damps variance without pretending to be `prove.py`'s paired-trial gate.
+    """
+    if total_runs <= 1:
+        return findings
+    counts: dict[str, int] = {}
+    for run in per_run:
+        for fp in {f.fingerprint for f in run}:
+            counts[fp] = counts.get(fp, 0) + 1
+    for f in findings:
+        count = counts.get(f.fingerprint, 1)
+        f.recurrence = count
+        frac = count / total_runs
+        bump = 2 if frac >= 1.0 else 1 if frac > 0.5 else 0
+        f.confidence = min(10, f.confidence + bump)
+    findings.sort(key=lambda f: (-f.confidence, f.category, f.path))
+    return findings
+
+
 # --------------------------------------------------------------------------- engine
 
 
 def _user_prompt(diff_text: str, prior: list[Finding] | None = None) -> str:
     parts = ["Review this unified diff for defects in your specialty:\n", diff_text]
     if prior:
-        prior_json = json.dumps([f.to_record() for f in prior], indent=2)
+        # `recurrence` is a post-aggregation stat (always 1 mid-run, before per_run
+        # is complete) -- meaningless as reviewer context, and including it would
+        # shift the prompt hash cassettes are keyed on for no reason. Excluded here,
+        # not from to_record() itself, so the final CLI/log output still carries it.
+        prior_records = [
+            {k: v for k, v in f.to_record().items() if k != "recurrence"} for f in prior
+        ]
+        prior_json = json.dumps(prior_records, indent=2)
         parts.append(
             "\n\nThe other specialists already reported these findings. Do not repeat "
             f"them; only add what they missed:\n{prior_json}"
@@ -372,7 +428,7 @@ def review_diff(
     profile: dict[str, Any],
     specialists: list[str] | None = None,
     *,
-    runs: int = 1,
+    runs: int = DEFAULT_LIVE_RUNS,
     backend: ReviewBackend | None = None,
     mode: str = DEFAULT_MODE,
     threshold: int | None = None,
@@ -441,8 +497,9 @@ def review_diff(
         per_run.append(dedup(gated))
 
     union: list[Finding] = [f for run in per_run for f in run]
+    merged = _apply_recurrence(dedup(union), per_run, runs)
     return ReviewResult(
-        findings=dedup(union),
+        findings=merged,
         per_run=per_run,
         specialist_reports=list(reports.values()),
         runs=runs,

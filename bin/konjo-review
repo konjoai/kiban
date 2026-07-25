@@ -7,7 +7,12 @@ review log so specialist-stats has input.
 
 Usage:
   konjo-review [--base origin/main] [--profile profiles/squish.yml]
-               [--mode daily|deep] [--runs 1] [--json] [--no-log]
+               [--mode daily|deep] [--runs 3] [--json] [--no-log]
+
+Defaults to review.DEFAULT_LIVE_RUNS (3) self-consistency passes: the reviewer is an
+LLM whose findings vary run to run, so the blocking merge review samples it multiple
+times rather than trusting one pass, matching evals/runner.py's own DEFAULT_RUNS. Pass
+--runs 1 for a fast/daily manual check where a single pass is an acceptable tradeoff.
 """
 
 from __future__ import annotations
@@ -42,7 +47,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--base", default="origin/main")
     parser.add_argument("--profile", default=str(_KIBAN_ROOT / "profiles" / "squish.yml"))
     parser.add_argument("--mode", default="daily", choices=["daily", "deep"])
-    parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument("--runs", type=int, default=review.DEFAULT_LIVE_RUNS)
     parser.add_argument("--diff-file", default=None, help="review a diff from a file instead of git")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--no-log", action="store_true", help="do not append to the review log")

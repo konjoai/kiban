@@ -88,14 +88,15 @@ def test_confidence_gate_daily_drops_low_deep_keeps() -> None:
 
 def test_fingerprint_dedup_keeps_highest_and_records_specialists() -> None:
     # numerics and red-team report the same issue on different lines: one finding,
-    # highest confidence kept, both specialists recorded.
+    # highest confidence kept, both specialists recorded. Pinned to runs=1 -- this
+    # is about cross-specialist dedup, not the recurrence-confidence bump.
     backend = ScriptedBackend(
         {
             "numerics": _finding_json(confidence=7, line=14),
             "red-team": _finding_json(confidence=9, line=99),
         }
     )
-    result = review_diff(MLX_DIFF, SQUISH, backend=backend, mode="deep")
+    result = review_diff(MLX_DIFF, SQUISH, backend=backend, runs=1, mode="deep")
     same = [f for f in result.findings if f.category == "numerics"]
     assert len(same) == 1
     assert same[0].confidence == 9
@@ -117,6 +118,64 @@ def test_per_run_recorded_for_multiple_runs() -> None:
     assert result.runs == 3
     assert len(result.per_run) == 3
     assert all(any(f.category == "numerics" for f in run) for run in result.per_run)
+
+
+def test_live_default_is_multi_run_and_clean_diff_still_passes() -> None:
+    # The blocking review must not be weaker than the eval harness that validates it
+    # (evals/runner.py's DEFAULT_RUNS == 3): the live default matches.
+    assert review.DEFAULT_LIVE_RUNS > 1
+    backend = ScriptedBackend({})
+    result = review_diff(MLX_DIFF, SQUISH, backend=backend, mode="deep")
+    assert result.runs == review.DEFAULT_LIVE_RUNS
+    assert len(result.per_run) == review.DEFAULT_LIVE_RUNS
+    # A clean diff (no findings on any run) still passes clean at the new default.
+    assert result.findings == []
+    assert not result.incomplete
+
+
+class _FlakyBackend:
+    """Simulates a reviewer LLM that only catches a real defect on some passes:
+    `numerics` reports the finding on its first `hits` calls then goes quiet; every
+    other specialist (e.g. red-team) always reports nothing, so it can't contaminate
+    the recurrence count being tested."""
+
+    def __init__(self, hits: int, reply: str) -> None:
+        self.hits = hits
+        self.reply = reply
+        self.calls: dict[str, int] = {}
+
+    def dispatch(
+        self, specialist: str, system_prompt: str, user_prompt: str, *, model: str | None = None
+    ) -> str | None:
+        n = self.calls.get(specialist, 0) + 1
+        self.calls[specialist] = n
+        if specialist == "numerics" and n <= self.hits:
+            return self.reply
+        return "NO FINDINGS"
+
+
+def test_union_keeps_a_finding_seen_on_only_one_of_n_runs() -> None:
+    # Recall is the priority on the blocking path: a finding a noisy reviewer only
+    # caught once out of three runs must still surface, not be silently dropped.
+    backend = _FlakyBackend(hits=1, reply=_finding_json(confidence=6))
+    result = review_diff(MLX_DIFF, SQUISH, backend=backend, runs=3, mode="deep")
+    assert result.has("numerics", "CRITICAL")
+    finding = next(f for f in result.findings if f.category == "numerics")
+    assert finding.recurrence == 1
+    # No confidence bump for a single-run finding -- it isn't demoted either.
+    assert finding.confidence == 6
+
+
+def test_recurrence_raises_confidence_proportionally_to_agreement() -> None:
+    def _confidence_for(hits: int) -> int:
+        backend = _FlakyBackend(hits=hits, reply=_finding_json(confidence=6))
+        result = review_diff(MLX_DIFF, SQUISH, backend=backend, runs=3, mode="deep")
+        return next(f for f in result.findings if f.category == "numerics").confidence
+
+    once, majority, unanimous = _confidence_for(1), _confidence_for(2), _confidence_for(3)
+    # A finding caught every run is marked more confident than one caught on a
+    # majority, which in turn beats one caught on a single run -- none are dropped.
+    assert unanimous > majority > once == 6
 
 
 def test_malformed_reply_is_zero_findings_not_crash() -> None:
@@ -190,8 +249,10 @@ def test_failed_specialist_marks_incomplete_not_clean() -> None:
 def test_transient_failure_retries_and_recovers() -> None:
     # numerics fails once (a transient timeout) then succeeds on retry: the result
     # must be a normal verdict, not INCOMPLETE, and the retry's finding must count.
+    # Pinned to runs=1: this test is about retry-then-recover semantics within a
+    # single pass, independent of the multi-run default.
     backend = ScriptedBackend({"numerics": _finding_json()}, fail_once={"numerics"})
-    result = review_diff(MLX_DIFF, SQUISH, backend=backend, mode="deep")
+    result = review_diff(MLX_DIFF, SQUISH, backend=backend, runs=1, mode="deep")
     rep = {r.name: r for r in result.specialist_reports}
     assert rep["numerics"].dispatches == 2  # the failed attempt plus the retry
     assert rep["numerics"].completed
