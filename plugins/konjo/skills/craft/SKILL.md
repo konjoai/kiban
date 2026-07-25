@@ -23,6 +23,22 @@ so it does not count against the always-on context budget).
 bash "$HOME/.konjo/kiban/plugins/konjo/hooks/preamble_update.sh"
 ```
 
+## Doc staleness check (run before you build)
+
+```bash
+python3 "$HOME/.konjo/kiban/bin/konjo-doc-staleness" scan --repo . 2>/dev/null || true
+```
+
+Best-effort: skip silently if the CLI is not present in this clone (an older pin, or a
+repo that has not adopted `decays:` yet). Any `FAIL` is work for *this* session, not a
+problem to leave for CI to discover with nobody assigned to fix it — that gap is exactly
+how a checklist that only re-verifies docs "touched by this sprint" leaves a doc that
+nobody happens to touch to rot indefinitely. Read the failing doc, check its claim
+against the actual code, then: re-stamp `verified-against`/`verified-date` if the claim
+still holds, rewrite the doc if it does not, or reclassify `historical` with a
+superseded banner if it is abandoned. Never re-stamp a claim you have not actually
+checked — that recreates the exact dishonesty `decays:` exists to catch.
+
 ## Read before you write
 
 The biggest source of bad model-written code is writing before reading. Read the files you
@@ -103,10 +119,8 @@ Four classes, because they age differently and the class is the whole point:
   superseded; a snapshot without an expiry banner reads as current to someone skimming
   it six months later, even though the class says it never had to.
 
-Stamp a `state` doc when you write it, re-stamp it when a sprint touches the ground it
-describes, and reclassify it to `historical` with a superseded banner the moment it
-stops being maintained — silence is what turned lopi's own roadmap fourteen versions
-stale.
+Stamp a `state` doc when you write it (see the doc staleness check above for what to do
+when one has already gone stale).
 
 ## Goal-driven execution
 

@@ -35,7 +35,13 @@ This release built the `decays:` convention and `lib/doc_staleness.py` (see
    way `gate_context_budget`/`gate_skill_size` are report-only until calibrated. Not
    done here because doing it before any repo has adopted `decays:` would either warn
    on everything (noise) or check nothing (a no-op) — wait for a repo to actually stamp
-   docs first, per the "optional hardening" discipline below.
+   docs first, per the "optional hardening" discipline below. This is safer now than it
+   would have been at 1.4.0: `craft` runs the scan before any build step and `konjo-ship`
+   requires zero repo-wide FAILs before shipping (1.4.1, in response to feedback that the
+   original checklist only re-verified docs "touched by this sprint" — a doc nobody
+   touches can still go stale from time alone, with no session ever assigned to fix it).
+   A CI gate wired in now would mostly be catching what a session already fixed upstream,
+   not surprising anyone with an unfixable red build.
 5. **kiban's own docs haven't adopted `decays:` either.** `README.md` and
    `DISTRIBUTION.md` are natural `reference`-class candidates; `NEXT_SESSION_PROMPT.md`
    itself is arguably `state`. Worth dogfooding once the convention has seen one real

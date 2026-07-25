@@ -4,6 +4,28 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-07-24
+
+Feedback on 1.4.0: `doc_staleness` gives the repo a way to *detect* a stale `state`
+doc, but nothing made detection lead anywhere — `konjo-ship`'s checklist only
+re-verified docs "touched by this sprint's changes," so a doc nobody happens to touch
+can go stale from the passage of time alone, with no session ever assigned to fix it.
+That is a gate that fails with no remediation path, not a gate that keeps docs honest.
+
+### Fixed
+
+- `plugins/konjo/skills/craft/SKILL.md`: added a "doc staleness check" step, run
+  before any non-trivial build step (best-effort — skips silently if the CLI or the
+  convention isn't present in a given repo yet). Any `FAIL` is investigated and fixed
+  as part of the current session: re-stamped if the claim still holds, rewritten if it
+  does not, or reclassified `historical` with a superseded banner if abandoned. Never
+  re-stamped without being checked — that would recreate the exact dishonesty
+  `decays:` exists to catch.
+- `plugins/konjo/skills/konjo-ship/SKILL.md`: the checklist item now requires
+  `konjo-doc-staleness scan` against the *whole repo*, not just this sprint's changed
+  files, before a sprint can ship. Closes the gap that let an orphaned doc rot
+  indefinitely.
+
 ## [1.4.0] - 2026-07-24
 
 A source-level audit of `konjoai/lopi` found a roadmap doc asserting four capability
