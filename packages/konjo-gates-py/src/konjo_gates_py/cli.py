@@ -440,6 +440,11 @@ def gate_self_test(profile_path: str, mode: str) -> GateResult:
             f"{s['n_must_flag']} must-flag, {s['n_controls']} control(s), runs={report['runs']}",
         )
     detail = []
+    if s.get("incomplete_fixtures"):
+        detail.append(
+            "incomplete (a specialist did not complete after retry -- fail-closed, not a "
+            "verdict): " + ", ".join(s["incomplete_fixtures"])
+        )
     if s["missed_bugs"]:
         detail.append("missed: " + ", ".join(s["missed_bugs"]))
     if s["false_positive_controls"]:

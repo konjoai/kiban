@@ -1,4 +1,42 @@
-# Next session: Doc Integrity follow-ups, then post-1.0.0 pilots and activation
+# Next session: Wall-3 multi-run, then Doc Integrity follow-ups, then post-1.0.0 pilots
+
+## Wall-3 multi-run (companion to the 1.5.0 fail-closed fix)
+
+1.5.0 made Wall 3 fail closed on a specialist that does not complete (see
+`CHANGELOG.md` [1.5.0] and `LEDGER.md`'s `Wall-3-Fail-Closed-1` entry). That fixes the
+failure contract only: a specialist either completes and its verdict counts, or it
+fails (after one retry) and the whole review is `INCOMPLETE`. It says nothing about a
+specialist that *completes* but is simply wrong on a given run -- a real model can miss
+a bug on one pass and catch it on the next, and today a single completed run is the
+whole verdict.
+
+**Not done in the 1.5.0 sprint, on purpose (explicitly out of scope there):**
+self-consistency across multiple runs of Wall 3 on the same diff, i.e. requiring
+agreement (or a supermajority) across N independent completed runs before a clean
+verdict is trusted, the same way `evals/runner.py` already runs each eval fixture
+`DEFAULT_RUNS` (3) times and applies a stricter detection-rate bar for CRITICAL bugs
+than for lower severities. The live gate (`bin/konjo-review`) still reviews a working
+diff with `runs=1` by default.
+
+A follow-up sprint should:
+1. Decide whether `bin/konjo-review`'s default `runs` should move above 1 for the live
+   gate (cost/latency tradeoff: each additional run is a real specialist dispatch,
+   i.e. real wall-clock and, in production, a real model call).
+2. Decide the agreement rule for a clean verdict across runs -- unanimous silence
+   (strictest, matches the `must_be_silent` control's per-run bar in the eval harness)
+   vs. a supermajority (matches the eval harness's non-CRITICAL `must_flag` bar:
+   detected on at least one run is enough to flag, so silence would need to hold on
+   *every* run to still pass clean).
+3. Wire it through the same `ReviewResult`/`SpecialistReport` surface 1.5.0 added
+   (`per_run`, `incomplete`) rather than a parallel mechanism -- `per_run` already
+   carries what each run individually found; this is a question of what `review_diff`
+   (or its caller) does with that list before returning a verdict, not a new plumbing
+   layer.
+4. Multi-run composes with the 1.5.0 fix, not against it: an `INCOMPLETE` run should
+   presumably not count as a "clean" vote in whatever agreement rule lands (an
+   incomplete run carries no signal either way, per `ReviewResult.incomplete`'s own
+   docstring) -- confirm that composition explicitly rather than assuming it falls out
+   for free.
 
 ## Doc Integrity Gate follow-ups (1.4.0)
 

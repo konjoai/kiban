@@ -59,6 +59,7 @@ def record(result: ReviewResult, *, branch: str | None = None, label: str | None
                 "n_findings": r.n_findings,
                 "latency": round(r.latency, 3),
                 "model": r.model,
+                "completed": r.completed,
             }
             for r in result.specialist_reports
         ],
@@ -67,6 +68,7 @@ def record(result: ReviewResult, *, branch: str | None = None, label: str | None
             "n_findings": len(result.findings),
             "categories": sorted({f.category for f in result.findings}),
         },
+        "incomplete": result.incomplete,
     }
     jsonl_store.append(path, payload)
     return path

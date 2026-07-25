@@ -8,6 +8,55 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Wall-3-Fail-Closed-1: a specialist that doesn't complete now blocks the merge it used to pass
+
+**One-way door, confirmed before any code was written:** every downstream repo's
+merge gate now blocks on review incompleteness where it previously passed silently.
+A PR that used to go green because a specialist call timed out or the CLI errored out
+(read by the old contract as `dispatched=True` with zero findings, indistinguishable
+from a clean pass) will now correctly block until the specialist actually completes.
+This is deliberate and irreversible in the sense that matters: reverting it puts Wall
+3 back into fail-open decoration, the exact `continue-on-error: true` shape the org
+spent the doc-integrity and quality-gate sprints eliminating elsewhere, this time
+sitting in the keystone gate everything else falls back to.
+
+Pre-flight confirmed the hole before touching it: `CLIBackend.dispatch` (now
+`ClaudeCLIBackend`, `lib/review.py`) funneled `TimeoutExpired`, `OSError`, *and* a
+non-zero CLI exit to a return value the parser reads as zero findings -- and the
+non-zero-exit path was worse than documented: it logged a warning but still returned
+`stdout`, so a process that errored out with partial output could have that output
+parsed as valid findings rather than discarded. `SpecialistReport.dispatched` (line
+167 pre-fix) was `dispatches > 0`, incremented on attempt, not on success, so a failed
+specialist read as `dispatched=True` with `n_findings=0` -- the exact false signal a
+caller would need to distinguish from a genuinely clean review, and had no field to
+do it with.
+
+**The fix, scoped to the failure contract only** (no change to the specialist set,
+the lens set, or the severity/confidence gating -- a clean review is exactly as easy
+to pass as before): `ReviewBackend.dispatch` returns `str | None`, with `None`
+reserved for "did not complete." `SpecialistReport` gains `failed`/`completed`
+distinct from `dispatched`. `ReviewResult.incomplete` is true if any selected
+specialist failed even after one retry (a single transient timeout gets a retry
+before the hard block, mirroring lopi's verifier's retry-then-fail-closed shape
+rather than turning every network blip into a merge block). `bin/konjo-review` (the
+live gate) and `evals/runner.py` (the eval harness -- same `review_diff` call, per
+the module's "one function, two callers" design, so `packages/konjo-gates-py`'s
+`gate_self_test` inherits the same fail-closed behavior) both block on `incomplete`
+regardless of whether any finding was produced. See `CHANGELOG.md` [1.5.0] for the
+full list of touched call sites.
+
+**Why fail-closed instead of fail-open-with-a-warning:** a WARN-only signal is
+decoration with worse incentives than nothing -- it trains reviewers to scroll past a
+yellow line the same way `continue-on-error: true` trained CI to scroll past red.
+Retry-then-block was chosen over immediate-block specifically to keep that
+distinction real: a transient network blip should not have the same cost as a
+specialist that is actually broken, or operators will (correctly) start treating
+every INCOMPLETE as noise. Multi-run self-consistency (running Wall 3 N times and
+requiring agreement) was considered and explicitly deferred to a separate sprint
+(`NEXT_SESSION_PROMPT.md`) -- it composes with this fix (multi-run makes a single
+failure less likely to matter) but fail-closed is the correctness floor, and it
+lands first.
+
 ## Doc-Integrity-Gate-1 — the konjo-* plane decision, and the Konjo-Doc-Verified trailer
 
 **The konjo-* skill family is absorbed into the global plane — a one-way door,
