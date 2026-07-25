@@ -4,27 +4,35 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.1] - 2026-07-24
+## [1.4.1] - 2026-07-25
 
-Feedback on 1.4.0: `doc_staleness` gives the repo a way to *detect* a stale `state`
-doc, but nothing made detection lead anywhere — `konjo-ship`'s checklist only
-re-verified docs "touched by this sprint's changes," so a doc nobody happens to touch
-can go stale from the passage of time alone, with no session ever assigned to fix it.
-That is a gate that fails with no remediation path, not a gate that keeps docs honest.
+Feedback on 1.4.0, in two rounds. First: `doc_staleness` gives the repo a way to
+*detect* a stale `state` doc, but nothing made detection lead anywhere —
+`konjo-ship`'s checklist only re-verified docs "touched by this sprint's changes," so a
+doc nobody happens to touch can go stale from time alone, with no session ever
+assigned to fix it. Second, on the first fix itself: requiring a sprint to clean up
+*every* repo-wide FAIL before shipping just swaps one failure mode (silent rot) for
+another (a small, unrelated task blocked behind someone else's pre-existing debt) —
+exactly the "CI fails randomly and often" outcome to avoid. `doc_staleness` itself was
+never wired into a blocking CI check (confirmed by grep of `konjo-gates-py` and every
+workflow); the fix below is entirely at the skill-prose level.
 
 ### Fixed
 
 - `plugins/konjo/skills/craft/SKILL.md`: added a "doc staleness check" step, run
   before any non-trivial build step (best-effort — skips silently if the CLI or the
-  convention isn't present in a given repo yet). Any `FAIL` is investigated and fixed
-  as part of the current session: re-stamped if the claim still holds, rewritten if it
-  does not, or reclassified `historical` with a superseded banner if abandoned. Never
-  re-stamped without being checked — that would recreate the exact dishonesty
-  `decays:` exists to catch.
-- `plugins/konjo/skills/konjo-ship/SKILL.md`: the checklist item now requires
-  `konjo-doc-staleness scan` against the *whole repo*, not just this sprint's changed
-  files, before a sprint can ship. Closes the gap that let an orphaned doc rot
-  indefinitely.
+  convention isn't present in a given repo yet). A `FAIL` on a doc the current task
+  actually relates to is investigated and fixed: re-stamped if the claim still holds,
+  rewritten if it does not, or reclassified `historical` with a superseded banner if
+  abandoned — never re-stamped without being checked, which would recreate the exact
+  dishonesty `decays:` exists to catch. A `FAIL` unrelated to the current task is
+  noted, not fixed mid-build.
+- `plugins/konjo/skills/konjo-ship/SKILL.md`: the checklist runs
+  `konjo-doc-staleness scan` repo-wide (not just this sprint's changed files, closing
+  the original gap), but only a FAIL this sprint's changes relate to blocks shipping.
+  Unrelated pre-existing debt is surfaced in a new `DOC DEBT` line in the Session
+  Handoff Template instead — visible every session, never silently forgotten, without
+  taxing work that has nothing to do with it.
 
 ## [1.4.0] - 2026-07-24
 

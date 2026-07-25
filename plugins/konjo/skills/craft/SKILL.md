@@ -30,14 +30,15 @@ python3 "$HOME/.konjo/kiban/bin/konjo-doc-staleness" scan --repo . 2>/dev/null |
 ```
 
 Best-effort: skip silently if the CLI is not present in this clone (an older pin, or a
-repo that has not adopted `decays:` yet). Any `FAIL` is work for *this* session, not a
-problem to leave for CI to discover with nobody assigned to fix it — that gap is exactly
-how a checklist that only re-verifies docs "touched by this sprint" leaves a doc that
-nobody happens to touch to rot indefinitely. Read the failing doc, check its claim
-against the actual code, then: re-stamp `verified-against`/`verified-date` if the claim
-still holds, rewrite the doc if it does not, or reclassify `historical` with a
-superseded banner if it is abandoned. Never re-stamp a claim you have not actually
-checked — that recreates the exact dishonesty `decays:` exists to catch.
+repo that has not adopted `decays:` yet). A `FAIL` on a doc this task actually touches
+or relies on is real work, not a problem to leave for CI to discover with nobody
+assigned to fix it: read the doc, check its claim against the code, then re-stamp
+`verified-against`/`verified-date` if it still holds, rewrite the doc if it does not, or
+reclassify `historical` with a superseded banner if it is abandoned. Never re-stamp a
+claim you have not actually checked — that recreates the exact dishonesty `decays:`
+exists to catch. A `FAIL` on a doc unrelated to the current task is not yours to fix
+mid-build; note it (`konjo-ship`'s handoff has a DOC DEBT line) so it stays visible
+instead of rotting silently, without turning unrelated debt into a tax on this task.
 
 ## Read before you write
 

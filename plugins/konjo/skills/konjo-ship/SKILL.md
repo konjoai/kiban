@@ -21,11 +21,11 @@ A sprint is not complete until every one of these is true:
 [ ] Repo lint/format gate clean (cargo clippy, ruff, eslint — whatever this repo runs)
 [ ] CHANGELOG.md updated — human-readable, what changed and why it matters
 [ ] LEDGER.md updated for any one-way door this sprint crossed
-[ ] `konjo-doc-staleness scan` run against the *whole repo* (not just this sprint's
-    files — a doc can go stale from time alone, with no sprint touching it). Every
-    FAIL is re-verified and re-stamped, rewritten, or reclassified `historical` with a
-    superseded banner, before shipping.
-[ ] No doc in the repo asserts a capability state that contradicts the code
+[ ] `konjo-doc-staleness scan` run repo-wide. A FAIL on a doc this sprint relates to
+    blocks shipping — re-stamp, rewrite, or reclassify `historical`. A FAIL unrelated
+    to this sprint is reported in the handoff below, not a blocker (a small task
+    should not get stuck behind someone else's pre-existing debt).
+[ ] No doc *this sprint touched* asserts a capability state that contradicts the code
 [ ] Zero debug artifacts, dead code, or leftover scaffolding
 [ ] git add && git commit -m "type(scope): description" && git push
 ```
@@ -33,9 +33,8 @@ A sprint is not complete until every one of these is true:
 A sprint that is "basically done" is not done. Ship clean or don't ship.
 
 No item above names a specific file — a checklist that enumerates filenames catches
-drift in those files and nothing else. The property ("no doc asserts a state the code
-has outgrown") is what has to hold, checked repo-wide, not left as a CI trap only this
-sprint's own changes can trip.
+drift in those files and nothing else. Pre-existing staleness elsewhere is surfaced
+every session, so it is never silently forgotten, without taxing unrelated work.
 
 ## Execute Checklist
 
@@ -62,6 +61,7 @@ SHIPPED      [what was completed this session]
 TESTS        [passing / failing / count]
 PUSHED       [commit hash or "not pushed — reason"]
 NEXT SESSION [the exact next task — not "continue the work"]
+DOC DEBT     [decays: state FAILs unrelated to this sprint, found but not fixed here]
 DISCOVERIES  [papers, repos, techniques found this session worth revisiting]
 HEALTH       [Green / Yellow / Red — one line]
 ```
