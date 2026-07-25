@@ -4,6 +4,65 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-25
+
+Wall 3 (the specialist review gate) is the last line of defense -- a different model
+grading the diff, the one wall that catches what deterministic gates cannot -- but
+`lib/review.py` documented its own hole: any dispatch failure (a CLI timeout, an
+`OSError` launching the process, or a non-zero exit) returned empty text, which the
+parser reads identically to "the specialist reviewed the diff and found nothing." A
+network blip or a rate limit silently removed a reviewer with no signal, and
+`SpecialistReport.dispatched` (true once an attempt was made, not once it succeeded)
+gave a caller nothing to check instead. This release makes the gate fail closed, the
+same posture lopi's verifier and `jsonl_store` already hold elsewhere in the framework.
+
+### Changed
+
+- `ReviewBackend.dispatch` now returns `str | None`: `None` means the specialist did
+  not complete, distinct from `""` (which no backend now returns for a real failure).
+  `ClaudeCLIBackend.dispatch` returns `None` on `TimeoutExpired`, `OSError`, *and* a
+  non-zero CLI exit -- previously a non-zero exit only logged and still returned
+  `stdout`, so partial output from a failed process could be parsed as valid findings.
+- `SpecialistReport` gains `failed: bool` and a `completed` property
+  (`dispatched and not failed`), set from the real call outcome rather than the
+  attempt. `dispatched` is unchanged (an attempt was made) so existing readers of that
+  field keep their current meaning.
+- `ReviewResult` gains an `incomplete` property: true if any selected specialist
+  failed to complete after its retry. **A caller gating a merge on the review must
+  treat `incomplete` as block-or-retry, never as a pass** -- an INCOMPLETE result
+  carries no information about whether the diff is actually clean, so it must never
+  read the same as dispatched-with-zero-findings.
+- `review_diff`'s per-specialist dispatch now retries once on a `None` reply before
+  marking that specialist failed -- a single transient timeout or CLI blip no longer
+  hard-blocks a merge; only a failure that survives the retry does. Mirrors the
+  verifier's retry-then-fail-closed shape. A clean review (every specialist completes,
+  zero findings) is unaffected: `incomplete` is false and the verdict is exactly as
+  easy to pass as before.
+- `bin/konjo-review` (the live CLI gate) now exits 1 on `result.incomplete`, printing
+  which specialist(s) failed to complete, regardless of whether any finding was
+  produced -- previously only a CRITICAL/HIGH finding blocked, so an incomplete review
+  with zero findings passed silently.
+- `evals/runner.py`'s `FixtureResult` carries the same `incomplete` state (the eval
+  harness calls the identical `review_diff`, per the module's "one function, two
+  callers" design): an incomplete fixture fails the run without being misreported as
+  a missed bug or a fired control, both of which would point a session at the wrong
+  fix. `packages/konjo-gates-py`'s `gate_self_test` surfaces `incomplete_fixtures` in
+  its FAIL detail alongside `missed_bugs`/`false_positive_controls`.
+- `evals/cassettes.py`'s `RecordingBackend` no longer caches a failed live dispatch as
+  a cassette entry (which would make every future replay of that fixture silently pass
+  as clean); it propagates `None` instead.
+- `lib/review_log.py` records each specialist's `completed` flag and the review's
+  overall `incomplete` state, so `konjo-stats` history shows a failed dispatch instead
+  of folding it into a zero-finding dispatch count.
+
+### Fixed
+
+- The two failure paths from the sprint's kill-test were both live bugs: (1) a timed
+  out or crashed specialist previously read as `dispatched=True` with zero findings,
+  identical to a clean pass; (2) a non-zero CLI exit returned `stdout` anyway, so a
+  process that errored out with partial output on stdout could have that output parsed
+  as valid findings rather than discarded.
+
 ## [1.4.1] - 2026-07-25
 
 Feedback on 1.4.0, in two rounds. First: `doc_staleness` gives the repo a way to

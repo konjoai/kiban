@@ -43,8 +43,12 @@ class RecordingBackend:
 
     def dispatch(
         self, specialist: str, system_prompt: str, user_prompt: str, *, model: str | None = None
-    ) -> str:
+    ) -> str | None:
         reply = self.inner.dispatch(specialist, system_prompt, user_prompt, model=model)
+        if reply is None:
+            # A failed live call is not a valid cassette entry -- caching it would
+            # make every future replay of this fixture silently pass as clean.
+            return None
         self.data[cassette_key(specialist, system_prompt, user_prompt)] = reply
         return reply
 
@@ -57,7 +61,7 @@ class ReplayBackend:
 
     def dispatch(
         self, specialist: str, system_prompt: str, user_prompt: str, *, model: str | None = None
-    ) -> str:
+    ) -> str | None:
         key = cassette_key(specialist, system_prompt, user_prompt)
         if key not in self.data:
             raise CassetteMiss(

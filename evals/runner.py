@@ -44,6 +44,7 @@ class FixtureResult:
     per_run_findings: list[int] = field(default_factory=list)
     latency: float = 0.0
     model: str | None = None
+    incomplete: bool = False
 
     @property
     def detection_rate(self) -> float:
@@ -53,6 +54,10 @@ class FixtureResult:
 
     @property
     def passed(self) -> bool:
+        if self.incomplete:
+            # A specialist that didn't complete carries no signal either way --
+            # fail closed rather than let it read as a silent control or a miss.
+            return False
         if self.kind == "must_be_silent":
             # Silent on every run: no finding above gate, ever.
             return all(self.per_run_detected)
@@ -115,6 +120,7 @@ def evaluate_fixture(
     result = review.review_diff(diff_text, profile, runs=runs, backend=backend, mode=mode)
     fr.model = next((r.model for r in result.specialist_reports), None)
     fr.latency = sum(r.latency for r in result.specialist_reports)
+    fr.incomplete = result.incomplete
 
     for run_findings in result.per_run:
         fr.per_run_findings.append(len(run_findings))
@@ -186,8 +192,11 @@ def run(
             "n_fixtures": len(results),
             "n_must_flag": len(must_flag),
             "n_controls": len(controls),
-            "missed_bugs": [r.name for r in must_flag if not r.passed],
-            "false_positive_controls": [r.name for r in controls if not r.passed],
+            "missed_bugs": [r.name for r in must_flag if not r.passed and not r.incomplete],
+            "false_positive_controls": [
+                r.name for r in controls if not r.passed and not r.incomplete
+            ],
+            "incomplete_fixtures": [r.name for r in results if r.incomplete],
         },
         "fixtures": [
             {
@@ -195,6 +204,7 @@ def run(
                 "kind": r.kind,
                 "expect": r.expect,
                 "passed": r.passed,
+                "incomplete": r.incomplete,
                 "per_run_detected": r.per_run_detected,
                 "per_run_findings": r.per_run_findings,
                 "detection_rate": round(r.detection_rate, 3),

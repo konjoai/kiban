@@ -10,6 +10,14 @@ Specialists are prompt-driven reviewers invoked through a backend: the Claude CL
 production, a scripted backend in tests. Findings carry a stable fingerprint (path,
 category, normalized summary, never the line number) so the same issue on a shifted line
 dedups to one. A confidence gate drops low-confidence noise before anything is shown.
+
+Fail-closed: a backend's `dispatch` returns None (not empty text) when a specialist did
+not complete -- a timeout, a launch error, or a non-zero CLI exit. A single failure gets
+one retry; if the retry also fails, the specialist is marked failed and
+`ReviewResult.incomplete` is True. A caller gating a merge on the review must treat
+INCOMPLETE as block-or-retry, never as a pass -- an incomplete review carries no signal
+about whether the diff is actually clean, so it must never read the same as
+dispatched-with-zero-findings.
 """
 
 from __future__ import annotations
@@ -64,7 +72,7 @@ DEFAULT_MODE = "daily"
 class ReviewBackend(Protocol):
     def dispatch(
         self, specialist: str, system_prompt: str, user_prompt: str, *, model: str | None = None
-    ) -> str: ...
+    ) -> str | None: ...
 
 
 class ClaudeCLIBackend:
@@ -72,8 +80,12 @@ class ClaudeCLIBackend:
 
     Reuses the konjo_wall3_cc.sh pattern (a single -p call returning text). The system
     prompt and the diff are combined into one prompt so the call does not depend on a
-    specific system-prompt flag. Any failure returns empty text, which the parser treats
-    as dispatched-with-zero-findings; a specialist call never crashes the review.
+    specific system-prompt flag. Fail-closed contract: `dispatch` returns `None` (never
+    empty text) when the specialist did not complete -- a timeout, an OSError launching
+    the CLI, or a non-zero exit -- so the caller can tell "reviewed clean" from "did not
+    review" instead of the two being indistinguishable. A non-zero exit is treated as a
+    failure even when the process wrote partial stdout: there is no case where a
+    specialist that errored out is still trustworthy for findings.
     """
 
     def __init__(self, model: str | None = None, timeout: int = 180) -> None:
@@ -82,7 +94,7 @@ class ClaudeCLIBackend:
 
     def dispatch(
         self, specialist: str, system_prompt: str, user_prompt: str, *, model: str | None = None
-    ) -> str:
+    ) -> str | None:
         prompt = f"{system_prompt}\n\n{user_prompt}"
         cmd = ["claude", "-p", prompt, "--output-format", "text"]
         chosen = model or self.model
@@ -94,24 +106,47 @@ class ClaudeCLIBackend:
             )
         except (subprocess.TimeoutExpired, OSError) as exc:
             logger.warning("specialist %s backend call failed: %s", specialist, exc)
-            return ""
+            return None
         if proc.returncode != 0:
-            logger.warning("specialist %s backend exit %d", specialist, proc.returncode)
+            logger.warning(
+                "specialist %s backend exit %d; treating as incomplete",
+                specialist, proc.returncode,
+            )
+            return None
         return proc.stdout
 
 
 class ScriptedBackend:
-    """Deterministic backend for tests. Returns canned replies keyed by specialist name."""
+    """Deterministic backend for tests. Returns canned replies keyed by specialist name.
 
-    def __init__(self, by_specialist: dict[str, str], default: str = "NO FINDINGS") -> None:
+    `fail_once` simulates a transient failure (a timeout that succeeds on retry):
+    dispatch returns None the first time a listed specialist is called, then serves
+    its canned reply. `fail_always` simulates a specialist that never completes:
+    every call, including the retry, returns None.
+    """
+
+    def __init__(
+        self,
+        by_specialist: dict[str, str],
+        default: str = "NO FINDINGS",
+        fail_once: set[str] | None = None,
+        fail_always: set[str] | None = None,
+    ) -> None:
         self.by_specialist = by_specialist
         self.default = default
+        self.fail_once = set(fail_once or ())
+        self.fail_always = set(fail_always or ())
         self.calls: list[str] = []
 
     def dispatch(
         self, specialist: str, system_prompt: str, user_prompt: str, *, model: str | None = None
-    ) -> str:
+    ) -> str | None:
         self.calls.append(specialist)
+        if specialist in self.fail_always:
+            return None
+        if specialist in self.fail_once:
+            self.fail_once.discard(specialist)
+            return None
         return self.by_specialist.get(specialist, self.default)
 
 
@@ -162,10 +197,17 @@ class SpecialistReport:
     n_findings: int = 0
     latency: float = 0.0
     model: str | None = None
+    failed: bool = False
 
     @property
     def dispatched(self) -> bool:
+        """An attempt was made. True even for a specialist that never completed --
+        `completed` is the property that distinguishes a clean pass from a failure."""
         return self.dispatches > 0
+
+    @property
+    def completed(self) -> bool:
+        return self.dispatched and not self.failed
 
 
 @dataclass
@@ -178,6 +220,17 @@ class ReviewResult:
     threshold: int
     selected: list[str]
     scope_flags: dict[str, bool] = field(default_factory=dict)
+
+    @property
+    def incomplete(self) -> bool:
+        """True if any selected specialist failed to complete (after its retry).
+
+        Wall 3 is the last line of defense; a specialist that did not complete is not
+        the same thing as a specialist that reviewed and found nothing. A caller
+        gating a merge on the review must treat this as block-or-retry, never pass --
+        an INCOMPLETE result carries no information about whether the diff is clean.
+        """
+        return any(r.failed for r in self.specialist_reports)
 
     def has(self, category: str, severity: str) -> bool:
         cat = category.lower()
@@ -354,10 +407,24 @@ def review_diff(
             spec: _base.Specialist, prior: list[Finding] | None = None
         ) -> list[Finding]:
             t0 = time.monotonic()
-            reply = backend.dispatch(spec.name, spec.system_prompt, _user_prompt(diff_text, prior))
-            found = parse_findings(reply, spec.name, spec.category)
             rep = reports[spec.name]
+            user_prompt = _user_prompt(diff_text, prior)
+            reply = backend.dispatch(spec.name, spec.system_prompt, user_prompt)
             rep.dispatches += 1
+            if reply is None:
+                # A single transient failure (timeout, CLI error) gets one retry
+                # before this specialist is marked incomplete -- mirrors the
+                # verifier's retry-then-fail-closed shape rather than hard-blocking
+                # on a network blip.
+                logger.warning("specialist %s did not complete; retrying once", spec.name)
+                reply = backend.dispatch(spec.name, spec.system_prompt, user_prompt)
+                rep.dispatches += 1
+            if reply is None:
+                logger.warning("specialist %s failed again; marking incomplete", spec.name)
+                rep.failed = True
+                rep.latency += time.monotonic() - t0
+                return []
+            found = parse_findings(reply, spec.name, spec.category)
             rep.n_findings += len(found)
             rep.latency += time.monotonic() - t0
             return found

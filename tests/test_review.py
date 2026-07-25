@@ -8,9 +8,12 @@ network call.
 from __future__ import annotations
 
 import json
+import subprocess
+
+import pytest
 
 from lib import diff_scope, review
-from lib.review import Finding, ScriptedBackend, review_diff
+from lib.review import ClaudeCLIBackend, Finding, ScriptedBackend, review_diff
 
 SQUISH = {
     "stack": ["python", "mlx"],
@@ -123,6 +126,87 @@ def test_malformed_reply_is_zero_findings_not_crash() -> None:
     rep = {r.name: r for r in result.specialist_reports}
     assert rep["numerics"].dispatched
     assert all(f.specialist != "numerics" for f in result.findings)
+    # Malformed content is a completed dispatch, not a failure -- distinct from a
+    # backend that never returned anything at all.
+    assert rep["numerics"].completed
+    assert not result.incomplete
+
+
+def test_cli_backend_timeout_returns_none_not_empty_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(*_a: object, **_kw: object) -> None:
+        raise subprocess.TimeoutExpired(cmd=["claude"], timeout=1)
+
+    monkeypatch.setattr(subprocess, "run", _raise)
+    backend = ClaudeCLIBackend(timeout=1)
+    assert backend.dispatch("numerics", "sys", "usr") is None
+
+
+def test_cli_backend_oserror_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(*_a: object, **_kw: object) -> None:
+        raise OSError("claude binary not found")
+
+    monkeypatch.setattr(subprocess, "run", _raise)
+    backend = ClaudeCLIBackend()
+    assert backend.dispatch("numerics", "sys", "usr") is None
+
+
+def test_cli_backend_nonzero_exit_returns_none_even_with_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A non-zero exit is a failure, not a warning: today's bug is that partial stdout
+    # is returned anyway (and read as valid findings). It must not be.
+    class _FakeProc:
+        returncode = 1
+        stdout = _finding_json()
+
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: _FakeProc())
+    backend = ClaudeCLIBackend()
+    assert backend.dispatch("numerics", "sys", "usr") is None
+
+
+def test_cli_backend_clean_exit_returns_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeProc:
+        returncode = 0
+        stdout = "NO FINDINGS"
+
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: _FakeProc())
+    backend = ClaudeCLIBackend()
+    assert backend.dispatch("numerics", "sys", "usr") == "NO FINDINGS"
+
+
+def test_failed_specialist_marks_incomplete_not_clean() -> None:
+    # numerics never completes (even the retry fails): the report must say so, and
+    # the result must be INCOMPLETE, not a clean zero-findings pass.
+    backend = ScriptedBackend({}, fail_always={"numerics"})
+    result = review_diff(MLX_DIFF, SQUISH, backend=backend, mode="deep")
+    rep = {r.name: r for r in result.specialist_reports}
+    assert rep["numerics"].dispatched  # an attempt was made
+    assert not rep["numerics"].completed
+    assert rep["numerics"].failed
+    assert result.incomplete
+    assert result.findings == []
+
+
+def test_transient_failure_retries_and_recovers() -> None:
+    # numerics fails once (a transient timeout) then succeeds on retry: the result
+    # must be a normal verdict, not INCOMPLETE, and the retry's finding must count.
+    backend = ScriptedBackend({"numerics": _finding_json()}, fail_once={"numerics"})
+    result = review_diff(MLX_DIFF, SQUISH, backend=backend, mode="deep")
+    rep = {r.name: r for r in result.specialist_reports}
+    assert rep["numerics"].dispatches == 2  # the failed attempt plus the retry
+    assert rep["numerics"].completed
+    assert not rep["numerics"].failed
+    assert not result.incomplete
+    assert result.has("numerics", "CRITICAL")
+
+
+def test_clean_review_with_zero_findings_is_not_incomplete() -> None:
+    # A specialist that completes and genuinely finds nothing must stay exactly as
+    # easy to pass as before -- INCOMPLETE is reserved for a failed dispatch.
+    backend = ScriptedBackend({})
+    result = review_diff(MLX_DIFF, SQUISH, backend=backend, mode="deep")
+    assert not result.incomplete
+    assert result.findings == []
 
 
 def test_finding_fingerprint_ignores_line() -> None:

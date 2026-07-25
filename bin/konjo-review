@@ -78,6 +78,13 @@ def main(argv: list[str]) -> int:
             if f.fix:
                 print(f"      fix: {f.fix}")
 
+    if result.incomplete:
+        failed = [r.name for r in result.specialist_reports if r.failed]
+        print(f"konjo-review: INCOMPLETE -- specialist(s) did not complete after retry: "
+              f"{', '.join(failed)}. Wall 3 cannot clear this diff; re-run the review "
+              f"rather than merging on a silent gap.")
+        return 1
+
     # Blocking: any CRITICAL or HIGH finding fails the gate.
     blocking = [f for f in result.findings if f.severity.upper() in ("CRITICAL", "HIGH")]
     return 1 if blocking else 0
