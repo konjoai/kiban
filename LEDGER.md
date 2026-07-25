@@ -8,6 +8,66 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Sign-Distribution-2: verifying the update path is a one-way door -- the release process must sign tags, permanently, or distribution silently stops
+
+**One-way door, logged because reversing it is not a code revert -- it's a policy
+regression that fails safe but fails silent.** Once `lib/self_update.sh` only accepts a
+signed tag (1.7.0), every consuming repo's unpinned session plane and every signed-tag
+pin depends on `release.yml` continuing to produce one. If a future change to
+`release.yml` regresses to an unsigned tag -- a maintainer reverting the workflow, a
+`gh release create` fallback re-introduced, a signing-key secret expiring unnoticed --
+no clone anywhere breaks or errors. They just silently stop updating past that point,
+forever, until someone notices the version skew and looks in
+`~/.konjo/security.log` on an affected machine. That is a much slower, less obvious
+failure mode than a red CI build, and it is the deliberate trade this sprint made: an
+unverified update is worse than a stalled one, so a stalled one is what a signing
+regression produces. `docs/DISTRIBUTION.md` documents the manual release steps
+specifically so a human can always cut a correctly signed tag even if the workflow
+itself is broken.
+
+The corollary this decision locks in: **every future kiban release must sign its tag.**
+There is no unsigned-release escape hatch left in `self_update.sh` by design (Phase 1's
+explicit requirement) -- adding one back would be re-opening the exact gap this sprint
+closed, not a routine revert.
+
+## Sign-Distribution-1: nothing was signed before this sprint -- establishing signing was in scope, not just verifying it
+
+**Pre-flight (mandatory per the sprint's own hard gate) found the honest starting state
+was "nothing," which changes the sprint's shape.** Checked directly, not assumed: `git
+tag -v` on every existing release tag (`v0.4.0`-`v1.6.0`) errored "cannot verify a
+non-tag object of type commit" -- they are all lightweight tags, created server-side by
+`gh release create`, which cannot carry a signature no matter what. `git log
+--show-signature` on individual feature commits reported `No signature`; the only
+"signature" anywhere was on GitHub-generated merge commits (`gpg: Signature made ...
+using RSA key B569...`, unpublished in this repo, unverifiable, and irrelevant to tags
+regardless) -- GitHub's own web-flow auto-signing of web-UI merges, not a maintainer
+signing policy, and not something `self_update.sh` could verify against even if it
+wanted to.
+
+Per the sprint brief, that finding meant the honest scope was "establish signing, then
+verify" -- a materially larger decision than "add a verification step," and one the
+brief explicitly reserved for Wes rather than the agent. Asked directly; Wes chose the
+full scope (establish + verify) with **ssh-format git signing** over GPG (no keyserver,
+no web-of-trust, verifies against a flat `security/allowed_signers` file with git's
+native `gpg.ssh.allowedSignersFile` -- the "no bespoke PKI" constraint made ssh signing
+the simpler of the two options to operate, not just to implement).
+
+**What "establishing signing" concretely means, and what it deliberately does not:** a
+dedicated release-signing ed25519 keypair was generated for this sprint (not the
+maintainer's personal key -- a key whose only job is signing kiban release tags,
+scoped so a compromise doesn't also compromise anything else signed by the same
+identity). The public half is committed (`security/allowed_signers`); the private half
+was handed to Wes out-of-band (never committed, never pasted into a PR or issue -- a
+private signing key in git history is a standing compromise, not a one-time mistake) for
+provisioning as the `RELEASE_SIGNING_KEY` GitHub Actions secret. No historical commit is
+signed retroactively, and ordinary feature commits are still not required to be signed
+going forward either -- only the release tag `release.yml` cuts is. That is the
+specific, narrower claim "signed tags for the release/update path are sufficient" makes
+inside this sprint's stated scope, and it's why the unpinned update path's target
+changed from "the tracking branch tip" to "the newest signed tag reachable from
+it" (see `CHANGELOG.md` [1.7.0]) -- verifying arbitrary commits on `main` was never on
+the table without signing every one of them, which was explicitly out of scope.
+
 ## Wall-3-Multi-Run-1: the live review gate now costs 3x per PR -- a default change logged because both cost and behavior change
 
 **Default change with a real, ongoing cost, worth logging on that basis alone.**

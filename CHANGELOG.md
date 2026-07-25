@@ -4,6 +4,79 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-25
+
+kiban self-distributes to every Konjo repo via `lib/self_update.sh` and loads into
+every session's context -- compromise the upstream the global clone tracks and you have
+shaped the gate code and agent instructions of every repo at once, on their next
+session, silently. Fast-forward-only (`merge --ff-only`) stops a *divergent* history,
+but does nothing against a malicious, fast-forwardable commit pushed straight to the
+tracked upstream -- exactly the case where an attacker with push access, or a
+compromised token, appends rather than rewrites. The framework gates third-party
+dependency CVEs (`cargo-audit`, `cargo-deny`); its own distribution channel, a strictly
+higher-value target than any dependency, was unverified. Pre-flight (see `LEDGER.md`)
+confirmed nothing was signed today: release tags (`v0.4.0`-`v1.6.0`) were all
+lightweight tags created server-side by `gh release create`, and individual commits
+carried no signature (the only "signature" anywhere was GitHub's own auto-signing of
+web-UI merge commits -- not a maintainer policy, and it doesn't cover tags at all). This
+release establishes signing and adds verification on top, per the "establish + verify"
+branch of the pre-flight decision.
+
+### Added
+
+- `security/allowed_signers`: the trust anchor for release-tag verification, git's
+  native ssh-signing `allowed_signers` format. Principal `release@kiban`, matched
+  against the tagger identity `release.yml` sets when it cuts a tag -- that is what
+  git's ssh verification checks against, not the key's comment.
+- `lib/self_update.sh`: `konjo_verify_tag` runs `git verify-tag` against
+  `security/allowed_signers` (forcing the real `ssh-keygen` regardless of a caller's
+  own `gpg.ssh.program`) and classifies a failure as `unsigned`, `invalid_signature`
+  (signed, but not by a trusted key -- the strongest tamper signal),
+  `unresolvable_ref`, or `unverifiable`. `konjo_security_log` appends a timestamped
+  line to `~/.konjo/security.log` for each verification failure, so a repeated one is
+  discoverable without ever blocking a session.
+
+### Changed
+
+- `lib/self_update.sh`: the **unpinned** path no longer fast-forwards to the raw
+  tracking-branch tip. It resolves the newest signed release tag reachable from `@{u}`
+  (`git tag --list --merged --sort=-v:refname`), verifies it against
+  `security/allowed_signers` read from the pre-update working tree (never from the
+  fetched ref -- a compromised push can't rewrite its own trust anchor and pass), and
+  only then `merge --ff-only`s to it. An unsigned or invalidly-signed candidate, or no
+  signed tag reachable yet, is a silent no-op -- exactly as failure-safe as today's
+  network-failure handling, never a block. The **pinned-ref** path now verifies the
+  pin's tag signature before `checkout`; a pin to an unsigned tag or a mutable ref (a
+  branch) is refused rather than applied blindly, and every refusal is logged (a pin is
+  an explicit operator choice, so this is stricter than the unpinned path's plain
+  no-op). Every existing property is unchanged: throttling, fail-safe swallowing,
+  ff-only, single-remote fetch (`--tags` added to the one fetch call, still the single
+  tracking remote).
+- `.github/workflows/release.yml`: creates the release tag itself now --
+  `git tag -s -a` (ssh format, `RELEASE_SIGNING_KEY` secret) followed by `git push
+  origin <tag>` -- instead of relying on `gh release create`'s server-side tag
+  creation, which only ever produced a lightweight, unsigned tag.
+- `docs/DISTRIBUTION.md`: documents the verification model and recommends pinning to a
+  signed release tag, never to `main` or another branch; adds the maintainer steps for
+  cutting a signed release by hand and for rotating the signing key.
+- `README.md`: the pinning-discipline blurb now says signed tag, not just "a ref."
+- `tests/test_self_update.sh`: fixtures for a validly-signed tag (fast-forwards), an
+  unsigned tag (no-op, logged), an invalidly-signed tag (no-op, logged distinctly from
+  unsigned), recovery once a subsequent valid tag supersedes the bad ones, a
+  signed-tag pin (checks out), an unsigned-tag pin (refused, logged), and a
+  branch pin (refused, logged) -- 11 cases total, up from 6.
+
+### Out of scope (deliberately)
+
+No change to the ff-only stance or the failure-safe model -- this adds verification on
+top of both, it does not replace them. No signing of every historical commit or every
+future commit either: the verified unit is the release tag, which is why the unpinned
+path's target changed from "the branch tip" to "the newest signed tag reachable from
+the branch" (see `LEDGER.md` for why that's the only unit "signed tags are sufficient"
+could honestly mean without retroactively signing history). No bespoke key-management
+platform -- git's own ssh commit/tag signing plus a flat `allowed_signers` file, nothing
+more.
+
 ## [1.6.0] - 2026-07-25
 
 Wall 3's live gate sampled its own noisiest, highest-stakes judgment -- is this diff

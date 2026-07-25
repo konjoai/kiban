@@ -1,0 +1,18 @@
+# Trust anchor for kiban's release-tag signature verification.
+#
+# git's native `allowed_signers` format (see ssh-keygen(1), VERIFICATION AND ADDING
+# SIGNATURES): "<principal> <key-type> <base64-key> [comment]". `lib/self_update.sh`
+# passes this file to `git -c gpg.ssh.allowedSignersFile=... verify-tag` before it will
+# fast-forward to (unpinned) or check out (pinned) a release tag.
+#
+# The principal below must match the `user.email` used when the release tag was
+# created (.github/workflows/release.yml) -- that is what git's ssh verification
+# matches against, not an arbitrary label.
+#
+# Rotating this key: add the new key on a new line, signed by a still-trusted key
+# under the OLD allowed_signers (self_update.sh reads this file from the working tree
+# as it stands *before* applying an update, so the new key only takes effect once a
+# release signed under the current trust anchor is accepted). Never remove the last
+# working line without a verified replacement already in place -- that locks out every
+# clone's unpinned update path until fixed by hand.
+release@kiban ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEX7hbFoETZ6qZeKK+wYiBJk6FLk2iW7N4R7yrBbCJ/X kiban-release-signing

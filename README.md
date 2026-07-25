@@ -55,8 +55,10 @@ syncs across machines via a separate redact-scanned private repo. See
 ## Pinning discipline
 
 A consuming repo pins a kiban ref (`.konjo/kiban.ref` for the session plane, `KIBAN_REF`
-in CI). A master change then rolls out repo by repo on a deliberate schedule by bumping
-each pin, never all repos at once.
+in CI) to a **signed release tag** -- never to `main` or another branch; `self_update.sh`
+verifies the pin's signature and refuses a mutable-ref pin rather than applying it
+blindly. A master change then rolls out repo by repo on a deliberate schedule by bumping
+each pin, never all repos at once. See `docs/DISTRIBUTION.md` for the verification model.
 
 ## Phase map
 

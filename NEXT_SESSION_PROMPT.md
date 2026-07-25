@@ -1,4 +1,35 @@
-# Next session: Wall-3 run-count tuning, then Doc Integrity follow-ups, then post-1.0.0 pilots
+# Next session: migrate consuming-repo pins to signed tags, then Wall-3 run-count tuning, then Doc Integrity follow-ups, then post-1.0.0 pilots
+
+## Migrate existing pins from mutable refs to signed tags (companion to 1.7.0)
+
+1.7.0 (see `CHANGELOG.md` and `LEDGER.md`'s `Sign-Distribution-1`/`-2` entries) made
+`lib/self_update.sh` verify a signed tag before it will apply an unpinned update or
+honor a pin, and it refuses -- rather than silently no-ops -- a pin that names a
+mutable ref (a branch) or an unsigned tag. That is the correct behavior going forward,
+but it means **any consuming repo currently pinned to `main`, another branch, or an
+unsigned tag stops receiving kiban updates the moment it picks up this version**, with
+no error, just a `~/.konjo/security.log` entry an operator has to go looking for. This
+sprint deliberately did not touch any consuming repo's pin (out of scope: "do not
+hand-edit consuming repos"), so that migration is unstarted.
+
+A follow-up sprint should:
+1. Enumerate every repo's current pin (`.konjo/kiban.ref`, `KIBAN_REF` in CI) across
+   `lopi`, `miru`, and any other consuming repo -- `templates/repo-CLAUDE.md`'s
+   "Pinning" section and each repo's own copy of it is the starting list. `lopi` pins
+   `v1.4.0` per this sprint brief's own framing; confirm whether that pin is already an
+   annotated tag (it predates signing, so it is not *signed*, but check whether it's at
+   least a real tag object vs. a branch name -- that changes how urgently it needs to
+   move).
+2. For each repo pinned to anything other than a `vX.Y.Z` tag cut *after* 1.7.0 lands
+   (i.e., a signed one), bump the pin to the newest signed tag available at the time,
+   the same deliberate, repo-by-repo schedule the rollout control already uses --
+   never all repos at once.
+3. Confirm each migrated repo's next session actually applies the pin (no
+   `pin_refused` entries appear in that repo's `~/.konjo/security.log` afterward).
+4. Until a repo's pin is migrated, its session plane is frozen at whatever it last
+   pinned -- flag this loudly in that repo's own state docs so it isn't mistaken for
+   "kiban development stalled" when it's really "this repo hasn't migrated its pin
+   yet."
 
 ## Wall-3 run-count tuning from measured detection rates (companion to 1.6.0)
 
@@ -129,10 +160,14 @@ real repos and activating the gates that are honestly inert.
 
 ## Tag and release discipline (in force)
 
-`release.yml` cuts the release and tag server-side on a VERSION change on main. The 1.0.0 bump
-is a one-way door, confirmed and logged. Post-1.0, follow SemVer: patch for fixes, minor for
-additive packs/gates, major only for a breaking change to the profile schema or the gate
-contract.
+`release.yml` cuts the release on a VERSION change on main, and (since 1.7.0) creates and
+pushes a **signed** annotated tag itself (`git tag -s -a`, ssh format, `RELEASE_SIGNING_KEY`
+secret) before creating the GitHub release against it -- see `docs/DISTRIBUTION.md` and
+`LEDGER.md`'s `Sign-Distribution-1`/`-2` entries. This is now load-bearing, not optional: a
+release that lands without a valid signed tag is one every consuming repo's `self_update.sh`
+will silently refuse to propagate. The 1.0.0 bump is a one-way door, confirmed and logged.
+Post-1.0, follow SemVer: patch for fixes, minor for additive packs/gates, major only for a
+breaking change to the profile schema or the gate contract.
 
 ## Still out, permanently
 

@@ -35,6 +35,34 @@ package, so CI is reproducible and does not depend on a developer's local clone 
 - Any network or git failure is swallowed silently and never blocks or errors a session.
   The sentinel is stamped only on a successful check.
 
+### Signature verification
+
+Fast-forward-only stops a *divergent* history, but does nothing against a malicious,
+fast-forwardable commit pushed straight to the tracked upstream. `self_update.sh`
+closes that gap: it verifies a signed-tag signature before applying anything, using
+`security/allowed_signers` (git's native ssh-signing verification, `git verify-tag`) as
+the trust anchor. That file is read from the working tree as it stands *before* the
+update is applied, never from the newly fetched ref, so a compromised push cannot
+rewrite its own trust anchor and pass.
+
+- **Unpinned.** The update unit is the newest signed release tag reachable from the
+  tracking branch (`git tag --list --merged @{u} --sort=-v:refname`), not the raw
+  branch tip -- verifying every commit on `main` would mean signing every commit,
+  which this project deliberately does not do (see `LEDGER.md`). If that tag's
+  signature doesn't verify, or no signed tag is reachable yet, the update is a silent
+  no-op: exactly as failure-safe as a network miss, never a block.
+- **Pinned.** The pin is expected to name a signed tag. A pin that doesn't verify --
+  unsigned, invalidly signed, or a mutable ref like a branch -- is refused rather than
+  applied. This is deliberately stricter than the unpinned path: a pin is an explicit
+  operator choice, so a pin that stops verifying is worth surfacing every time, not
+  just discovering once.
+- **Discoverability.** A verification failure (as opposed to a network/fetch failure,
+  which is never logged) is appended to `~/.konjo/security.log` with a reason:
+  `unsigned`, `invalid_signature` (signed, but not by a trusted key -- the strongest
+  tamper signal), `unresolvable_ref`, or `unverifiable`. Silent-to-the-session is
+  correct for failure-safety; invisible-forever is not, so a repeated failure
+  accumulates there for an operator who looks.
+
 ## State lives outside the clone
 
 Ledger state lives in `~/.konjo/state`, not inside `~/.konjo/kiban`. An update touches
@@ -82,3 +110,33 @@ A consuming repo pins a kiban ref two ways:
 
 Pinning is the rollout control. A master change lands repo by repo on a deliberate
 schedule by bumping each repo's pin, never all repos at once.
+
+**Pin to a signed release tag (`vX.Y.Z`), never to `main` or any other branch.** A
+branch pin carries none of a tag's signing guarantee -- `self_update.sh` now refuses it
+outright (see Signature verification, above) rather than silently applying it. `KIBAN_REF`
+in CI should likewise name a signed tag, not a branch or an unpinned floating ref.
+
+### Cutting a signed release (maintainer)
+
+`.github/workflows/release.yml` does this automatically on a `VERSION` bump landing on
+`main`: it creates a signed, annotated tag (`git tag -s -a`, ssh format) using the
+`RELEASE_SIGNING_KEY` repo secret, pushes the tag, then creates the GitHub release
+against it. The tagger identity is `release@kiban`, which must match the principal in
+`security/allowed_signers` -- that is what git's ssh verification matches against, not
+the key's comment.
+
+To cut a release by hand (bypassing the workflow) or to rotate the signing key:
+
+```bash
+git config user.email release@kiban
+git config gpg.format ssh
+git config user.signingkey /path/to/release_signing_key   # the private half
+git tag -s -a vX.Y.Z -m vX.Y.Z <commit>
+git push origin vX.Y.Z
+```
+
+Rotating the key: add the new public key as a new line in `security/allowed_signers`,
+commit it, and sign *that* commit's release tag with the *old* key -- consuming clones
+read `allowed_signers` from their pre-update working tree, so the new key only becomes
+trusted once a release signed under the current trust anchor has been accepted. Never
+remove the last working line without a verified replacement already in place.

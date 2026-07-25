@@ -1,10 +1,15 @@
 name: Release
 
 # Cut a GitHub release straight from VERSION + CHANGELOG.md, with the changelog
-# as the single source of truth for the notes. `gh release create` makes the
-# tag (vX.Y.Z) and the release together server-side, so no tag has to be pushed
-# by hand. Runs when VERSION lands on main, or on manual dispatch; it is
-# idempotent, so re-running once the release exists is a no-op.
+# as the single source of truth for the notes. Runs when VERSION lands on main, or on
+# manual dispatch; it is idempotent, so re-running once the release exists is a no-op.
+#
+# The tag is a signed, annotated tag we create and push ourselves -- `gh release
+# create`'s server-side tag creation (the old approach) only ever produces a
+# lightweight, unsigned tag, which is what `security/allowed_signers` and
+# `lib/self_update.sh`'s verify-before-apply step exist to close off. The tagger
+# identity (`release@kiban`) must match the principal in `security/allowed_signers`;
+# git's ssh verification matches on that, not on the key's comment.
 
 on:
   push:
@@ -56,12 +61,35 @@ jobs:
           echo "Release notes for $version:"
           cat release-notes.md
 
+      - name: Sign and push the release tag
+        if: steps.check.outputs.exists == 'false'
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -z "$RELEASE_SIGNING_KEY" ]; then
+            echo "RELEASE_SIGNING_KEY secret is not set; cannot cut a signed release tag." >&2
+            echo "See docs/DISTRIBUTION.md for how to provision it." >&2
+            exit 1
+          fi
+          keyfile="$RUNNER_TEMP/release_signing_key"
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$keyfile"
+          chmod 600 "$keyfile"
+
+          tag="${{ steps.v.outputs.tag }}"
+          git config user.email "release@kiban"
+          git config user.name "kiban-release"
+          git config gpg.format ssh
+          git config user.signingkey "$keyfile"
+          git tag -s -a "$tag" -m "$tag" "$GITHUB_SHA"
+          git push origin "$tag"
+
+          rm -f "$keyfile"
+
       - name: Create release
         if: steps.check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.v.outputs.tag }}" \
-            --target "$GITHUB_SHA" \
             --title "${{ steps.v.outputs.tag }}" \
             --notes-file release-notes.md
