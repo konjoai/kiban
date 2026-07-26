@@ -3,6 +3,11 @@ name: konjo-ship
 description: Konjo sprint completion checklist and session handoff template. Use when closing out a sprint or ending a work session, in any consuming repo.
 user-invocable: true
 ---
+
+<!-- konjo-skill-size-ok: K1 added two checklist commands (konjo-gates polarity,
+konjo-can-fail) replacing one self-graded line, net +1 line over the prior cap-exact 80.
+Trimming further would cut the reasoning for why those replaced a self-graded line,
+which is the point of the change. Recorded one-way door. -->
 # Konjo Ship
 
 ## Self-update preamble (run first)
@@ -26,7 +31,8 @@ A sprint is not complete until every one of these is true:
     to this sprint is reported in the handoff below, not a blocker (a small task
     should not get stuck behind someone else's pre-existing debt).
 [ ] No doc *this sprint touched* asserts a capability state that contradicts the code
-[ ] Zero debug artifacts, dead code, or leftover scaffolding
+[ ] konjo-gates polarity — clean, or every finding waived on the record
+[ ] Every quality gate this sprint touched has a test that makes it reject
 [ ] git add && git commit -m "type(scope): description" && git push
 ```
 
@@ -34,7 +40,11 @@ A sprint that is "basically done" is not done. Ship clean or don't ship.
 
 No item above names a specific file — a checklist that enumerates filenames catches
 drift in those files and nothing else. Pre-existing staleness elsewhere is surfaced
-every session, so it is never silently forgotten, without taxing unrelated work.
+every session, so it is never silently forgotten, without taxing unrelated work. Same
+reasoning, one step further: a line the agent self-grades catches nothing at all — the
+two lines above replaced a self-graded "zero dead code" prose line that walked right
+past `run_verifier_pass`. Commands have exit codes; see `KONJO_FORWARD.md` for the limit
+even they carry.
 
 ## Execute Checklist
 
