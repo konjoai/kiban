@@ -32,7 +32,7 @@ FIXTURE_1_LET_ELSE = """\
 FIXTURE_2_IS_NONE = """\
         if self.api_client.is_none() && acceptance_needs_judge(&acceptance) {
             self.log(
-                "eval: judge tier has no API client configured — skipping the judge check and proceeding on the scorer's pass".to_string(),
+                "eval: no API client — skipping judge, proceeding on scorer's pass".to_string(),
             );
             return true;
         }
@@ -106,7 +106,7 @@ FIXTURE_4_HANDLE_VERIFIER_ERROR = """\
         }
         warn!("verifier error (fail-closed, blocking finalize): {err}");
         self.log(
-            "verifier errored — fail-closed: blocking finalize and retrying (set verifier_fail_open to override)".to_string(),
+            "verifier errored — fail-closed: retrying (verifier_fail_open overrides)".to_string(),
         );
         false
     }
@@ -172,7 +172,7 @@ def test_fixture_4_handle_verifier_error_passes() -> None:
 
 def test_fixture_4b_err_match_arm_passes() -> None:
     findings = polarity.lint_text(FIXTURE_4B_ERR_MATCH_ARM, "verifier_runner.rs")
-    assert not findings, f"an Err arm dispatching to a real handler is not permissive, got {findings}"
+    assert not findings, f"an Err arm dispatching to a real handler is not permissive: {findings}"
 
 
 def test_fixture_5_zero_diff_is_success_passes() -> None:

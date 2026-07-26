@@ -369,7 +369,11 @@ def gate_can_fail(profile: dict) -> GateResult:
     if not declared:
         return GateResult("can_fail", SKIP, "no gates: declared in profile")
 
-    missing = [g.get("name", "<unnamed>") for g in declared if not str(g.get("rejects_test", "")).strip()]
+    missing = [
+        g.get("name", "<unnamed>")
+        for g in declared
+        if not str(g.get("rejects_test", "")).strip()
+    ]
     if missing:
         return GateResult(
             "can_fail", FAIL,
