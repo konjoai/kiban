@@ -14,7 +14,13 @@ build/
 dist/
 
 # local state (the Ledger lives in ~/.konjo/state, never in the repo)
-.konjo/
+# ...except the kill-test result artifacts sprint briefs require committed in-repo
+# (`.konjo/killtests/<sprint>/*.md`) -- these are recorded evidence, not local state.
+# A negated pattern only takes effect if git is not already refusing to descend into
+# the parent, so `.konjo/*` (not `.konjo/`) ignores everything directly under it,
+# and the directory itself is left un-ignored for the exception below to apply.
+.konjo/*
+!.konjo/killtests/
 state/
 
 # editor/OS noise

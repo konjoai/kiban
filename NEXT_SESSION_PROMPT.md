@@ -1,8 +1,8 @@
-# Next session: migrate consuming-repo pins to signed tags, then Wall-3 run-count tuning, then Doc Integrity follow-ups, then post-1.0.0 pilots
+# Next session: migrate consuming-repo pins to signed tags, then K2 (G-WIRED + G-CLAIM), then Wall-3 run-count tuning, then Doc Integrity follow-ups, then post-1.0.0 pilots
 
-## Migrate existing pins from mutable refs to signed tags (companion to 1.7.0)
+## Migrate existing pins from mutable refs to signed tags (companion to 1.8.0)
 
-1.7.0 (see `CHANGELOG.md` and `LEDGER.md`'s `Sign-Distribution-1`/`-2` entries) made
+1.8.0 (see `CHANGELOG.md` and `LEDGER.md`'s `Sign-Distribution-1`/`-2` entries) made
 `lib/self_update.sh` verify a signed tag before it will apply an unpinned update or
 honor a pin, and it refuses -- rather than silently no-ops -- a pin that names a
 mutable ref (a branch) or an unsigned tag. That is the correct behavior going forward,
@@ -20,7 +20,7 @@ A follow-up sprint should:
    annotated tag (it predates signing, so it is not *signed*, but check whether it's at
    least a real tag object vs. a branch name -- that changes how urgently it needs to
    move).
-2. For each repo pinned to anything other than a `vX.Y.Z` tag cut *after* 1.7.0 lands
+2. For each repo pinned to anything other than a `vX.Y.Z` tag cut *after* 1.8.0 lands
    (i.e., a signed one), bump the pin to the newest signed tag available at the time,
    the same deliberate, repo-by-repo schedule the rollout control already uses --
    never all repos at once.
@@ -30,6 +30,53 @@ A follow-up sprint should:
    pinned -- flag this loudly in that repo's own state docs so it isn't mistaken for
    "kiban development stalled" when it's really "this repo hasn't migrated its pin
    yet."
+
+## K2 handoff: G-WIRED + G-CLAIM (Families A/B of the birth-defect proposal)
+
+K1 (Failure Semantics, this sprint -- see `CHANGELOG.md` [1.7.0] and `LEDGER.md`'s
+three K1 entries) shipped `G-POLARITY` and `G-CAN-FAIL`, Family 0 of "Closing the
+Birth-Defect Gap." Sequencing per that proposal's §6: K2 is `G-WIRED` (a field only
+test code ever sets) and `G-CLAIM` (no unproven quantitative claim), in that order --
+`G-WIRED` is cheap and narrow and catches lopi's single most expensive defect
+(`api_client`'s one write site, one caller, and that caller was a test); `G-CLAIM`
+reuses `newonly.py`'s new-findings-only differ and the trailer mechanism wholesale, the
+same way K1's waiver channel did.
+
+**Carried finding, load-bearing for how ambitious K2's detectors can be:** KT-K1.1
+(`.konjo/killtests/K1/KT-K1.1.md`) found G-POLARITY's shape *cleanly separable* with a
+five-pattern, per-language regex vocabulary -- no AST, no type information, and the
+detector needed exactly one non-obvious restriction (a bare terminal `else` only counts
+as "unrecognised case" when preceded by at least one `else if`) to avoid a false
+positive on a real adjacent branch (`scorer.rs`'s `skip_build_check` domain check
+sitting four branches from the real defect, both setting the identical constant).
+That is a favorable data point for regex/grep-shaped detection in general, but it does
+not automatically transfer to G-WIRED or G-CLAIM:
+
+- **G-WIRED needs cross-reference, not local shape.** "A field with exactly one write
+  site and that site is test-only" requires finding *every* write site for a field
+  across a crate/package, not scanning one function's condition/return shape in
+  isolation. This is a different, harder detection problem than G-POLARITY's --
+  probably still regex/grep-shaped per the birth-defect proposal's own honesty
+  ("Implementation honesty... the cheap approximation... is a module-level reference
+  scan," §Family B), but budget a K2 kill-test (construct lopi's pre-F1
+  `api_client`/`with_api` state, verbatim, the same KT-K1.1 discipline) before assuming
+  the cheap version catches it. If it doesn't cleanly separate a real test-only write
+  site from a real production one, the same rescope-to-advisory fallback K1's own brief
+  specified for G-POLARITY applies here too -- do not skip that check just because K1's
+  version of it turned out well.
+- **G-CLAIM is closer to K1's shape** (pattern-match a quantitative-claim vocabulary in
+  prose/doc-comments, not control flow) and should reuse `lib/newonly.py`'s
+  `_findings_at_head` pattern the same deliberate way K1's brief specified and this
+  sprint followed for the waiver trailer -- see `gate_polarity` in `cli.py` for the
+  net-new-via-base-file-diff pattern K1 used (mirrors `gate_prose`, not a literal
+  `newonly.net_new` subprocess call, since these are in-process AST/regex scans, not
+  external scanner shells).
+
+Do not assume K1's clean separation generalizes; write each family's own KT-K2.x
+fixture set from real lopi source *before* writing the detector, per the same
+anti-goal K1's brief named and this sprint held to (fixtures assembled from `5760da0`
+before `lib/polarity.py` existed, never edited afterward to fit what the detector
+caught).
 
 ## Wall-3 run-count tuning from measured detection rates (companion to 1.6.0)
 
@@ -160,7 +207,7 @@ real repos and activating the gates that are honestly inert.
 
 ## Tag and release discipline (in force)
 
-`release.yml` cuts the release on a VERSION change on main, and (since 1.7.0) creates and
+`release.yml` cuts the release on a VERSION change on main, and (since 1.8.0) creates and
 pushes a **signed** annotated tag itself (`git tag -s -a`, ssh format, `RELEASE_SIGNING_KEY`
 secret) before creating the GitHub release against it -- see `docs/DISTRIBUTION.md` and
 `LEDGER.md`'s `Sign-Distribution-1`/`-2` entries. This is now load-bearing, not optional: a

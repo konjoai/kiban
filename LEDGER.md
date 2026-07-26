@@ -12,7 +12,7 @@ record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
 **One-way door, logged because reversing it is not a code revert -- it's a policy
 regression that fails safe but fails silent.** Once `lib/self_update.sh` only accepts a
-signed tag (1.7.0), every consuming repo's unpinned session plane and every signed-tag
+signed tag (1.8.0), every consuming repo's unpinned session plane and every signed-tag
 pin depends on `release.yml` continuing to produce one. If a future change to
 `release.yml` regresses to an unsigned tag -- a maintainer reverting the workflow, a
 `gh release create` fallback re-introduced, a signing-key secret expiring unnoticed --
@@ -65,8 +65,65 @@ going forward either -- only the release tag `release.yml` cuts is. That is the
 specific, narrower claim "signed tags for the release/update path are sufficient" makes
 inside this sprint's stated scope, and it's why the unpinned update path's target
 changed from "the tracking branch tip" to "the newest signed tag reachable from
-it" (see `CHANGELOG.md` [1.7.0]) -- verifying arbitrary commits on `main` was never on
+it" (see `CHANGELOG.md` [1.8.0]) -- verifying arbitrary commits on `main` was never on
 the table without signing every one of them, which was explicitly out of scope.
+
+## Polarity-Waived-Trailer-1: `Konjo-Polarity-Waived` enters the trailer vocabulary -- a permanent grep surface, not reversible without invalidating history
+
+**One-way door.** `lib/oneway.py`'s trailer labels (`Konjo-Acknowledged-Oneway`,
+`Konjo-Prove-Merge`) are a permanent surface: any tool, script, or future gate that
+greps commit history for acknowledgements now has a third label to know about.
+`POLARITY_WAIVED_TRAILER = "Konjo-Polarity-Waived"` was added rather than inventing a
+second override mechanism, per the K1 brief's explicit constraint ("Reuse kiban's
+trailer mechanism wholesale for waivers. Do not invent a second override channel.").
+Reusing `oneway.fingerprint`/`find_trailer`/`make_trailer` unchanged means the new
+trailer inherits the exact same binding semantics as the existing two: keyed on the
+sorted changed-file set, not diff content (confirmed as existing, not new, behavior in
+KT-K1.2, `.konjo/killtests/K1/KT-K1.2.md`) -- a waiver is bound to "this exact set of
+touched files," and adding or removing a file invalidates it. Once a repo's commit
+history carries this trailer, removing it from the vocabulary would strand every
+recorded waiver with no reader; this decision is treated as permanent the same way the
+other two trailer labels are.
+
+## Konjo-Ship-Checklist-2: the self-graded "zero dead code" line is gone, replaced by two commands -- every consuming repo's definition of done changes
+
+**One-way door.** `plugins/konjo/skills/konjo-ship/SKILL.md` ships from a single
+global clone (not copied per repo), so this change takes effect for every consuming
+repo's next sprint close-out simultaneously, the same distribution mechanism that made
+the earlier `konjo-doc-staleness scan` replacement (see `Wall-3-Multi-Run-1`'s sibling
+entries in this file's history) a one-way door too. The removed line ("Zero debug
+artifacts, dead code, or leftover scaffolding") was self-graded by the same agent that
+wrote the code being graded -- the maker-as-checker anti-pattern this framework exists
+to forbid, applied to the checklist itself rather than the diff. It is replaced by
+`konjo-gates polarity` (clean, or every finding waived on the record) and "every
+quality gate this sprint touched has a rejecting test" -- both commands with an exit
+code, backed by `gate_polarity` and `gate_can_fail` (this sprint). A repo relying on
+the old prose line's judgment call now gets a mechanical check instead; there is no
+path back to a self-graded version of this line without repeating the exact failure
+mode (`run_verifier_pass`, `lopi-remote::whatsapp`) this replacement exists to close.
+Net effect on the skill's line budget: +1 over the prior cap-exact 80 lines, carrying
+a recorded `konjo-skill-size-ok:` justification rather than silently exceeding the cap.
+
+## KONJO-Forward-Origination-1: `KONJO_FORWARD.md` did not exist; it does now, and the gap is recorded rather than papered over
+
+**One-way door, and an honesty correction.** Both the birth-defect proposal
+("Closing the Birth-Defect Gap") and this sprint's own brief cite `KONJO_FORWARD.md`
+as an established doc with three named pillars ("Forward-never-back, Main-is-truth,
+Loop-runs-to-stop-condition"), a "one idea underneath" section, and a "What Konjo
+Forward rejects" list -- quoting exact sentences from it. It was not present in
+`konjoai/kiban` at any commit (`git log --all --diff-filter=A --name-only | grep -i
+forward` returns nothing) nor in `konjoai/lopi` at `5760da0`. Rather than silently
+treating the citations as pre-existing and only appending to them (which would assert
+a false continuity the next reader could not verify), the file is originated in this
+sprint at the repo root, `decays: intent`, carrying a provenance note at the top
+recording exactly this. From this point forward it is the real thing: future sprints
+extend it as the brief instructs (K1 added the two rejections named in its own Phase
+4 -- permissive unknowns, tests as proof of wiring -- and the residual-limit section;
+later sprints add the claim/reachability rejections named in the birth-defect
+proposal's §4.2 but out of scope for Family 0). Any future session that finds this
+entry confusing should read it as: the doc's *content* was already fully specified
+by two prior documents, only its *existence on disk* was missing, and that gap is now
+closed.
 
 ## Wall-3-Multi-Run-1: the live review gate now costs 3x per PR -- a default change logged because both cost and behavior change
 

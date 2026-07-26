@@ -25,6 +25,9 @@ ACK_TRAILER = "Konjo-Acknowledged-Oneway"
 # The prove MERGE trailer label lives here, with the other record-and-check labels, so the
 # CI prove gate can check for it via find_trailer without importing the stats engine.
 PROVE_MERGE_TRAILER = "Konjo-Prove-Merge"
+# G-POLARITY's waiver trailer (K1). Same record-and-check mechanism, same fingerprint:
+# `Konjo-Polarity-Waived: <fp> — <reason>`. No second override channel -- this is the one.
+POLARITY_WAIVED_TRAILER = "Konjo-Polarity-Waived"
 
 
 @dataclass
