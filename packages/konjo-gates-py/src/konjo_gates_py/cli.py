@@ -26,6 +26,7 @@ import argparse
 import fnmatch
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -65,6 +66,7 @@ from lib import (  # noqa: E402
     diff_scope,
     newonly,
     oneway,
+    polarity,
     progress,
     prose_lint,
     redact,
@@ -281,6 +283,123 @@ def gate_prove(changed: list[str], flags: dict[str, bool], profile: dict, base: 
         f"`konjo-prove run --results <artifact> --profile <profile>` on the bench "
         f"hardware and add the 'Konjo-Prove-Merge: {fp}' trailer to a commit",
     )
+
+
+def _is_polarity_exempt(path: str, exempt_globs: list[str]) -> bool:
+    return any(Path(path).match(g) for g in exempt_globs)
+
+
+def gate_polarity(changed: list[str], base: str, profile: dict) -> GateResult:
+    """K1, Family 0: does an unknown path return a passing value?
+
+    Net-new findings only (added lines score against the base version of the same
+    file), the way `gate_prose` already does -- pre-existing findings elsewhere in a
+    touched file are debt, not a blocker for unrelated work. A finding is resolved one
+    of three ways, in order: an explicit operator-override field in the returned
+    expression (the `verifier_fail_open` precedent, `polarity.is_explicit_override`);
+    the `Konjo-Polarity-Waived: <fp> — <reason>` trailer recorded against this exact
+    changed-file set (`oneway.fingerprint`, same mechanism as the one-way-door
+    acknowledgement and the prove MERGE record -- no second override channel); or
+    nothing, which fails naming the file, line, condition, and returned value.
+
+    `advisory: true` (the default for an existing repo adopting the gate) reports
+    without blocking; `enabled: false` skips the gate entirely. `exempt_globs` names
+    paths where the shape is legitimate by design.
+    """
+    cfg = profile.get("polarity", {}) or {}
+    if not cfg.get("enabled", True):
+        return GateResult("polarity", SKIP, "disabled (polarity.enabled: false)")
+    exempt_globs = list(cfg.get("exempt_globs", []))
+    # Ship-default is advisory (WARN, not FAIL) for a repo that has not opted in yet --
+    # the coverage-floor ratchet pattern: adopt, clean the baseline, then set
+    # `advisory: false` once clean. A profile with no `polarity:` block at all is exactly
+    # that unopted-in case.
+    advisory = bool(cfg.get("advisory", True))
+
+    net_new: list[polarity.Finding] = []
+    for path in changed:
+        if _is_polarity_exempt(path, exempt_globs) or not Path(path).exists():
+            continue
+        head_findings = polarity.lint_file(path)
+        if not head_findings:
+            continue
+        base_keys = {f.key() for f in polarity.lint_text(_base_file(base, path), path)}
+        net_new.extend(f for f in head_findings if f.key() not in base_keys)
+
+    if not net_new:
+        return GateResult("polarity", PASS, "no net-new unknown-path-returns-permissive findings")
+
+    fp = oneway.fingerprint(changed)
+    messages = _git(["log", f"{base}..HEAD", "--format=%B"])
+    waived = oneway.find_trailer(messages, oneway.POLARITY_WAIVED_TRAILER, fp)
+
+    unresolved = [
+        f for f in net_new
+        if not polarity.is_explicit_override(f) and not waived
+    ]
+    if not unresolved:
+        resolution = "waived on the record" if waived else "an explicit operator override"
+        return GateResult(
+            "polarity", PASS,
+            f"{len(net_new)} finding(s), all resolved by {resolution} (change id {fp})",
+        )
+
+    rendered = "; ".join(f.format() for f in unresolved)
+    detail = (
+        f"{len(unresolved)} unknown-path-returns-permissive finding(s): {rendered}. "
+        f"Fix the branch to return the restrictive value, name an explicit operator "
+        f"override field, or add the trailer "
+        f"'{oneway.make_trailer(oneway.POLARITY_WAIVED_TRAILER, fp)} — <reason>' to a commit"
+    )
+    return GateResult("polarity", WARN if advisory else FAIL, detail)
+
+
+def gate_can_fail(profile: dict) -> GateResult:
+    """K1, Family 0: every declared quality gate ships with a test that makes it reject.
+
+    'A green run is not evidence a gate works. Only a red one is.' For each entry in the
+    profile's `gates:` list, the named `rejects_test` command must exist AND pass --
+    both checked the same way, by actually running it. This cannot verify the test's
+    *content* is adversarial (that it exercises the hard input, not the easy one); it can
+    only require that the rejecting test exists, is named, and is green. A profile with
+    no `gates:` declared skips (Phase 3's KT-K1.3 finding: this gate has nothing to bind
+    to until a repo enumerates its own gate set).
+    """
+    declared = profile.get("gates", []) or []
+    if not declared:
+        return GateResult("can_fail", SKIP, "no gates: declared in profile")
+
+    missing = [g.get("name", "<unnamed>") for g in declared if not str(g.get("rejects_test", "")).strip()]
+    if missing:
+        return GateResult(
+            "can_fail", FAIL,
+            f"gate(s) with no rejects_test declared: {', '.join(missing)}. Every quality "
+            f"gate must name the test that proves it rejects a known-bad input",
+        )
+
+    failures: list[str] = []
+    for g in declared:
+        name = g.get("name", "<unnamed>")
+        cmd = str(g["rejects_test"])
+        try:
+            argv = shlex.split(cmd)
+        except ValueError as exc:
+            failures.append(f"{name}: could not parse rejects_test {cmd!r} ({exc})")
+            continue
+        try:
+            proc = subprocess.run(argv, capture_output=True, text=True)
+        except OSError as exc:
+            failures.append(f"{name}: rejects_test {cmd!r} does not exist ({exc})")
+            continue
+        if proc.returncode != 0:
+            failures.append(f"{name}: rejects_test {cmd!r} did not pass (exit {proc.returncode})")
+
+    if failures:
+        return GateResult(
+            "can_fail", FAIL,
+            "; ".join(failures) + ". A green run is not evidence a gate works. Only a red one is.",
+        )
+    return GateResult("can_fail", PASS, f"{len(declared)} gate(s) each have a passing rejects_test")
 
 
 _DEFAULT_LONGRUN_GLOBS = ("benchmarks/**", "**/bench_*.py", "scripts/train_*.py")
@@ -662,6 +781,8 @@ def _gate_plan(
         ("secrets", lambda: gate_secrets(diff_text)),
         ("one_way_door", lambda: gate_one_way_door(changed, diff_text, base)),
         ("prove", lambda: gate_prove(changed, flags, profile, base)),
+        ("polarity", lambda: gate_polarity(changed, base, profile)),
+        ("can_fail", lambda: gate_can_fail(profile)),
         ("longrun", lambda: gate_longrun(changed, profile)),
     ]
     if self_test:

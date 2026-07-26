@@ -4,6 +4,89 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-26
+
+Sprint K1 ("Failure Semantics"), Family 0 of the birth-defect gate proposal derived
+from lopi's F0/F1 findings. Every kiban gate, every lopi CI gate, coverage, and the
+dead-code check were green while three lopi sites answered "I could not evaluate this"
+with a bare pass -- `run_verifier_pass` returning `true` with no API client configured
+gated L4 auto-merge to main with no human sign-off, for the verifier's entire
+existence. Not a regression: wrong on the first commit, and every existing ratchet
+(coverage floor, `newonly`, doc staleness) measures against a baseline, so none of them
+could have caught it. This sprint builds the two gates that catch that shape.
+
+### Added
+
+- **`lib/polarity.py` (G-POLARITY engine)** -- detects a branch whose condition tests
+  *absence or failure to evaluate* (`let ... else`, `.is_none()`, `.unwrap_or(...)`, a
+  match/switch arm on the error or default case; Python's `except`/`is None`/`.get(k,
+  default)`; TypeScript's `??`/`if (!x)`/`catch`) that returns a *permissive* value
+  (bare `true`, `1.0`, `Ok(())`). Per-language packs under `lib/packs/lang/{rust,
+  python,typescript}/polarity.py`. The separating signal is the condition's *shape*,
+  not its content: a domain check (`until_satisfied`, a bare `if proceed`) never
+  matches any pattern here, by construction, so it is never flagged -- confirmed by
+  KT-K1.1 (`.konjo/killtests/K1/KT-K1.1.md`), which required this engine to correctly
+  separate lopi's three real birth defects from two reference-correct shapes
+  (`verifier_error_proceeds`, `zero_diff_is_success`) using the exact fixture set
+  assembled *before* the engine was written. One deliberate restriction found while
+  building the fixture set: a bare terminal `else` is only treated as a "default/
+  unrecognised case" when preceded by at least one `else if` (a 3+-way dispatch) --
+  this is what keeps `scorer.rs`'s legitimate `if skip_build_check { test_pass_rate =
+  1.0 }` branch from being swept in alongside the real defect four branches later in
+  the same function, both setting the identical constant.
+- **`gate_polarity` in `cli.py`** -- the CI gate, net-new findings only (added lines
+  score against the base version of the same file, the same pattern `gate_prose`
+  already uses). A finding resolves via an explicit operator-override field in the
+  returned expression (the `verifier_fail_open` precedent,
+  `polarity.is_explicit_override`), the new `Konjo-Polarity-Waived: <fp> — <reason>`
+  commit trailer (fingerprint-bound via the existing `oneway.fingerprint`/
+  `find_trailer`/`make_trailer` -- no second override channel), or it fails, naming
+  the file, line, condition, and returned value. `polarity.enabled`/`advisory`/
+  `exempt_globs` in `profiles/_schema.yml`; ships `advisory: true` by default (WARN,
+  not FAIL) so an adopting repo can clean its baseline before flipping to blocking --
+  the same coverage-floor ratchet pattern used elsewhere. KT-K1.2
+  (`.konjo/killtests/K1/KT-K1.2.md`) confirmed the waiver is bound to the exact
+  changed-file fingerprint and does not survive a change to that file set.
+- **`gate_can_fail` in `cli.py` (G-CAN-FAIL)** -- "a green run is not evidence a gate
+  works, only a red one is." For each entry in the profile's new `gates:` list (name +
+  `rejects_test` command), the gate actually runs the command and requires it to
+  exist and pass. Cannot verify the test's *content* is adversarial (that it exercises
+  the hard input, not the easy one) -- only that a rejecting test is declared, named,
+  and green; this limit is stated in the gate's own doc comment and in
+  `KONJO_FORWARD.md`. KT-K1.3 (`.konjo/killtests/K1/KT-K1.3.md`) surveyed lopi's and
+  squish's real CI: both have enumerable, already-named gate sets (lopi's G0-G5,
+  squish's `contract_gates`/`mutation`), so this ships as a real gate, not a
+  convention-only checklist item.
+- **`KONJO_FORWARD.md`** -- did not exist on disk before this sprint, despite being
+  cited as an established doc by the birth-defect proposal and this sprint's own
+  brief. Originated here rather than silently assuming a history it didn't have: the
+  three pillars, "the thing that governs the work lives outside the work," the two
+  rejections this sprint adds (permissive unknowns, tests as proof of wiring), and the
+  residual limit ("gates can guarantee nothing ships unverified; they cannot guarantee
+  the verification was adequate").
+- `profiles/_schema.yml`: `polarity:` and `gates:` blocks.
+- `tests/test_polarity.py`, `tests/test_polarity_killtest.sh`,
+  `tests/test_can_fail_killtest.sh`.
+
+### Changed
+
+- `plugins/konjo/skills/konjo-ship/SKILL.md`: the self-graded checklist line "Zero
+  debug artifacts, dead code, or leftover scaffolding" -- walked past on exactly the
+  defect it existed to catch, because the agent that wrote the code was also the one
+  checking the box -- is replaced by two commands: `konjo-gates polarity` clean (or
+  waived on the record), and every quality gate this sprint touched has a rejecting
+  test. Net +1 line over the prior cap-exact 80-line budget; carries a recorded
+  `konjo-skill-size-ok:` justification (a one-way door, see `LEDGER.md`).
+- `lib/oneway.py`: gains `POLARITY_WAIVED_TRAILER = "Konjo-Polarity-Waived"`, reusing
+  `fingerprint`/`find_trailer`/`make_trailer` unchanged.
+
+### Not done here, on purpose
+
+G-WIRED, G-CLAIM, G-CLAIM-ARTIFACT, G-REACH, G-ADVERTISED (Families A-C of the
+birth-defect proposal) -- K1 is Family 0 only. Fixing lopi's three real sites is
+lopi's own F1, not this sprint's; K1 used lopi as the fixture source and stops there
+(see `NEXT_SESSION_PROMPT.md` for the K2 handoff).
+
 ## [1.6.0] - 2026-07-25
 
 Wall 3's live gate sampled its own noisiest, highest-stakes judgment -- is this diff
