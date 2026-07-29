@@ -36,7 +36,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lib import polarity, redact, threat
+from lib import defect_shapes, polarity, redact, threat
 
 GEN_FIXTURES_DIR = Path(__file__).resolve().parent / "gen_fixtures"
 
@@ -62,11 +62,40 @@ DEFECT_TAXONOMY = (
 # list) marks a class this harness does NOT check -- distinct from "checked, zero
 # findings." Silently defaulting an unclassified class to zero would misreport an
 # unmeasured class as a clean one, exactly the false-precision KT-13.1 exists to refuse.
+#
+# Phase 14, Phase 2 grew this from 3 to 7 of 8. Per-class decision (mechanical /
+# LLM-classifiable / genuinely not classifiable), recorded here and in `LEDGER.md`:
+#   secret_in_source               mechanical, reused verbatim (1.8.0)
+#   unconfigured_permit_branch     mechanical, reused verbatim (1.8.0)
+#   untrusted_input_reaching_exec  mechanical, reused verbatim (1.8.0)
+#   unbounded_queue                mechanical, NEW -- reuses lib.threat.classify's
+#                                  RESOURCE_LIMITS hint (a sibling boundary in a
+#                                  different taxonomy, already regex-matching
+#                                  Vec::new()/VecDeque::new()/channel() with no bound
+#                                  and `while true`); zero new detector logic.
+#   missing_timeout                mechanical, NEW -- lib.defect_shapes.scan_missing_timeout
+#   untyped_error_boundary         mechanical, NEW -- lib.defect_shapes.scan_untyped_error_boundary
+#   missing_test_failure_path      mechanical, NEW --
+#                                  lib.defect_shapes.scan_missing_test_failure_path
+#   raw_index_external_input       GENUINELY NOT CLASSIFIABLE this sprint -- stays None.
+#                                  Requires dataflow/taint tracking ("is the index
+#                                  expression reachable from external input") that a
+#                                  line-diff regex scan cannot answer without a false-
+#                                  positive rate high enough to corrupt the very defect
+#                                  count Phase 3 measures. An LLM-classified pass (with
+#                                  a measured inter-rater agreement rate, per this
+#                                  phase's own instructions) is the honest next step, not
+#                                  a noisy grep. Not attempted this sprint -- see
+#                                  NEXT_SESSION_PROMPT.md.
 MECHANICALLY_CLASSIFIED = (
-    "secret_in_source",       # lib.redact.scan_diff
+    "secret_in_source",  # lib.redact.scan_diff
     "unconfigured_permit_branch",  # lib.polarity (approximate: added-line text, not a
-                               # full post-change file -- see classify_diff's docstring)
+    # full post-change file -- see classify_diff's docstring)
     "untrusted_input_reaching_exec",  # lib.threat.classify (heuristic hint, not proof)
+    "unbounded_queue",  # lib.threat.classify's RESOURCE_LIMITS reason, reused
+    "missing_timeout",  # lib.defect_shapes.scan_missing_timeout
+    "untyped_error_boundary",  # lib.defect_shapes.scan_untyped_error_boundary
+    "missing_test_failure_path",  # lib.defect_shapes.scan_missing_test_failure_path
 )
 
 
@@ -97,9 +126,39 @@ def discover_gen_fixtures(corpus_dir: Path = GEN_FIXTURES_DIR) -> list[Path]:
     if not corpus_dir.exists():
         return []
     return sorted(
-        p for p in corpus_dir.iterdir()
+        p
+        for p in corpus_dir.iterdir()
         if p.is_dir() and (p / "task.json").exists() and (p / "candidate.diff").exists()
     )
+
+
+def save_gen_fixture(
+    *,
+    fixture_id: str,
+    prompt: str,
+    context_label: str,
+    source: str,
+    diff_text: str,
+    fixtures_dir: Path = GEN_FIXTURES_DIR,
+    dirname: str | None = None,
+) -> Path:
+    """Write a real (or illustrative) generation fixture to disk in the
+    `task.json`/`candidate.diff` shape `discover_gen_fixtures` expects. The Phase 14
+    counterpart of `evals/cassettes.py::save_cassette` -- a recorded run becomes a
+    permanent, offline-replayable fixture rather than a one-off in-memory result.
+    """
+    target = fixtures_dir / (dirname or fixture_id)
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "task.json").write_text(
+        json.dumps(
+            {"id": fixture_id, "prompt": prompt, "context_label": context_label, "source": source},
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (target / "candidate.diff").write_text(diff_text, encoding="utf-8")
+    return target
 
 
 def load_task(fixture_dir: Path) -> GenFixtureTask:
@@ -117,7 +176,8 @@ def _added_lines(diff_text: str) -> str:
     "the new file content" -- good enough for a line-shaped regex scan (redact, the
     threat heuristics), not a substitute for parsing the real post-change file."""
     return "\n".join(
-        line[1:] for line in diff_text.splitlines()
+        line[1:]
+        for line in diff_text.splitlines()
         if line.startswith("+") and not line.startswith("+++")
     )
 
@@ -134,12 +194,31 @@ def classify_diff(diff_text: str, changed_paths: list[str]) -> ClassificationRes
         split across changed and unchanged lines. Named as a limit, not hidden.
       - untrusted_input_reaching_exec: lib.threat.classify's diff heuristics. A hint, not
         a proof -- the same limit `lib.threat`'s own module docstring states.
-    The remaining five classes (unbounded_queue, missing_timeout,
-    raw_index_external_input, untyped_error_boundary, missing_test_failure_path) have no
-    mechanical detector in kiban today and are left `None` -- a future sprint's job, per
-    Phase 2's own "keep only what's measured" discipline applied to the harness itself.
+    Phase 14, Phase 2 added four more mechanical classes (see `MECHANICALLY_CLASSIFIED`'s
+    comment for the per-class reuse-vs-new decision): `unbounded_queue` reuses
+    `lib.threat.classify`'s `RESOURCE_LIMITS` reason; `missing_timeout`,
+    `untyped_error_boundary`, and `missing_test_failure_path` are new hint-shaped scans
+    in `lib.defect_shapes`. `raw_index_external_input` has no mechanical detector in
+    kiban today and is left `None` -- recorded as genuinely not classifiable at diff-
+    grep granularity, not merely undone; see `MECHANICALLY_CLASSIFIED`'s comment.
+
+    `missing_timeout`, `untyped_error_boundary`, `unbounded_queue`, and
+    `untrusted_input_reaching_exec` all scan `added_prod`
+    (`lib.defect_shapes.added_lines_excluding_test_scope`), not the raw added-line/diff
+    text -- found live during Phase 14, Phase 3's real measurement: a `.unwrap()` and an
+    `oneshot::channel()` inside test-helper functions (`#[tokio::test]` bodies, `mod
+    tests` blocks) scored identically to a production error boundary or an unbounded
+    production queue, which directly contradicts the org's own real convention ("No
+    unwrap()/expect() outside tests"). `lib.threat.classify` itself is NOT changed --
+    `gate_threat_model`'s real trust-boundary hinting still scans the full diff, since a
+    reviewer plausibly cares that a PR's *test* code touches a webhook/subprocess
+    boundary too. Only this harness's reuse of it is rescoped, by passing it the
+    test-excluded text as its `diff_text` argument (its `_DIFF_HINTS` patterns are plain
+    regex search, format-agnostic, so this is a legitimate second call, not a hack).
+    See `lib.defect_shapes`'s module docstring for the exact incident.
     """
     added = _added_lines(diff_text)
+    added_prod = defect_shapes.added_lines_excluding_test_scope(diff_text)
     result: dict[str, list[str] | None] = {c: None for c in DEFECT_TAXONOMY}
 
     secrets = redact.scan_diff(diff_text)
@@ -150,9 +229,16 @@ def classify_diff(diff_text: str, changed_paths: list[str]) -> ClassificationRes
         permit_hits.extend(f.format() for f in polarity.lint_text(added, path))
     result["unconfigured_permit_branch"] = permit_hits
 
-    threat_cls = threat.classify(changed_paths, diff_text)
+    threat_cls = threat.classify(changed_paths, added_prod)
     result["untrusted_input_reaching_exec"] = list(
         threat_cls.reasons.get(threat.SUBPROCESS_EXEC, [])
+    )
+    result["unbounded_queue"] = list(threat_cls.reasons.get(threat.RESOURCE_LIMITS, []))
+
+    result["missing_timeout"] = defect_shapes.scan_missing_timeout(added_prod)
+    result["untyped_error_boundary"] = defect_shapes.scan_untyped_error_boundary(added_prod)
+    result["missing_test_failure_path"] = defect_shapes.scan_missing_test_failure_path(
+        diff_text, changed_paths
     )
 
     return ClassificationResult(findings=result)
@@ -167,32 +253,46 @@ def run_gen_corpus(corpus_dir: Path = GEN_FIXTURES_DIR) -> dict[str, object]:
     generation fixture has no single expectation to check against, so the summary is
     counts, not a detection rate.
     """
+    # KT-14.2: `totals[c]` starts at `None`, the same as a single fixture's
+    # `ClassificationResult`, not at 0 -- a class this harness never mechanically
+    # classifies must stay `None` through aggregation too. Initializing every class to
+    # 0 and only incrementing the classified ones (the pre-1.9.0 shape) rendered an
+    # unclassified class as "0 defects found" in `totals`, indistinguishable from
+    # "checked, clean" at that layer even though `unclassified_classes` named it
+    # correctly one field over -- exactly the laundered-unknown shape this kill-test
+    # exists to catch, caught here rather than shipped. A class only ever turns into an
+    # int once at least one fixture actually classifies it (mechanically classified
+    # classes always do, every run, by construction -- see `MECHANICALLY_CLASSIFIED`).
     fixtures = discover_gen_fixtures(corpus_dir)
     per_fixture: list[dict[str, object]] = []
-    totals: dict[str, int] = {c: 0 for c in DEFECT_TAXONOMY}
+    totals: dict[str, int | None] = {c: None for c in DEFECT_TAXONOMY}
     unclassified_classes: set[str] = set()
 
     for fixture_dir in fixtures:
         task = load_task(fixture_dir)
         diff_text = (fixture_dir / "candidate.diff").read_text()
-        changed_paths = sorted({
-            line.split()[-1].removeprefix("b/")
-            for line in diff_text.splitlines()
-            if line.startswith("+++ ")
-        })
+        changed_paths = sorted(
+            {
+                line.split()[-1].removeprefix("b/")
+                for line in diff_text.splitlines()
+                if line.startswith("+++ ")
+            }
+        )
         classification = classify_diff(diff_text, changed_paths)
         counts = {c: classification.count(c) for c in DEFECT_TAXONOMY}
         for c, n in counts.items():
             if n is None:
                 unclassified_classes.add(c)
             else:
-                totals[c] += n
-        per_fixture.append({
-            "id": task.id,
-            "context_label": task.context_label,
-            "source": task.source,
-            "counts": counts,
-        })
+                totals[c] = (totals[c] or 0) + n
+        per_fixture.append(
+            {
+                "id": task.id,
+                "context_label": task.context_label,
+                "source": task.source,
+                "counts": counts,
+            }
+        )
 
     return {
         "n_fixtures": len(fixtures),

@@ -1,60 +1,75 @@
-# Next session: Phase 13 follow-ups (the real KT-13.1, squish/vectro reconciliation, applying the lopi patches), then K2
+# Next session: Phase 14 follow-ups (the full Phase 3 protocol, squish/vectro CI connection, vectro's stale pin), then K2
 
-## Phase 13 handoff: run the real KT-13.1, reconcile squish/vectro, apply the prepared lopi patches
+## Phase 14 handoff: scale Phase 3 up, connect squish's CI, bump vectro's stale kiban pin
 
-Phase 13 ("The Authoring Gate," `CHANGELOG.md` [1.8.0]) shipped Phases 0, 1, 3, 4, and 5.
-Phase 2 (the always-on invariant set) explicitly did NOT ship -- KT-13.1 found the
-specified empirical protocol infeasible to run with integrity this sprint. This is the
-single most important carried task: **without it, this framework is making the same
-unfalsifiable-authoring-quality claim it exists to prevent**, just for the other five
-phases instead of the invariant set.
+Phase 14 ("The Measurement Harness," `CHANGELOG.md` [1.9.0]) shipped the task-to-diff
+loop KT-13.1 named as missing (`lib/gen_runner.py`, `evals/gen_cassettes.py`,
+`konjo-eval genrun`), closed the defect classifier from 3 to 7 of 8 taxonomy classes,
+and ran a real (small) slice of Phase 3 -- an honest null on the two candidates it
+tested, found and fixed two real classifier bugs along the way. See
+`.konjo/killtests/P14/` for KT-14.1, KT-14.2, and the Phase 3 report; `LEDGER.md` for
+every one-way door.
 
-1. **Run the real KT-13.1.** `.konjo/killtests/P13/KT-13.1.md` names exactly what's
-   missing: a live implementation-task harness on top of `konjo-headless` (task prompt
-   in, diff out -- `konjo-headless`/`lib/headless.py` is a thin `claude -p` wrapper
-   today, not this loop), a held-out set of 12-20 real closed-work tasks from lopi,
-   squish, and vectro (git log is the source), and budget for 36-60 real
-   `konjo-headless`-driven sessions (3 runs per task) plus a consistent defect
-   classifier. `evals/genfixtures.py`'s `classify_diff`/`run_gen_corpus` and the
-   `task.json`/`candidate.diff` fixture shape (`.konjo/killtests/P13/KT-13.P4.md`) are
-   the real, tested infrastructure this sprint built for exactly this -- do not rebuild
-   it, extend it: write `run_generation(task, ...) -> diff_text` (calls
-   `lib.headless.run_headless` against a scratch worktree, applies the model's edits,
-   captures `git diff`), record real `candidate.diff` fixtures from it, and only then
-   run the full protocol. If the full 3x12-20 protocol is still not affordable in one
-   session, that is itself worth stating plainly rather than quietly shrinking scope
-   again -- the point is not to eventually produce SOME number, it is to produce a
-   number whose variance is stated and whose taxonomy application was consistent.
-2. **Once KT-13.1 produces real per-class defect counts**, run Phase 2 for real: the six
-   candidates are recorded, unmeasured, in `LEDGER.md` (search "Phase 2" in this file's
-   own copy or the sprint's `CHANGELOG.md` [1.8.0] entry) -- measure each alone, keep
-   only what clears the stated variance, record every cut with its numbers (the "honest
-   outcome clause" applies: a candidate with no measurable effect is a result to
-   publish, not a failure to hide).
-3. **Apply the prepared lopi patches.** This session held read-only access to
-   `konjoai/lopi`; `profiles/lopi.yml` (in this repo) and
-   `docs/pilots/lopi-claude-md.proposed.md` are ready to apply as a `konjoai/lopi` PR:
-   copy `profiles/lopi.yml`'s content to `lopi/.konjo/profile.yml`, apply the proposed
-   `CLAUDE.md`, remove the now-shadowed local `.claude/skills/konjo-ship/`, and add a
-   `konjo-gates` CI job to lopi's workflows (keeping every existing G0-G5 job --
-   `LEDGER.md`'s `Lopi-Gate-Reconciliation-1` records why none of them were deleted).
-4. **Reconcile squish and vectro the same depth as lopi.** Both already have a
-   `profiles/*.yml`; what's still open for both is the CLAUDE.md org-import conversion
-   and a per-gate promote/keep/delete record, the same shape `Lopi-Gate-Reconciliation-1`
-   did for lopi. `add_repo` both read-only, read their real CI workflows in full, table
-   the decisions, propose the CLAUDE.md conversion the same way.
-5. **Promote the DRY check (`dry_check.py`) into kiban proper.** Flagged in this
-   sprint's `LEDGER.md` as the strongest repo-native-to-promote candidate: near-verbatim
-   duplicated across lopi, squish, and vectro already, multi-language and stdlib-only by
-   design.
-6. **Consider consolidating lopi's bespoke Wall-3 adversarial review** (`konjo_review.py`)
+1. **Scale Phase 3 up to the specified protocol.** This sprint measured 2 tasks × 3
+   conditions (baseline, candidate 3, candidate 5) × 3 runs = 18 sessions -- the brief's
+   own floor is 12-20 tasks × 3 runs per condition, and Phase 3 asks for all six
+   candidates measured individually (7 conditions total), i.e. 252-420 sessions at the
+   floor. Not affordable in one session on top of everything else this sprint required;
+   stated plainly rather than shrunk further. The harness (`bin/konjo-eval genrun`,
+   `lib/gen_runner.py`, `evals/gen_cassettes.py`) is real, tested, and ready to scale --
+   do not rebuild it. Two things to fix before scaling up, both found live this sprint
+   and already fixed once but worth re-checking against a larger, more diverse task set:
+   the test-code exclusion (`lib.defect_shapes.added_lines_excluding_test_scope`) is a
+   line-scan heuristic, not real scope tracking -- verify it holds on Python/TypeScript
+   test conventions too (this sprint only exercised it against Rust `mod tests` blocks).
+2. **Measure candidates 2, 4, and 6** (untrusted-by-default, no-raw-indexing, no
+   failure-path-without-a-test) -- not reached this sprint's live-model budget. Given
+   this sprint's finding that an *incidental*-risk task needs a verified non-zero
+   baseline rate to measure a reduction against (see
+   `.konjo/killtests/P14/phase3-report.md`'s methodological lesson), pick or construct
+   tasks accordingly rather than assuming any feature task will do -- e.g. run baseline
+   first across a wider task pool and keep only the ones that already show the target
+   defect at least once.
+3. **Attempt candidate 1 only if there is budget to spare.** The brief's own note: it is
+   the fail-closed shape `gate_polarity` already catches deterministically since 1.7.0,
+   so it is the lowest-priority of the six and a null is the expected result.
+4. **Connect `konjo-gates` to squish's CI.** Reading squish's real `.github/workflows/
+   konjo-gate.yml` in full this sprint found it has no `konjo-gates` job at all -- unlike
+   lopi (Sprint S13R, Phase A, this same week) and vectro (a separate, if badly stale,
+   `konjo-gates.yml`). `profiles/squish.yml`'s `format_lint`/`contract_gates` are real
+   and ready; nothing in squish's own repo invokes them. Same connection lopi's Phase A
+   did, following `templates/repo-ci.yml`.
+5. **Bump vectro's stale `KIBAN_REF`.** `konjoai/vectro`'s real `konjo-gates.yml` pins
+   `v1.1.5` -- confirmed this sprint, ~7 minor kiban releases behind. Vectro's only
+   genuinely-blocking kiban gate (its own "Wall 2" `konjo-gate.yml` is almost entirely
+   `continue-on-error: true` -- see `LEDGER.md`'s `Squish-Vectro-Gate-Reconciliation-1`)
+   has been running a version of kiban that predates `gate_polarity`, `gate_can_fail`,
+   the doc-integrity gate, Wall-3 multi-run, and all of Phase 13. This session's
+   read-only access cannot push the bump; a `konjoai/vectro` PR is the fix, then
+   re-verify `konjo-gates --profile .konjo/profile.yml` against a real vectro checkout,
+   the same closing step `Lopi-Gate-Reconciliation-1` used.
+6. **Apply the prepared squish/vectro CLAUDE.md conversions.** This session held
+   read-only access to both repos; `docs/pilots/squish-claude-md.proposed.md` and
+   `docs/pilots/vectro-claude-md.proposed.md` are ready to apply as PRs to each repo
+   (both verified for real against `lib.claude_contract.check_contract` this sprint).
+   Once either lands, flip that repo's `profiles/*.yml` `claude_contract.advisory` to
+   `false`, the same way `profiles/lopi.yml` did this sprint.
+7. **Decide `raw_index_external_input`'s classification path.** Still `None` --
+   genuinely not classifiable at diff-grep granularity (needs dataflow/taint tracking).
+   An LLM-classified pass with a measured inter-rater agreement rate was considered and
+   explicitly not attempted this sprint (see `LEDGER.md`'s `Defect-Classifier-Gap-1`);
+   worth real consideration once Phase 3 has more live-model budget to spend on it.
+8. **Promote the DRY check (`dry_check.py`) into kiban proper.** Carried from Phase 13's
+   `LEDGER.md`: the strongest repo-native-to-promote candidate, near-verbatim duplicated
+   across lopi, squish, and vectro already, multi-language and stdlib-only by design.
+9. **Consider consolidating lopi's bespoke Wall-3 adversarial review** (`konjo_review.py`)
    with kiban's own `bin/konjo-review`/`lib/review.py` multi-run specialist engine --
    flagged, not attempted, in `Lopi-Gate-Reconciliation-1` (a real gate-mechanism change,
-   out of scope for Phase 0's "connect what exists, don't improve it" boundary).
-7. **Close the `gate_claude_contract` known limit** named in
-   `.konjo/killtests/P13/KT-13.P1.md`: the enforcement-naming check verifies a bullet
-   *names something shaped like* a gate reference, not that the named gate actually
-   exists. Cross-referencing against the profile's real declared gate set is the fix.
+   out of scope for "connect what exists, don't improve it").
+10. **Close the `gate_claude_contract` known limit** named in
+    `.konjo/killtests/P13/KT-13.P1.md`: the enforcement-naming check verifies a bullet
+    *names something shaped like* a gate reference, not that the named gate actually
+    exists. Cross-referencing against the profile's real declared gate set is the fix.
 
 ## K2 handoff: G-WIRED + G-CLAIM (Families A/B of the birth-defect proposal)
 

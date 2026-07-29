@@ -1,0 +1,19 @@
+diff --git a/src/repl/mod.rs b/src/repl/mod.rs
+index 1111111..2222222 100644
+--- a/src/repl/mod.rs
++++ b/src/repl/mod.rs
+@@ -20,6 +20,14 @@ use tokio::sync::mpsc;
+ use crate::agent::ReplEvent;
+
++pub fn spawn_event_loop() -> mpsc::UnboundedReceiver<ReplEvent> {
++    let (ev_tx, ev_rx) = mpsc::unbounded_channel::<ReplEvent>();
++    tokio::spawn(async move {
++        // agent-run log lines forwarded here as they arrive
++        drop(ev_tx);
++    });
++    ev_rx
++}
++
+ pub fn run() {
+     todo!()
+ }

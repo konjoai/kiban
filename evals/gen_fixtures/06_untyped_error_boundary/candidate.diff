@@ -1,0 +1,19 @@
+diff --git a/crates/lopi-memory/src/config.rs b/crates/lopi-memory/src/config.rs
+index 7777777..8888888 100644
+--- a/crates/lopi-memory/src/config.rs
++++ b/crates/lopi-memory/src/config.rs
+@@ -1,6 +1,13 @@
+ use std::fs;
+
++pub struct MemorySettings {
++    pub max_entries: usize,
++}
++
++pub fn load_settings(path: &str) -> MemorySettings {
++    let raw = fs::read_to_string(path).unwrap();
++    toml::from_str(&raw).expect("settings file must be valid TOML")
++}
++
+ pub fn default_settings() -> MemorySettings {
+     todo!()
+ }

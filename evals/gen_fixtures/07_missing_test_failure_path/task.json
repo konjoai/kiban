@@ -1,0 +1,6 @@
+{
+  "id": "missing-test-failure-path",
+  "prompt": "Add a priority-queue admission check that accepts a task only if its declared priority is within the configured range, with a unit test.",
+  "context_label": "baseline",
+  "source": "illustrative, modeled on the same defect class K1's gate_can_fail exists to catch at merge time (a claimed behavior with a happy-path test and no rejects-test) -- see LEDGER.md's K1 entries. Deliberately written with only a passing-case test, no test for the out-of-range rejection the function itself implements, to demonstrate this harness's mechanical missing_test_failure_path classifier (lib.defect_shapes.scan_missing_test_failure_path) fires on the un-mitigated shape. Not a live konjo-headless run -- see .konjo/killtests/P13/KT-13.1.md."
+}

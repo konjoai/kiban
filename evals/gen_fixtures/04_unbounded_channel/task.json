@@ -1,0 +1,6 @@
+{
+  "id": "unbounded-channel",
+  "prompt": "Add an mpsc channel so the REPL's event loop can receive agent-run log lines without blocking the sender.",
+  "context_label": "baseline",
+  "source": "illustrative, modeled on konjoai/lopi's real pre-fix shape at src/repl/mod.rs -- Sprint S13R (PR #184) found and converted TWO production unbounded channels (the brief's own baseline only named one, quota_kill_log.rs:151; the second at src/repl/mod.rs:76 was found during that sprint's re-measurement). The real fix bounds the channel at 1024 (tokio::sync::mpsc::channel::<ReplEvent>(1024), confirmed in the post-fix checkout). This fixture is deliberately written WITHOUT the bound, to demonstrate this harness's mechanical unbounded_queue classifier (reusing lib.threat.classify's RESOURCE_LIMITS hint) fires on the un-mitigated shape. Not a live konjo-headless run -- see .konjo/killtests/P13/KT-13.1.md."
+}

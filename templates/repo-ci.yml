@@ -16,10 +16,15 @@ on:
     branches: [main]
 
 env:
-  KIBAN_REF: "v1.1.0"   # the pinned kiban ref for this repo; bump deliberately. Check
+  KIBAN_REF: "v1.9.0"   # the pinned kiban ref for this repo; bump deliberately. Check
                         # .konjo/kiban.ref for the ref actually in effect -- a version
                         # number written into a template goes stale the moment the pin
                         # next moves, so treat this line as an example, not a live value.
+                        # Phase 14 found a real, live instance of exactly this drift:
+                        # konjoai/vectro's own copy of this file was still pinned at
+                        # v1.1.5 (this template's own prior example was v1.1.0, seven
+                        # minor releases behind at the time) -- see LEDGER.md's
+                        # Claude-Contract-Ramp-1 and NEXT_SESSION_PROMPT.md.
 
 jobs:
   gates:

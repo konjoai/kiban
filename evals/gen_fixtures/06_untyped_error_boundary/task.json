@@ -1,0 +1,6 @@
+{
+  "id": "untyped-error-boundary",
+  "prompt": "Add a config-file loader for the memory crate that reads and parses a TOML file into a settings struct.",
+  "context_label": "baseline",
+  "source": "illustrative, modeled on konjoai/lopi's real Sprint S13R finding (PR #184, Phase E): 'lopi-memory: not started (0 of 30)' typed-error conversion, and the sprint's own baseline-drift note that anyhow:: usage grew 106 -> 131 files since the original S13 brief was written. Deliberately written with a bare .unwrap() error boundary instead of a typed Result, to demonstrate this harness's mechanical untyped_error_boundary classifier (lib.defect_shapes.scan_untyped_error_boundary) fires on the un-mitigated shape. Not a live konjo-headless run -- see .konjo/killtests/P13/KT-13.1.md."
+}

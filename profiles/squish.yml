@@ -92,6 +92,25 @@ prove:
 
 killtest: true
 
+# Phase 14, Phase 4: the standing-violation measurement this sprint ran
+# (lib.claude_contract.check_contract against squish's real CLAUDE.md, cloned at
+# 4dd6f62) found squish's CLAUDE.md has NOT adopted the Phase 13 section contract at
+# all -- 4 of 6 required sections missing (org rules, invariants, repo map,
+# repo-specific rules) and no `@~/.konjo/kiban/...` org import line. This is not a
+# small, ready-to-flip count the way lopi's was (see profiles/lopi.yml's
+# claude_contract entry): it is the whole document. Left on the org-wide advisory
+# default explicitly, not silently -- flipping this profile to blocking today would
+# fail the very next PR that so much as touches CLAUDE.md, before the conversion work
+# (proposed in docs/pilots/squish-claude-md.proposed.md, this same sprint) has actually
+# landed. `citation_ratio` needed no override: every real squish `.claude/rules/*.md`
+# file measured 0.00 (no rule file is majority-incident-log), so that half of the gate
+# is already clean. What flips this to blocking: squish merging the proposed CLAUDE.md
+# conversion (or an equivalent), the same way lopi's own PR #184 did. See LEDGER.md's
+# Claude-Contract-Ramp-1.
+claude_contract:
+  enabled: true
+  advisory: true
+
 # Phase 10: how the agent verifies its own work before claiming done. Derived from the
 # confirmed pytest coverage gate (konjo-gate.yml G2, coverage-80); running the suite is
 # squish's verify loop.

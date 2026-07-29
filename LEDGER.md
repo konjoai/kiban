@@ -8,6 +8,281 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Task-to-Diff-Loop-1: `lib/gen_runner.py` + `evals/gen_cassettes.py` + `konjo-eval genrun` exist -- the missing measurement instrument KT-13.1 named, built and run for real
+
+**One-way door: the harness Phase 2's six candidate invariants (and every future
+authoring-context claim) now measures against.** `.konjo/killtests/P13/KT-13.1.md`
+found `konjo-headless`/`lib/headless.py` a thin `claude -p` argv builder with no
+"task in, diff out" loop -- Phase 14, Phase 1 builds that loop as a *consumer* of
+`lib.headless`, not a replacement (`LiveGenerationBackend.generate` still calls
+`headless.headless_argv` for the `--verbose`-with-stream-json correctness; see
+`lib/gen_runner.py`'s module docstring for the full boundary). Sibling to
+`bin/konjo-headless`, not a superseding rewrite of it, per the sprint's own
+instruction to say so in the docstring.
+
+**Two real environment findings shaped the backend's defaults, not guesses:**
+1. `--dangerously-skip-permissions` is refused by the installed CLI under root
+   ("cannot be used with root/sudo privileges for security reasons") -- this
+   container runs as root, so the standard headless-automation permission bypass is
+   unavailable here. `LiveGenerationBackend` instead uses `--permission-mode
+   acceptEdits` with an explicit tool allowlist (`Read,Write,Edit,Bash,Grep,Glob` --
+   no `WebFetch`/`WebSearch`; see `DEFAULT_TOOLS`), confirmed working end-to-end
+   against a real scratch repo before spending any budget on lopi.
+2. `--bare` mode's auth is "strictly `ANTHROPIC_API_KEY`... OAuth and keychain are
+   never read" (per `claude --help`) -- this remote session has no API key, only a
+   host-managed provider token, so a `--bare` call fails closed with an
+   authentication error while the identical prompt without `--bare` succeeds
+   (confirmed directly, not inferred). `LiveGenerationBackend` defaults to
+   `bare=False`; both defaults are overridable via constructor args for a caller
+   running as a non-root CI user with its own key, where `--bare` +
+   `--dangerously-skip-permissions` is the faster, correct combination.
+
+**Cassette family is a new, distinct pattern from `evals/cassettes.py`, not a
+generalization of it** -- `evals/gen_cassettes.py`'s module docstring states why:
+different backend shapes (`dispatch(specialist, prompt)` vs `generate(task,
+context)`), different result shapes (a reply string vs a `GenerationResult`
+dataclass). Reusing the *pattern* (hash the inputs, record once, hard-miss on
+replay) was the right level of reuse; forcing one generic module over both would
+have needed an awkward lowest-common-denominator interface neither caller has.
+
+**KT-14.2, found and fixed before any measurement ran**: tracing a known-
+unclassified taxonomy class through every layer of `konjo-eval gen`'s reporting path
+found `run_gen_corpus`'s `totals` dict initialized every class to `0` and only
+incremented the classified ones -- an unclassified class's total stayed `0` forever,
+indistinguishable from "checked, clean." Fixed to initialize `None` (matching
+`ClassificationResult`) and only become an int once a fixture actually classifies it.
+Full writeup: `.konjo/killtests/P14/KT-14.2.md`. This shipped in the harness Phase 13
+built (`evals/genfixtures.py::run_gen_corpus`) undetected since 1.8.0 -- caught here
+because this kill-test asked the procedure to trace the value through aggregation
+specifically, not just the single-diff classifier Phase 13 already verified.
+
+**KT-14.1, run for real, PASS**: 3 tasks drawn from real closed lopi work (git log,
+not invented), 3 runs each, identical baseline context. 8 of 9 live sessions produced
+a diff; every task with 2+ successful runs produced byte-identical per-class defect
+counts across its repeats (21/21 mechanically-classified cells agree). The one real
+non-reproducibility this run found was generation-layer (a session that exited 0 but
+wrote no diff), not classifier-layer -- named as a distinct failure mode, not folded
+into the agreement number. Full writeup and the real task table (commit shas, parent
+refs, which defect class each targets): `.konjo/killtests/P14/KT-14.1.md`.
+
+## Phase-3-Real-Measurement-1: a real, small slice of Phase 3 ran -- both tested candidates measured null, and the measurement itself caught a live classifier bug worth its own record
+
+**Honest-null outcome, per the sprint's own explicit permission to publish one.**
+2 tasks (real closed lopi work, feature-shaped, not defect-fix-shaped -- deliberately
+distinct from KT-14.1's three tasks, to avoid confounding "does context reduce
+*incidental* defects" with "did the agent follow an explicit fix instruction"), 3
+conditions (baseline, candidate 3 "queue bounded/timeout/retry-capped," candidate 5
+"typed errors at a library boundary"), 3 runs each -- 18 real sessions. Full writeup,
+task table, and the methodological lesson about baseline incidence:
+`.konjo/killtests/P14/phase3-report.md`.
+
+**A real classifier bug, found by the measurement itself, not by inspection**: the
+first pass showed `unbounded_queue`/`untyped_error_boundary` hits that looked like a
+signal. Tracing them before writing the report found `lib.threat.classify`'s diff
+hints and `lib.defect_shapes`'s new scans were reading Rust test-helper code (a
+`mod tests { ... }` block's fixtures: `oneshot::channel()`, `.unwrap()` in test setup)
+as production code -- exactly the shape the org's own real convention ("No
+unwrap()/expect() outside tests") explicitly permits. Two fixes, both narrow and
+confirmed against the real data, not designed in the abstract:
+
+1. **`lib/defect_shapes.py::added_lines_excluding_test_scope`** (new) -- drops added
+   lines once a `mod tests { ... }` / `#[cfg(test)]` marker is seen, checking two
+   signals: an added line opening the marker itself, and (the one that actually
+   caught the live case) a unified diff's hunk header naming the enclosing scope
+   (`@@ -357,4 +429,6 @@ mod tests {` -- the marker line itself predates the diff and
+   never appears in the diff body at all). `genfixtures.classify_diff` now scans this
+   stripped text for `missing_timeout`/`untyped_error_boundary`, and passes it as
+   `lib.threat.classify`'s `diff_text` argument for this harness's reuse of
+   `unbounded_queue`/`untrusted_input_reaching_exec` specifically --
+   **`lib.threat.classify` itself is unchanged**, so `gate_threat_model`'s real
+   trust-boundary hinting still scans the full diff (a reviewer plausibly still cares
+   that a PR's test code touches a webhook/subprocess boundary; a defect *count*
+   comparing authoring contexts does not want test scaffolding inflating it).
+2. **`lib/threat.py`'s `SUBPROCESS_EXEC` diff hint**, narrowed from a bare `spawn\(`
+   (which also matched `tokio::spawn(fut)`/`thread::spawn(closure)` -- in-process
+   concurrency, no subprocess/OS-exec boundary at all) to `\.spawn\(\)` (the zero-arg
+   method call matching a process builder's terminal call,
+   `Command::new("x").spawn()`). This is a real, if narrow, behavior change to
+   `gate_threat_model`'s own hinting too, not just this harness's reuse of it --
+   recorded here since it is a genuine correction, not purely additive.
+
+**Both KT-14.1's and Phase 3's own numbers were re-classified with the fix before
+either report was finalized** -- see `.konjo/killtests/P14/KT-14.1.md`'s own note on
+this. After the fix, every one of the 20 successful Phase 3 sessions classified
+completely clean on all seven mechanically-classified defect shapes, in every
+condition.
+
+**Decision: no candidate ships this sprint.** Not because either tested candidate
+failed a measured bar -- because the baseline rate for both candidates' target
+classes was already zero on both tasks, so there was no incidence for either
+candidate to be measured against. Phase 3's own instruction ("keep only candidates
+whose measured reduction clears the run-to-run variance") requires a measured
+reduction to exist before it can clear anything. Candidates 1, 2, 4, 6 remain
+entirely unmeasured (candidate 1 by the brief's own stated low priority; 2/4/6 simply
+not reached inside this session's live-model budget on top of everything else this
+sprint required). All six stay recorded in this file's own Phase 13 history as
+drafted, not shipped -- Phase 3 changed the evidence available about two of them from
+"none" to "a real null at small scale," not to "measured and kept."
+
+## Defect-Classifier-Gap-1: 4 of 8 taxonomy classes classified mechanically -- from 3 to 7 of 8, `raw_index_external_input` recorded as genuinely not classifiable this way
+
+**Grew `evals/genfixtures.py`'s mechanical coverage without writing a fully new
+detector for most of it**, per Phase 2's own "reuse before you build" instruction.
+Per-class decision, all recorded in `evals/genfixtures.py`'s `MECHANICALLY_CLASSIFIED`
+comment as the single source of truth (this entry summarizes, does not duplicate):
+
+- **`unbounded_queue`** -- mechanical, **zero new detector code**: reuses
+  `lib.threat.classify`'s existing `RESOURCE_LIMITS` reason. Wiring it up surfaced (and
+  this sprint fixed) two real bugs in that regex, found while making a hand-authored
+  fixture (`04_unbounded_channel`, modeled on lopi's real two-production-unbounded-
+  channel finding, PR #184) actually fire: the pattern's `$` anchor had no
+  `re.MULTILINE` flag, so it only ever matched on a diff's *last* line regardless of
+  where the risky call actually was (silently near-inert on any multi-line diff since
+  the boundary shipped in Phase 13); and it had no case for `unbounded_channel()` /
+  `unbounded()` (tokio's and crossbeam's *explicitly named* unbounded constructors --
+  the shape whose name says what it is), only bare `channel()`. Both fixed
+  (`lib/threat.py`), confirmed against the real fixture, `tests/test_threat.py` still
+  green.
+- **`missing_timeout`**, **`untyped_error_boundary`**, **`missing_test_failure_path`**
+  -- mechanical, new hint-shaped scans in the new `lib/defect_shapes.py`, same
+  diff-line-hint discipline `lib.threat`/`lib.polarity` already accept for this
+  harness (a call-site/catch-shape/new-test-without-a-failure-case regex, not a full
+  parse -- documented as a carried limit in the module docstring, not hidden).
+- **`raw_index_external_input`** -- **genuinely not classifiable this sprint**, left
+  `None`. Needs dataflow/taint tracking ("is this index expression reachable from
+  external input") a line-diff regex scan cannot answer without a false-positive rate
+  high enough to corrupt the defect *count* Phase 3 measures (unlike a threat-model
+  hint feeding a human review step, where over-triggering is cheap -- see
+  `lib.threat`'s own module docstring for that contrast). An LLM-classified pass with
+  a measured inter-rater agreement rate was considered (Phase 2's own third option)
+  and explicitly not attempted this sprint: with only this one class left unclassified
+  and Phase 1/Phase 3's live-model budget already the sprint's biggest cost, spending
+  more live-model budget on a classifier study for a single class judged the weaker
+  use of this session's time than actually running Phase 3 on the 7 classes already
+  covered. Carried to `NEXT_SESSION_PROMPT.md`, not silently dropped.
+- **Seed corpus grew from 3 to 7 fixtures** (`evals/gen_fixtures/04`-`07`), each
+  hand-authored and modeled on a real, cited defect (three from `konjoai/lopi`'s real
+  history: the two-unbounded-channel fix in PR #184, the `security-invariants.md`
+  timeout line, the `lopi-memory` untyped-error gap PR #184 itself named as unstarted;
+  one generic, matching `03`'s existing precedent), each confirmed by a dedicated test
+  (`tests/test_genfixtures.py::test_new_fixtures_fire_their_target_class`) to actually
+  fire the classifier it's named for -- a fixture that silently classified to zero
+  would have been worse than no fixture at all.
+
+## Claude-Contract-Ramp-1: `gate_claude_contract` flips to blocking for lopi (0 standing violations) -- stays advisory for squish and vectro, with the real count and the reason recorded, not guessed
+
+**Default change, made per-repo on measured evidence, not a blanket flip.** Phase 4
+measured `lib.claude_contract.check_contract` against all three real pilot repos'
+actual current `CLAUDE.md` (not a diff -- the whole file, the same standing-violation
+question Phase 0's original hand audit asked for lopi in Phase 13):
+
+| Repo | Standing violations | Decision |
+|---|---|---|
+| lopi | **0** -- Sprint S13R (PR #184, merged this session's own start time) already converted it to the full section contract, every invariant naming its enforcer | `profiles/lopi.yml`: `claude_contract.advisory: false` |
+| squish | 4 of 6 required sections missing (org rules, invariants, repo map, repo-specific rules), no org import | stays `advisory: true`, explicit and reasoned, not the silent code default |
+| vectro | Same shape as squish -- 4 of 6 sections missing, no org import | stays `advisory: true`, explicit and reasoned |
+
+Every rules-file `citation_ratio` check (the gate's other half) was already clean
+across all three repos with no override needed (highest measured: lopi's
+`security-sinks.md` at 0.25, well under the 0.5 majority-incident-log threshold).
+
+**The org-wide code default (`cfg.get("advisory", True)` in
+`packages/konjo-gates-py`) stays `True`, recorded explicitly rather than silently
+carried**: 2 of 3 real pilot profiles are not ready, and flipping the code-level
+default would silently promote every future onboarding repo (and squish/vectro right
+now) to blocking before their CLAUDE.md is in contract -- the exact "fail the very
+next unrelated PR that touches CLAUDE.md" trap this gate's advisory-ramp existed to
+avoid. Each ready repo instead gets an explicit per-profile override
+(`profiles/lopi.yml`), the same shape `gate_polarity`'s own advisory ramp uses.
+
+**Proposed conversions for squish and vectro written this sprint**
+(`docs/pilots/squish-claude-md.proposed.md`, `docs/pilots/vectro-claude-md.proposed.md`),
+matching `docs/pilots/lopi-claude-md.proposed.md`'s Phase 13 precedent exactly (this
+session holds read-only access to both repos; applying either is that repo's own PR).
+Both proposals verified for real against `lib.claude_contract.check_contract` before
+being recorded here (`check.ok == True` on the proposed file content, not just
+asserted) -- a real, if smaller-scale, repeat of Phase 13's own finding that most
+"Critical Constraints" lists have no mechanical enforcement behind them:
+
+| Repo | Constraints with real mechanical enforcement found this sprint | How found |
+|---|---|---|
+| squish | 2 of 9 (bare/`Exception`-except and quantization-accuracy) | read `.konjo/hooks/pre-commit` and `.github/workflows/model_pipeline.yml` in full |
+| vectro | 1 of 14 (`unwrap`/`expect`, via clippy) | read `.konjo/hooks/pre-commit` and `.github/workflows/konjo-gate.yml` in full |
+
+Every other bullet in both files is marked `ADVISORY` in the proposal rather than
+guessed at -- a bounded, real search (not exhaustive per-line CI archaeology at
+Phase 13's original depth) that found no matching check, stated as absence-of-evidence
+rather than presented as proof-of-absence. See `Squish-Vectro-Gate-Reconciliation-1`
+below for the CI-shape finding these proposals surfaced in passing (`continue-on-
+error: true` swallowing nearly every check in both repos' own Wall 2 CI).
+
+## Squish-Vectro-Gate-Reconciliation-1: promote/keep/delete tables for both repos, plus a real finding neither this session's brief nor either repo's own CLAUDE.md named -- most of both repos' "Wall 2" CI is decorative
+
+**Non-goal-respecting decision, same shape as `Lopi-Gate-Reconciliation-1`**: this
+phase connects and records what exists, it does not rebuild either repo's CI. Read
+both repos' real `.github/workflows/konjo-gate.yml` in full (squish: 210 lines;
+vectro: 138 lines), not assumed from `profiles/*.yml`'s existing (accurate, from an
+earlier sprint) `format_lint`/`contract_gates` declarations.
+
+**The real finding, not named anywhere before this session traced it**: squish's G1
+(static analysis) and G2 (coverage) jobs, and vectro's G1/G2/G3/G4 jobs, wrap
+*every* check step in `continue-on-error: true`. A step under `continue-on-error:
+true` can exit nonzero and the *job* still reports `success` -- and the final
+`konjo-gate` job's merge decision reads `needs.<job>.result`, the *job's* conclusion,
+not any individual step's outcome. Net effect, confirmed by reading the exact YAML,
+not inferred from the job names: **squish's entire Wall 2 CI blocks a merge on
+exactly one condition** (new-file 500-line size, the one step without `continue-on-
+error`) **despite squish's own CLAUDE.md describing it as "Coverage ≥ 80% · mutation
+survival ≤ 10% · complexity ≤ 15 · file ≤ 500L · zero DRY violations... Blocks the
+merge."** Four of those five clauses do not block anything today. **Vectro's Wall 2
+CI blocks on literally nothing** -- every step in every job, including its own
+file-size check, carries `continue-on-error: true`; the `konjo-gate` job's
+`[ "$FAILED" ... ] && exit 1` line can never fire. This is the same defect class
+`konjoai/lopi`'s own PR #182/#184 (Sprint S13, Phase 0) found for lopi's CLAUDE.md
+self-claims -- found here independently, for two more repos, by the same mechanical
+question ("does this claimed gate actually have a consumer") applied to YAML instead
+of prose.
+
+**Where vectro's real blocking enforcement actually comes from**: a *second*,
+separate workflow file, `.github/workflows/konjo-gates.yml` (following
+`templates/repo-ci.yml`'s pattern -- the real kiban `konjo-gates` dispatcher, no
+`continue-on-error` wrapping, a genuine nonzero exit blocks the merge). Squish has no
+equivalent file at all -- **squish has never connected kiban's own gate orchestrator
+to its CI**, the same gap lopi had before Sprint S13R's Phase A this same week.
+
+**A second, live instance of the exact stale-pin problem this sprint's own Phase 5
+item named** (misfiled in the sprint brief as `templates/repo-CLAUDE.md`, which was
+already clean -- the real offender was its sibling, `templates/repo-ci.yml`):
+vectro's real `konjo-gates.yml` pins `KIBAN_REF: "v1.1.5"`, seven-plus minor releases
+behind current (`1.8.0` at sprint start). Vectro's only genuinely-blocking kiban
+gate has been running a version of kiban that predates `gate_polarity`,
+`gate_can_fail`, the doc-integrity gate, Wall-3 multi-run, and all of Phase 13 --
+every quality mechanism this project has shipped in roughly its last dozen sprints.
+`templates/repo-ci.yml`'s own example pin was itself stale (`v1.1.0`, matching the
+pattern that let vectro's copy drift too) -- bumped to `1.9.0` this sprint, with this
+finding cited inline so a future reader sees the live consequence, not just an
+abstract "don't do this."
+
+**Table (this sprint's new findings; every `format_lint`/`contract_gates` entry
+already reconciled by an earlier sprint stays as-is, not re-litigated)**:
+
+| Finding | Repo | Decision |
+|---|---|---|
+| G1/G2 (`static`, `coverage`) fully `continue-on-error` -- 4 of 5 CLAUDE.md-claimed Wall 2 gates do not block | squish | KEEP REPO-NATIVE as documentation of *intent*; recorded here as a correction, not silently left implying it blocks. Fixing squish's own YAML is squish's sprint, out of scope for "connect what exists." |
+| No `konjo-gates` job exists in CI at all | squish | **Flagged for next squish sprint**: add a job following `templates/repo-ci.yml`, the same connection lopi's Sprint S13R Phase A just did -- `profiles/squish.yml`'s `format_lint`/`contract_gates` are real and ready, they are simply never invoked by anything in squish's own repo today. |
+| Every G1-G4 step `continue-on-error` -- Wall 2 CI blocks on nothing | vectro | KEEP REPO-NATIVE as documentation of intent, same reasoning as squish; vectro's real enforcement is entirely the separate `konjo-gates.yml`. |
+| `konjo-gates.yml` pinned at `v1.1.5`, ~7 minor releases stale | vectro | **Flagged for next vectro sprint**: bump `KIBAN_REF` to current and re-run the reconciled `profiles/vectro.yml` against real vectro CI, the same way `Lopi-Gate-Reconciliation-1`'s closing step verified `konjo-gates` against a real lopi checkout. This session's read-only access cannot push the bump itself. |
+| `cargo-audit` | vectro | **PROMOTED** (`profiles/vectro.yml`): moved from `contract_gates` (documentation-only) to `format_lint` (real dispatch) -- the generic `_TOOL_SCOPE`/`_TOOL_BIN` support already existed (added for lopi, Phase 13), so this is a one-line reclassification, zero new detector code, the same PROMOTE shape `Lopi-Gate-Reconciliation-1` used. |
+| `templates/repo-ci.yml`'s example `KIBAN_REF` | kiban itself | Bumped `v1.1.0` → `1.9.0`, with this session's real vectro finding cited inline as the concrete cost of leaving a template example stale. |
+
+**Nothing was deleted, nothing was rewritten to actually block** -- per this phase's
+own non-goal ("connecting what exists, not improving any gate"), squish's and
+vectro's `continue-on-error` wrapping is not this sprint's to remove; that is a real
+gate-hardening decision each repo's own maintainers should make deliberately (some
+`continue-on-error` uses are legitimate soft-launch choices, not all decoration is a
+mistake), not something to flip silently from a reconciliation pass in a different
+repo's sprint.
+
 ## Learn-Loop-Seed-1: lopi's four sprint-cited security lines converted through `konjo-learn`, all four found a home -- confirmed by running the guardrail for real, not by inspection
 
 **Not a one-way door, but the sprint's most direct confirmation that this sprint's new

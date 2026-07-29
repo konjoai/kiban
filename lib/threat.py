@@ -65,18 +65,26 @@ _PATH_HINTS: list[tuple[str, re.Pattern[str]]] = [
 _DESERIALIZATION_RE = re.compile(
     r"(?i)\b(pickle\.loads|yaml\.load\b|json\.loads|eval\(|Deserialize)"
 )
-_SQL_RE = re.compile(
-    r"(?i)\b(SELECT\b.{0,60}\bFROM\b|format!\(.{0,20}(SELECT|INSERT|UPDATE))"
-)
+_SQL_RE = re.compile(r"(?i)\b(SELECT\b.{0,60}\bFROM\b|format!\(.{0,20}(SELECT|INSERT|UPDATE))")
 _RESOURCE_LIMITS_RE = re.compile(
-    r"(?i)\b(VecDeque::new\(\)|Vec::new\(\)|channel\(\))\s*;?\s*$|\bwhile\s+true\b"
+    r"(?im)\b(VecDeque::new\(\)|Vec::new\(\)|"
+    r"(?:unbounded_channel|unbounded|channel)(?:::<[^()]*>)?\(\))\s*;?\s*$|\bwhile\s+true\b"
 )
 
 _DIFF_HINTS: list[tuple[str, re.Pattern[str]]] = [
     (AUTHN_AUTHZ, re.compile(r"(?i)\b(authenticat|authoriz|is_admin|permission|role)\w*\b")),
     (SECRET_LIFECYCLE, re.compile(r"(?i)\b(secret|api_key|credential|token)\w*\s*=")),
     (DESERIALIZATION, _DESERIALIZATION_RE),
-    (SUBPROCESS_EXEC, re.compile(r"(?i)\b(subprocess\.|os\.system|Command::new|exec[lv]|spawn\()")),
+    # `\.spawn\(\)` (a zero-arg method call) matches a process builder's terminal
+    # call (`Command::new("x").spawn()`); a bare `spawn\(` also matched
+    # `tokio::spawn(fut)`/`thread::spawn(closure)` -- in-process concurrency, not a
+    # subprocess/OS-exec boundary at all. Found live (Phase 14, Phase 3's real
+    # measurement): a `tokio::spawn(async move ...)` background task tripped this
+    # hint on every run, unrelated to any actual subprocess.
+    (
+        SUBPROCESS_EXEC,
+        re.compile(r"(?i)\b(subprocess\.|os\.system|Command::new|exec[lv])|\.spawn\(\)"),
+    ),
     (PATH_HANDLING, re.compile(r"(?i)\b(path\.join|PathBuf::from|\.\./|realpath|canonicalize)")),
     (NETWORK_INGRESS, re.compile(r"(?i)\b(webhook|request\.(body|json)|axum::|#\[route)")),
     (SQL_CONSTRUCTION, _SQL_RE),
