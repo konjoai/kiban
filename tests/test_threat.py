@@ -28,6 +28,33 @@ def test_classify_no_hits_on_plain_change() -> None:
     assert cls.boundaries == []
 
 
+def test_subprocess_exec_catches_command_builder_spawn() -> None:
+    cls = threat.classify(["src/x.rs"], 'Command::new("sh").arg("-c").arg(cmd).spawn()')
+    assert threat.SUBPROCESS_EXEC in cls.boundaries
+
+
+def test_subprocess_exec_does_not_fire_on_tokio_spawn() -> None:
+    # Found live (Phase 14, Phase 3): a bare `spawn\(` alternative also matched
+    # `tokio::spawn(fut)`/`thread::spawn(closure)`, in-process concurrency with no
+    # subprocess/OS-exec boundary at all. Only a zero-arg `.spawn()` (the process
+    # builder's terminal call) should count.
+    cls = threat.classify(["src/x.rs"], "tokio::spawn(async move { do_work().await; })")
+    assert threat.SUBPROCESS_EXEC not in cls.boundaries
+
+
+def test_resource_limits_catches_unbounded_channel_with_turbofish() -> None:
+    cls = threat.classify(["src/x.rs"], "let (tx, rx) = mpsc::unbounded_channel::<Event>();")
+    assert threat.RESOURCE_LIMITS in cls.boundaries
+
+
+def test_resource_limits_matches_mid_diff_not_only_last_line() -> None:
+    # Found live (Phase 14, Phase 2): the pattern's `$` anchor had no re.MULTILINE,
+    # so it only matched a diff's last line regardless of where the risky call was.
+    diff = "let v: Vec<u8> = Vec::new();\nfn unrelated_trailing_line() {}"
+    cls = threat.classify(["src/x.rs"], diff)
+    assert threat.RESOURCE_LIMITS in cls.boundaries
+
+
 def test_record_refuses_empty_mitigation() -> None:
     records = [
         threat.BoundaryRecord(boundary=threat.NETWORK_INGRESS, mitigation="", abuse_case="x")

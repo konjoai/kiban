@@ -18,6 +18,7 @@ exact omission behind the lopi `claude_stream.rs` gap). Verified against the ins
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 
 def headless_argv(
@@ -58,14 +59,17 @@ def run_headless(
     stream_json: bool = True,
     extra: list[str] | None = None,
     timeout: int = 600,
+    cwd: str | Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a headless call and return the completed process (stdout is the event stream).
 
     Captures output as text. The caller decides how to parse it: stream-json yields one JSON
     object per line; text yields the plain reply. Never raises on a nonzero exit; inspect
-    `returncode`.
+    `returncode`. `cwd` runs the call against a specific checkout (e.g. an isolated worktree,
+    per `lib.gen_runner`) instead of the caller's own working directory; omitted, the process
+    inherits the caller's cwd exactly as before this parameter existed.
     """
     argv = headless_argv(
         prompt, model=model, bare=bare, stream_json=stream_json, extra=extra
     )
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=cwd)

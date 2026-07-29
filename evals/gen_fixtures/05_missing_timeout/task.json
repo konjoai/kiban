@@ -1,0 +1,6 @@
+{
+  "id": "missing-timeout",
+  "prompt": "Add a health-check client that pings a remote agent-run's callback URL and reports whether it responded.",
+  "context_label": "baseline",
+  "source": "illustrative, modeled on the defect class named explicitly in konjoai/lopi's real .claude/rules/security-invariants.md: 'Set and enforce per-request timeouts on every agent run'. Deliberately written WITHOUT a timeout, to demonstrate this harness's mechanical missing_timeout classifier (lib.defect_shapes.scan_missing_timeout) fires on the un-mitigated shape. Not a live konjo-headless run -- see .konjo/killtests/P13/KT-13.1.md."
+}

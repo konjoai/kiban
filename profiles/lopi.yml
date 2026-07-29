@@ -94,6 +94,22 @@ polarity:
   enabled: true
   advisory: true
 
+# Phase 14, Phase 4: the standing-violation measurement this sprint ran
+# (lib.claude_contract.check_contract against lopi's real CLAUDE.md, cloned at
+# 773cbea/PR #184) found ZERO violations -- Sprint S13R, Phase A already converted
+# lopi's CLAUDE.md to the full section contract with every invariant bullet naming its
+# enforcing gate. Flipped to blocking here rather than left on the org-wide advisory
+# default: there is no existing-content baseline to break, so blocking costs lopi
+# nothing today and catches a real regression (a future edit that drops a section or
+# adds an unenforced "hard rule" bullet) the moment it happens instead of silently.
+# `citation_ratio` needs no override -- every one of lopi's real `.claude/rules/*.md`
+# files measured well under the 0.5 majority-incident-log threshold this sprint
+# (highest: security-sinks.md at 0.25), so the rules-file half of this gate was
+# already clean under the default. See LEDGER.md's Claude-Contract-Ramp-1.
+claude_contract:
+  enabled: true
+  advisory: false
+
 # G-CAN-FAIL (K1): lopi already has real, named, passing rejects_test scripts for three of
 # its repo-native checks -- pointing at them here gives G-CAN-FAIL real teeth immediately,
 # with zero new detector code.

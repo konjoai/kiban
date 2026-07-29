@@ -4,6 +4,112 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-07-29
+
+Phase 14, "The Measurement Harness." Phase 13 shipped the seam and the contract; it
+did not ship the thing it was named for -- KT-13.1 found no task-to-diff loop existed
+to run the empirical protocol Phase 2's six candidate invariants needed. This sprint
+builds that loop, runs it for real against `konjoai/lopi`, closes the classifier gap
+from 3 to 7 of 8 defect taxonomy classes, and runs a real (if small) slice of Phase 3
+-- finding, along the way, two real bugs in its own measurement instrument, fixing
+both before publishing any number. Verdict: no candidate ships this sprint either,
+this time on real evidence of an honest null rather than an infeasible protocol. See
+`.konjo/killtests/P14/`.
+
+### Added
+
+- **`lib/gen_runner.py` + `evals/gen_cassettes.py` + `konjo-eval genrun`** -- the
+  task-to-diff loop KT-13.1 named as missing: an isolated `git worktree`, explicit
+  context injection (`--append-system-prompt`), a spend ceiling, and a cassette
+  record/replay pair matching `evals/cassettes.py`'s pattern for the review gate.
+  Two real environment findings shaped its defaults: `--dangerously-skip-permissions`
+  is refused under root by the installed CLI, and `--bare` mode's
+  `ANTHROPIC_API_KEY`-only auth fails closed in this remote session (no key, only a
+  host-managed provider token) -- confirmed directly, not assumed. Defaults to
+  `--permission-mode acceptEdits` + an explicit tool allowlist, non-bare; both
+  overridable for a caller with its own key. `.konjo/killtests/P14/KT-14.1.md`.
+- **`lib/defect_shapes.py`** -- mechanical scans for `missing_timeout`,
+  `untyped_error_boundary`, and `missing_test_failure_path`, growing
+  `evals/genfixtures.py`'s mechanically-classified count from 3 to 7 of 8 (the eighth,
+  `unbounded_queue`, is a zero-new-code reuse of `lib.threat.classify`'s existing
+  `RESOURCE_LIMITS` reason). `raw_index_external_input` stays `None` -- recorded as
+  genuinely not classifiable at diff-grep granularity, not merely undone. Four new
+  hand-authored, real-defect-modeled fixtures (`evals/gen_fixtures/04`-`07`), each
+  confirmed to actually fire its target classifier. `LEDGER.md`'s
+  `Defect-Classifier-Gap-1`.
+- **KT-14.2 fix**: `run_gen_corpus`'s `totals` dict initialized every class to `0` and
+  only incremented the classified ones -- an unclassified class read as "0 defects,"
+  indistinguishable from clean. Fixed to stay `None` until a fixture actually
+  classifies it. `.konjo/killtests/P14/KT-14.2.md`.
+- **A real slice of Phase 3**: 2 real feature-shaped lopi tasks (deliberately distinct
+  from KT-14.1's defect-fix tasks, to avoid confounding "reduces incidental defects"
+  with "followed an explicit instruction"), 3 conditions (baseline, candidate 3
+  "bounded queues/timeouts/retries," candidate 5 "typed error boundaries"), 3 runs
+  each -- 18 real sessions. The measurement caught a real bug in its own instrument:
+  test-helper code (`mod tests { ... }`, `.unwrap()` in test setup) was scoring
+  identically to production defects, contradicting the org's own real convention ("No
+  unwrap()/expect() outside tests"). Fixed
+  (`lib.defect_shapes.added_lines_excluding_test_scope`, and a narrowed
+  `SUBPROCESS_EXEC` pattern in `lib/threat.py` that no longer matches
+  `tokio::spawn`/`thread::spawn`) before either report was finalized. After the fix,
+  every one of 20 successful sessions classified completely clean, on both tasks, in
+  every condition -- an honest null: neither tested candidate had a non-zero baseline
+  rate to measure a reduction against. `.konjo/killtests/P14/phase3-report.md`,
+  `LEDGER.md`'s `Phase-3-Real-Measurement-1`.
+- **`gate_claude_contract` flips to blocking for lopi** (`profiles/lopi.yml`) -- the
+  real standing-violation count measured against lopi's current `CLAUDE.md` is zero
+  (Sprint S13R already converted it). Stays advisory, explicitly and with the real
+  count recorded, for squish and vectro (4 of 6 required sections missing on both).
+  `docs/pilots/squish-claude-md.proposed.md` and `docs/pilots/vectro-claude-md.
+  proposed.md` -- the prepared conversions, following the lopi Phase 13 precedent,
+  each verified for real against `lib.claude_contract.check_contract` before being
+  recorded. `LEDGER.md`'s `Claude-Contract-Ramp-1`.
+
+### Fixed
+
+- **`lib/threat.py`'s `RESOURCE_LIMITS` diff hint** had no `re.MULTILINE` on its `$`
+  anchor, so it only ever matched a diff's last line regardless of where the risky
+  call actually was -- silently near-inert since it shipped in Phase 13. Also grew to
+  catch `unbounded_channel()`/`unbounded()` (tokio's and crossbeam's explicitly named
+  unbounded constructors), not just bare `channel()`. Found while wiring
+  `unbounded_queue`'s mechanical reuse; `gate_threat_model`'s live behavior benefits
+  too, not just this harness's reuse of it.
+- **`templates/repo-ci.yml`'s example `KIBAN_REF`** bumped from a stale `v1.1.0` to
+  `1.9.0`, with a real, live consequence cited inline: `konjoai/vectro`'s actual copy
+  of this file was still pinned at `v1.1.5`, ~7 minor kiban releases behind, meaning
+  vectro's only genuinely-blocking kiban gate predates `gate_polarity`,
+  `gate_can_fail`, the doc-integrity gate, and all of Phase 13. Found while
+  reconciling squish/vectro's gates; the fix itself does not (cannot, from read-only
+  access) touch vectro's own copy -- flagged in `NEXT_SESSION_PROMPT.md`.
+- **`profiles/vectro.yml`**: `cargo-audit` promoted from `contract_gates`
+  (documentation-only) to `format_lint` (real dispatch) -- the generic dispatcher
+  support already existed (added for lopi, Phase 13), so this is a one-line
+  reclassification.
+
+### Found, not fixed here (real, deliberately out of scope)
+
+- **Squish's and vectro's own "Wall 2" CI is almost entirely decorative.** Reading
+  both repos' real `konjo-gate.yml` in full found nearly every check step wrapped in
+  `continue-on-error: true`; squish's Wall 2 blocks a merge on exactly one condition
+  (new-file size), vectro's blocks on none at all (its real enforcement is the
+  separate, stale-pinned `konjo-gates.yml`). This is the same defect class
+  `konjoai/lopi`'s own PR #182/#184 found for lopi's CLAUDE.md self-claims, found
+  here independently for two more repos' CI YAML. Recorded, not fixed -- rewriting
+  either repo's CI is a deliberate decision for that repo's own maintainers, out of
+  this phase's "connect what exists" non-goal. `LEDGER.md`'s
+  `Squish-Vectro-Gate-Reconciliation-1`.
+- Squish has never connected `konjo-gates` to its CI at all (no equivalent of
+  vectro's `konjo-gates.yml` / lopi's Sprint S13R Phase A). Flagged for squish's next
+  sprint.
+- Candidates 1, 2, 4, 6 of the six drafted invariants remain entirely unmeasured this
+  sprint -- candidate 1 by the sprint brief's own stated low priority
+  (`gate_polarity` already catches its shape deterministically), 2/4/6 simply not
+  reached inside this session's real live-model budget.
+- The full 12-20 task × 3 run × 6-candidate protocol (252-420 sessions at the brief's
+  own floor) was not affordable inside this session on top of the harness, classifier,
+  and gate-ramp work also required -- stated plainly per this project's own
+  established precedent, not silently shrunk.
+
 ## [1.8.0] - 2026-07-29
 
 Phase 13, "The Authoring Gate." Every quality mechanism in kiban ran against a diff that

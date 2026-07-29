@@ -1,0 +1,21 @@
+diff --git a/crates/lopi-agent/src/priority.rs b/crates/lopi-agent/src/priority.rs
+index 9999999..aaaaaaa 100644
+--- a/crates/lopi-agent/src/priority.rs
++++ b/crates/lopi-agent/src/priority.rs
+@@ -1,3 +1,9 @@
++pub fn admit(priority: u8, min: u8, max: u8) -> bool {
++    priority >= min && priority <= max
++}
++
+ pub struct PriorityQueue;
+diff --git a/crates/lopi-agent/tests/priority_tests.rs b/crates/lopi-agent/tests/priority_tests.rs
+index bbbbbbb..ccccccc 100644
+--- a/crates/lopi-agent/tests/priority_tests.rs
++++ b/crates/lopi-agent/tests/priority_tests.rs
+@@ -1,3 +1,7 @@
+ use lopi_agent::priority::admit;
+
++#[test]
++fn test_admit_within_range() {
++    assert!(admit(5, 0, 10));
++}
