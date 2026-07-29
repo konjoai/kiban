@@ -1,0 +1,6 @@
+{
+  "id": "webhook-signature-baseline",
+  "prompt": "Add HMAC-SHA1 signature validation to the WhatsApp/Twilio webhook handler before any command from the payload is executed, per lopi's real Sprint S10, Phase 4 fix.",
+  "context_label": "baseline",
+  "source": "illustrative, modeled on konjoai/lopi's real WhatsApp/Twilio HMAC verification work (Sprint S10, Phase 4) -- see .claude/rules/security.md. Not a live konjo-headless run; KT-13.1 found the full live-generation protocol infeasible at the specified rigor this session (see .konjo/killtests/P13/KT-13.1.md). This fixture proves the classify_diff/konjo-eval-gen mechanism end-to-end offline; it is not empirical evidence toward Phase 2."
+}

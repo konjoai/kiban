@@ -62,6 +62,7 @@ import yaml  # type: ignore[import-untyped]  # noqa: E402
 
 from evals import cassettes, runner  # noqa: E402
 from lib import (  # noqa: E402
+    claude_contract,
     context_budget,
     diff_scope,
     newonly,
@@ -72,6 +73,7 @@ from lib import (  # noqa: E402
     redact,
     review_log,
     specialist_stats,
+    threat,
     unsafe_budget,
 )
 
@@ -92,6 +94,7 @@ _TOOL_SCOPE = {
     "clippy": "SCOPE_RUST",
     "fmt-check": "SCOPE_RUST",
     "cargo-deny": "SCOPE_RUST",
+    "cargo-audit": "SCOPE_RUST",
     "cargo-mutants": "SCOPE_RUST",
     "unsafe-budget": "SCOPE_RUST",
     "tsc": "SCOPE_TS",
@@ -106,6 +109,7 @@ _TOOL_BIN = {
     "clippy": "cargo",
     "fmt-check": "cargo",
     "cargo-deny": "cargo",
+    "cargo-audit": "cargo",
     "cargo-mutants": "cargo",
     "tsc": "npx",
     "eslint": "npx",
@@ -122,6 +126,7 @@ _TOOL_BIN = {
 # gate run and misreport a missing plugin as "net-new findings".
 _TOOL_PROBE = {
     "cargo-deny": ["cargo", "deny", "--version"],
+    "cargo-audit": ["cargo", "audit", "--version"],
     "cargo-mutants": ["cargo", "mutants", "--version"],
 }
 
@@ -285,6 +290,42 @@ def gate_prove(changed: list[str], flags: dict[str, bool], profile: dict, base: 
     )
 
 
+_DEFAULT_SECURITY_GLOBS = (
+    "**/auth*", "**/api*", "**/server*", "**/webhook*", "**/*secret*", "**/*credential*",
+)
+
+
+def gate_threat_model(changed: list[str], diff_text: str, base: str, profile: dict) -> GateResult:
+    """Phase 13, Phase 3: a security-glob change needs a recorded threat model.
+
+    Same shape as `gate_one_way_door`/`gate_prove`: never prompts, never re-runs the
+    brief-time classification (`konjo-threat classify`/`record` is the session-side
+    half). Applies only to a change touching a `security_globs` path (profile-declared,
+    default a generic auth/api/server/webhook/secret/credential set if the profile
+    doesn't override it -- `diff_scope` has no fixed SCOPE_SECURITY flag the way
+    `gate_prove` gets SCOPE_BENCH from `diff_scope`, since a trust boundary is a path
+    concern, not a language/kind concern). No recorded trailer -> FAIL with guidance to
+    run `konjo-threat record` at brief time.
+    """
+    globs = list(profile.get("security_globs", [])) or list(_DEFAULT_SECURITY_GLOBS)
+    is_security = any(_glob_match(c, globs) for c in changed)
+    if not is_security:
+        return GateResult("threat_model", SKIP, "no security_globs path changed")
+    fp = oneway.fingerprint(changed)
+    messages = _git(["log", f"{base}..HEAD", "--format=%B"])
+    if threat.find_threat_model(messages, fp):
+        return GateResult("threat_model", PASS, f"threat model recorded (change id {fp})")
+    return GateResult(
+        "threat_model",
+        FAIL,
+        f"security-glob change with no recorded threat model (change id {fp}). Run "
+        f"`konjo-threat classify --files ...` then `konjo-threat record --files ... "
+        f"--boundary ... --mitigation ... --abuse-case ...` (repeat per boundary hit, or "
+        f"pass none for 'no boundaries apply') and add the "
+        f"'{threat.threat_trailer(fp)}' trailer to a commit",
+    )
+
+
 def _is_polarity_exempt(path: str, exempt_globs: list[str]) -> bool:
     return any(Path(path).match(g) for g in exempt_globs)
 
@@ -354,6 +395,70 @@ def gate_polarity(changed: list[str], base: str, profile: dict) -> GateResult:
     return GateResult("polarity", WARN if advisory else FAIL, detail)
 
 
+_RULES_FILE_RE = re.compile(r"^\.claude/rules/.*\.md$")
+
+
+def gate_claude_contract(changed: list[str], profile: dict) -> GateResult:
+    """Phase 13, Phase 1: the CLAUDE.md section contract, made permanent and org-wide.
+
+    S13 Phase 0 audited lopi's self-claims in its root CLAUDE.md once, by hand. This gate
+    makes that audit mechanical: any changed root `CLAUDE.md` is checked against the fixed
+    section contract (org rules, stack, commands, invariants, repo map, repo-specific
+    rules -- `lib.claude_contract.REQUIRED_SECTIONS`, in that order) and every bullet under
+    an invariants/hard-rules heading must name the gate that enforces it or say ADVISORY --
+    an unenforced "invariant" is a claim with no consumer. Any changed `.claude/rules/*.md`
+    file is separately checked for the incident-log shape: a majority of lines carrying a
+    sprint/date citation means the file records what broke, not what to check.
+
+    Offline, no model, no network -- pure regex/heading parse over files already on disk.
+    Ships advisory by default (WARN, not FAIL) so an adopting repo's non-conformant
+    CLAUDE.md doesn't retroactively block unrelated work; `claude_contract.advisory: false`
+    promotes it to blocking once a repo's CLAUDE.md has been brought into contract.
+    """
+    cfg = profile.get("claude_contract", {}) or {}
+    if not cfg.get("enabled", True):
+        return GateResult("claude_contract", SKIP, "disabled (claude_contract.enabled: false)")
+    advisory = bool(cfg.get("advisory", True))
+
+    claude_hits = [p for p in changed if Path(p).name == "CLAUDE.md"]
+    rule_hits = [p for p in changed if _RULES_FILE_RE.match(p)]
+    if not claude_hits and not rule_hits:
+        return GateResult("claude_contract", SKIP, "no changed CLAUDE.md or rules file")
+
+    problems: list[str] = []
+    for path in claude_hits:
+        if not Path(path).exists():
+            continue
+        text = Path(path).read_text(errors="replace")
+        check = claude_contract.check_contract(text)
+        if check.missing_sections:
+            problems.append(f"{path}: missing section(s) {check.missing_sections}")
+        if check.out_of_order:
+            problems.append(f"{path}: sections out of order, expected {check.out_of_order}")
+        if not check.has_org_import:
+            problems.append(f"{path}: missing org import line (@~/.konjo/kiban/...)")
+        if check.unenforced_bullets:
+            rendered = "; ".join(check.unenforced_bullets[:5])
+            problems.append(f"{path}: invariant bullet(s) name no enforcing gate: {rendered}")
+
+    for path in rule_hits:
+        if not Path(path).exists():
+            continue
+        text = Path(path).read_text(errors="replace")
+        ratio = claude_contract.citation_ratio(text)
+        if ratio > 0.5:
+            problems.append(
+                f"{path}: {ratio:.0%} of lines carry a sprint/date citation -- reads as "
+                f"an incident log, not an invariant set; split into invariants (what to "
+                f"check) and sinks (where it's enforced)"
+            )
+
+    if problems:
+        return GateResult("claude_contract", WARN if advisory else FAIL, "; ".join(problems))
+    n = len(claude_hits) + len(rule_hits)
+    return GateResult("claude_contract", PASS, f"{n} file(s) contract-clean")
+
+
 def gate_can_fail(profile: dict) -> GateResult:
     """K1, Family 0: every declared quality gate ships with a test that makes it reject.
 
@@ -417,9 +522,12 @@ _CHECKPOINT_RE = re.compile(r"\bCheckpoint\s*\(|\.mark\s*\(")
 _MAIN_GUARD_RE = re.compile(r"if\s+__name__\s*==\s*['\"]__main__['\"]")
 
 
-def _is_longrun_path(path: str, globs: list[str]) -> bool:
+def _glob_match(path: str, globs: list[str]) -> bool:
     """fnmatch-based glob match, with `**` matching across directories and `**/` patterns
-    also matching at the repo root (Path.match does not handle `**` recursively)."""
+    also matching at the repo root (Path.match does not handle `**` recursively).
+
+    Shared by every profile-glob-routed gate (`longrun_globs`, `security_globs`, ...) so
+    the `**`-handling fnmatch logic exists in exactly one place."""
     base = path.rsplit("/", 1)[-1]
     for g in globs:
         if fnmatch.fnmatch(path, g):
@@ -429,6 +537,10 @@ def _is_longrun_path(path: str, globs: list[str]) -> bool:
         if g.startswith("**/") and fnmatch.fnmatch(base, g[3:]):
             return True
     return False
+
+
+def _is_longrun_path(path: str, globs: list[str]) -> bool:
+    return _glob_match(path, globs)
 
 
 def _is_runnable_script(path: str, text: str) -> bool:
@@ -644,6 +756,7 @@ def _tool_argv(
         "clippy": ["cargo", "clippy", "--", "-D", "warnings"],
         "fmt-check": ["cargo", "fmt", "--check"],
         "cargo-deny": ["cargo", "deny", "check"],
+        "cargo-audit": ["cargo", "audit"],
         # TypeScript tools operate on the whole project; they take no file list. Each still
         # runs through konjo-newonly so only net-new findings block. npm-audit is the JS
         # realization of the supply_chain universal gate.
@@ -785,7 +898,9 @@ def _gate_plan(
         ("secrets", lambda: gate_secrets(diff_text)),
         ("one_way_door", lambda: gate_one_way_door(changed, diff_text, base)),
         ("prove", lambda: gate_prove(changed, flags, profile, base)),
+        ("threat_model", lambda: gate_threat_model(changed, diff_text, base, profile)),
         ("polarity", lambda: gate_polarity(changed, base, profile)),
+        ("claude_contract", lambda: gate_claude_contract(changed, profile)),
         ("can_fail", lambda: gate_can_fail(profile)),
         ("longrun", lambda: gate_longrun(changed, profile)),
     ]

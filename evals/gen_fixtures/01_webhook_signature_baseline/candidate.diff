@@ -1,0 +1,27 @@
+diff --git a/crates/lopi-remote/src/whatsapp.rs b/crates/lopi-remote/src/whatsapp.rs
+index 1111111..2222222 100644
+--- a/crates/lopi-remote/src/whatsapp.rs
++++ b/crates/lopi-remote/src/whatsapp.rs
+@@ -10,6 +10,16 @@ pub struct WhatsAppWebhook {
+     signing_key: String,
+ }
+
++impl WhatsAppWebhook {
++    pub fn verify_signature(&self, body: &[u8], signature_header: &str) -> Result<(), WebhookError> {
++        let expected = hmac_sha1(&self.signing_key, body);
++        if !constant_time_eq(&expected, signature_header.as_bytes()) {
++            return Err(WebhookError::InvalidSignature);
++        }
++        Ok(())
++    }
++}
++
+ pub async fn handle_incoming(
+     webhook: &WhatsAppWebhook,
+     body: &[u8],
+@@ -20,6 +30,7 @@ pub async fn handle_incoming(
+     command: &str,
+ ) -> Result<(), WebhookError> {
++    webhook.verify_signature(body, signature_header)?;
+     dispatch_command(command).await
+ }

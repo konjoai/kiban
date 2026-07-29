@@ -55,6 +55,31 @@ silently. If something is genuinely confusing, stop and ask rather than fill the
 plausible-looking code; that is exactly the code that passes a casual review and fails when
 it matters. This is "evidence first, not deference" applied to the build step.
 
+## Pre-implementation contract (trust boundaries)
+
+Before writing code that crosses a trust boundary, introduces a queue, spawns a process,
+or parses external input, state the invariant it will satisfy and name the test that
+will prove it. This is the verify-loop moved one step earlier: deciding what "correct"
+means before the code exists is cheap; discovering it after the fact, from a diff
+someone else has to review, is not. Concretely, before the first line:
+
+1. Name the boundary: authn/authz, secret lifecycle, deserialization, subprocess/exec,
+   path handling, network ingress, SQL construction, or resource limits (the same eight
+   classes `konjo-threat` classifies against). Run `konjo-threat classify --files ...` on
+   the files about to change for a heuristic hint, not a substitute for thinking about it.
+2. State the mitigation in one line ("HMAC-verify the webhook signature before dispatch,"
+   not "handle security").
+3. Name the abuse case the mitigation defeats ("a forged webhook body with no signature
+   reaches task injection").
+4. Name the test that will prove it, before writing the code the test proves.
+
+When the profile's `security_globs` matches the change, `konjo-threat record --files ...
+--boundary ... --mitigation ... --abuse-case ...` writes this to the Ledger and prints
+the `Konjo-Threat-Model:` trailer `gate_threat_model` checks for at CI time -- the same
+record-and-check split as the one-way-door acknowledgement. A change that touches none of
+the eight boundaries states that too ("no boundaries apply") rather than skipping the
+step silently; "none" is a valid answer, an unconsidered one is not.
+
 ## Simplicity first
 
 Write the minimum that solves the problem in front of you, not the minimum that could solve

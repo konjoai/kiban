@@ -49,6 +49,18 @@ gates:                       # G-CAN-FAIL (K1): every quality gate names its rej
     rejects_test: string     # a command that supplies a known-bad input and asserts
                              # REJECTION; konjo-gates runs it and requires it to pass
 
+claude_contract:             # Phase 13, Phase 1: the CLAUDE.md section contract
+  enabled: bool               # false to skip entirely (default true)
+  advisory: bool               # true reports without blocking (adoption ramp); default
+                               # true for a repo backfilling this gate, false once its
+                               # CLAUDE.md is brought into contract
+
+security_globs:               # Phase 13, Phase 3: paths gate_threat_model treats as
+                              # crossing a trust boundary -- authn/authz, secret lifecycle,
+                              # deserialization, subprocess/exec, path handling, network
+                              # ingress, SQL construction, resource limits
+  - string                    # e.g. "**/api*", "**/webhook*", "**/auth*"; default set if omitted
+
 verify_cmd: string          # how the agent verifies its own work (Phase 10): the test/bench/
                             # browser path to run before claiming done. A missing one warns.
 

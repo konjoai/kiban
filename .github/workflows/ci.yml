@@ -41,3 +41,14 @@ jobs:
 
       - name: Tests (pytest)
         run: pytest -q
+
+      # Phase 13: report-only, never blocks the build. A generation-quality regression
+      # is signal for the next sprint, not a merge blocker -- the measurement is noisy
+      # by nature (see .konjo/killtests/P13/KT-13.1.md) and a noisy blocking gate gets
+      # disabled within a month. Runs against kiban's own seed corpus
+      # (evals/gen_fixtures/) directly from the checkout, not the installed package --
+      # this corpus is kiban's own generation-quality tracking, not something a
+      # consuming repo's CI runs (its diffs are not this corpus's concern).
+      - name: Generation-fixture defect report (report-only)
+        continue-on-error: true
+        run: python3 bin/konjo-eval gen || true

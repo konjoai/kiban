@@ -159,7 +159,29 @@ def check_document(
     fm, body = parse_front_matter(text)
     if fm is None:
         return DocCheck(rel, SKIP, "no decays: front matter; convention not adopted")
+    return _evaluate_decay(
+        rel, fm, body, repo_root=repo_root, today=today,
+        stale_commits=stale_commits, stale_days=stale_days,
+    )
 
+
+def _evaluate_decay(
+    rel: str,
+    fm: dict[str, object],
+    body: str,
+    *,
+    repo_root: Path,
+    today: date | None = None,
+    stale_commits: int = DEFAULT_STALE_COMMITS,
+    stale_days: int = DEFAULT_STALE_DAYS,
+) -> DocCheck:
+    """The staleness verdict shared by whole-document and per-section checks.
+
+    Both `check_document` and `check_sections` parse a `decays:` block from a different
+    scope (a whole file's leading front matter vs. one `## Heading`'s trailing HTML
+    comment) and then apply the exact same four-class staleness rule -- extracted here so
+    a stale crate map inside CLAUDE.md decays by the identical clock as a stale whole doc.
+    """
     decays_raw = fm.get("decays")
     if not isinstance(decays_raw, str) or decays_raw not in _VALID_DECAYS:
         return DocCheck(rel, SKIP, f"no recognized decays: value ({decays_raw!r})")
@@ -241,6 +263,81 @@ def scan_repo(
         if not path.is_file():
             continue
         results.append(check_document(path, repo_root=repo_root, **kwargs))  # type: ignore[arg-type]
+    return results
+
+
+_H2 = re.compile(r"^##[ \t]+(.*)$", re.MULTILINE)
+_SECTION_FRONT_MATTER = re.compile(r"\A\s*\n?<!--[ \t]*\n(.*?\n)-->[ \t]*\n?", re.DOTALL)
+
+
+def parse_section_front_matter(text: str) -> list[tuple[str, dict[str, object] | None, str]]:
+    """Find every `## Heading` immediately followed by a `<!-- decays: ... -->` block.
+
+    A CLAUDE.md is one file with several claims of different half-lives in it -- a crate
+    map decays like a `state` doc, a stack line barely decays at all. Per-file `decays:`
+    front matter (the whole-document mechanism above) cannot express that; this is the
+    section-scoped sibling. Returns (heading, front_matter_or_None, section_body) for
+    every H2 in the document. `None` front matter means that section carries no stamp --
+    the same "convention not adopted" default a whole unstamped doc gets, not an error.
+    """
+    headings = list(_H2.finditer(text))
+    out: list[tuple[str, dict[str, object] | None, str]] = []
+    for i, m in enumerate(headings):
+        heading = m.group(1).strip()
+        start = m.end()
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(text)
+        section_text = text[start:end]
+        fm_match = _SECTION_FRONT_MATTER.match(section_text)
+        if not fm_match:
+            out.append((heading, None, section_text))
+            continue
+        try:
+            data = yaml.safe_load(fm_match.group(1))
+        except yaml.YAMLError:
+            data = {}
+        body = section_text[fm_match.end() :]
+        out.append((heading, data if isinstance(data, dict) else {}, body))
+    return out
+
+
+def check_sections(
+    path: Path,
+    *,
+    repo_root: Path,
+    today: date | None = None,
+    stale_commits: int = DEFAULT_STALE_COMMITS,
+    stale_days: int = DEFAULT_STALE_DAYS,
+) -> list[DocCheck]:
+    """Check every stamped `## Heading` section of one document (e.g. a repo's CLAUDE.md).
+
+    Unstamped sections are silently skipped -- reported as SKIP the same as a whole
+    unstamped document, not an error. A stamped section's `path` is rendered
+    `<file>#<heading>` so a gate can name exactly which section went stale.
+    """
+    if path.is_absolute():
+        try:
+            rel = str(path.relative_to(repo_root))
+        except ValueError:
+            rel = str(path)
+    else:
+        rel = str(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [DocCheck(rel, FAIL, f"unreadable: {exc}")]
+
+    results: list[DocCheck] = []
+    for heading, fm, body in parse_section_front_matter(text):
+        section_rel = f"{rel}#{heading}"
+        if fm is None:
+            results.append(DocCheck(section_rel, SKIP, "no decays: front matter on this section"))
+            continue
+        results.append(
+            _evaluate_decay(
+                section_rel, fm, body, repo_root=repo_root, today=today,
+                stale_commits=stale_commits, stale_days=stale_days,
+            )
+        )
     return results
 
 
