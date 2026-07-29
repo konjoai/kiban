@@ -633,6 +633,44 @@ def test_one_way_gate_unacknowledged_fails_and_acknowledged_passes(tmp_path: Pat
         _os.chdir(cwd)
 
 
+def test_threat_model_gate_skips_non_security_path() -> None:
+    r = cli.gate_threat_model(["notes.py"], "+# a harmless comment\n", "main", {})
+    assert r.status == cli.SKIP
+
+
+def test_threat_model_gate_unrecorded_fails_and_recorded_passes(tmp_path: Path) -> None:
+    from lib import oneway, threat
+
+    repo = _new_repo(tmp_path)
+    (repo / "webhook.rs").write_text("fn handle() {}\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "checkout", "-q", "-b", "feature")
+
+    changed = ["src/webhook.rs"]
+    diff = "+fn handle(body: &[u8]) { dispatch(body); }\n"
+    fp = oneway.fingerprint(changed)
+    profile = {"security_globs": ["**/webhook*"]}
+
+    cwd = Path.cwd()
+    import os as _os
+    try:
+        _os.chdir(repo)
+        (repo / "webhook.rs").write_text("fn handle(body: &[u8]) { dispatch(body); }\n")
+        _git(repo, "commit", "-aqm", "wire webhook dispatch")
+        unrecorded = cli.gate_threat_model(changed, diff, "main", profile)
+        assert unrecorded.status == cli.FAIL
+        assert fp in unrecorded.detail
+
+        (repo / "note.txt").write_text("threat model recorded\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", f"record threat model\n\n{threat.threat_trailer(fp)}")
+        recorded = cli.gate_threat_model(changed, diff, "main", profile)
+        assert recorded.status == cli.PASS
+    finally:
+        _os.chdir(cwd)
+
+
 def test_diff_text_survives_non_utf8_bytes(tmp_path: Path) -> None:
     # A binary file with no NUL byte in git's sniffed prefix (git only inspects the
     # first ~8000 bytes) is treated as text, so raw non-UTF-8 bytes can land directly

@@ -16,7 +16,10 @@ on:
     branches: [main]
 
 env:
-  KIBAN_REF: "v1.1.0"   # the pinned kiban ref for this repo; bump deliberately
+  KIBAN_REF: "v1.1.0"   # the pinned kiban ref for this repo; bump deliberately. Check
+                        # .konjo/kiban.ref for the ref actually in effect -- a version
+                        # number written into a template goes stale the moment the pin
+                        # next moves, so treat this line as an example, not a live value.
 
 jobs:
   gates:

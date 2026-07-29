@@ -8,6 +8,250 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Learn-Loop-Seed-1: lopi's four sprint-cited security lines converted through `konjo-learn`, all four found a home -- confirmed by running the guardrail for real, not by inspection
+
+**Not a one-way door, but the sprint's most direct confirmation that this sprint's new
+mechanisms actually connect to something.** Phase 13, Phase 5 grepped `konjoai/lopi`'s
+full `.claude/rules/` (`security.md`, `testing.md`, `benchmarking.md`,
+`rust-conventions.md`, `git-workflow.md`) for `Sprint S\d+` citations. Only
+`security.md` carries any (confirmed: `grep -n "Sprint S[0-9]" .claude/rules/*.md`
+returns four hits, all in `security.md` -- the other four rule files have none). All four
+were run through `konjo-learn add --scope repo:lopi` for real this session (not
+simulated): the WhatsApp/Twilio HMAC fix (Sprint S10, Phase 4), the repo-supplied-command
+source-trust check (Sprint S10, Phase 0), the subprocess environment allowlist (Sprint
+S10, Phase 1), and the MCP server allowlist (Sprint S10, Phase 5). Ids:
+`9f79216b9cb9`, `29a000027a3c`, `5de29bb5f874`, `2751494f08a5`.
+
+**Every one of the four found a real, already-shipped enforcement target this same
+sprint built** -- none resolved to "no home" (Phase 5's own instruction: log a gap as a
+gap if one is found; none was). Three of the four are the same shape,
+`subprocess_exec` (a repo-supplied command, a spawned CLI subprocess, a spawned MCP
+server are all, mechanically, a process spawn); the fourth is `network_ingress` (the
+webhook). All four now point at `lib/threat.py`'s taxonomy + `gate_threat_model` +
+`security_globs` (`profiles/lopi.yml`) + `craft`'s new pre-implementation contract
+(`Threat-Seam-1`, this file) as their enforcement target -- the exact "an invariant, a
+lane, a lint word, or a gate" `konjo-learn`'s guardrail (`lib/learnings.py`,
+`MissingEnforcement`) requires, and would have refused to log without.
+
+**Honest caveat, not silently glossed over**: `LearningsLog`'s default path
+(`ledger/learnings.jsonl`) resolves through `jsonl_store._resolve` under
+`~/.konjo/state` (an env-overridable *local machine* state dir per that module's own
+docstring: "the Ledger lives in ~/.konjo/state, never in the repo"), not into this
+kiban checkout. The four entries above are real and queryable
+(`konjo-learn search --scope repo:lopi`) for the remainder of this session's environment,
+but they do not travel with this git commit the way `LEDGER.md` does -- a future session
+on a fresh container starts with an empty learnings log unless that state directory
+itself persists across sessions on the same machine. This entry is the durable record;
+the four ids above are reproducible by re-running the four `konjo-learn add` invocations
+if a fresh environment's log needs seeding again.
+
+**Deferred, per Phase 5's own conditional wording** ("Do the same for the S13 Phase 0
+findings once that sprint reports"): S13 has not reported as of this sprint. Nothing to
+convert yet; not silently skipped, the precondition simply hasn't happened.
+
+## Gen-Fixtures-1: `evals/gen_fixtures/` and `konjo-eval gen` exist -- a new fixture shape and a new CI job, both report-only by design
+
+**New surface, not a one-way door in the same sense as a trailer label, but recorded
+because it changes what "the eval corpus" means going forward.** Phase 13, Phase 4 added
+`evals/genfixtures.py` (fixture discovery, `classify_diff` against the eight-class
+`DEFECT_TAXONOMY` from `.konjo/killtests/P13/KT-13.1.md`, `run_gen_corpus`) and
+`konjo-eval gen`, a new sibling to `konjo-eval run`/`record`. Distinct fixture shape from
+`evals/fixtures/*/{diff.patch,expect.json}`: a review fixture's `diff.patch` is the input
+to a detector under test; a generation fixture's `candidate.diff` is the *output* of an
+authoring context under test, and there is no single pass/fail expectation, only
+per-class counts.
+
+`classify_diff` reuses three existing detectors verbatim (`lib.redact.scan_diff` for
+`secret_in_source`, `lib.polarity.lint_text` for `unconfigured_permit_branch`,
+`lib.threat.classify` for `untrusted_input_reaching_exec`) rather than building a sixth
+pattern library; the other five taxonomy classes report `None` (unclassified), never
+silently defaulted to zero, since a zero for a class nothing checks would misreport an
+unmeasured absence as a clean result -- the same false-precision KT-13.1 refuses.
+
+**Seed corpus is illustrative, not empirical**: three hand-authored fixtures modeled on
+real `lopi` `.claude/rules/security.md` defect classes (Sprint S10's webhook-HMAC,
+env-allowlist, and a generic hardcoded-token line), explicitly NOT produced by a live
+`konjo-headless` run. `.konjo/killtests/P13/KT-13.P4.md` records this distinction so a
+future reader doesn't mistake "the harness works" for "Phase 2 has evidence" -- it does
+not; see `.konjo/killtests/P13/KT-13.1.md`.
+
+**CI placement corrected during this sprint, not shipped wrong**: the report-only job was
+first drafted into `templates/repo-ci.yml` (what a *consuming* repo runs per-PR), then
+moved to kiban's own `.github/workflows/ci.yml` once it was clear the fixture corpus is
+kiban's own generation-quality tracking, unrelated to any single consuming repo's diff --
+`konjo-eval` is not even a registered `project.scripts` entry point (only `konjo-gates`
+is), so `templates/repo-ci.yml` calling it would have been dead on arrival for any repo
+that actually adopted the template. Caught and fixed in-session, not left for a later
+sprint to find.
+
+## Threat-Seam-1: `konjo-threat`/`gate_threat_model` join the substrate as a third record-and-check pair -- `security_globs` is a new, permanent profile field
+
+**One-way door: a fourth trailer label, and a new schema field every future profile can
+declare.** Phase 13, Phase 3 built `konjo-threat` (`bin/konjo-threat`, `lib/threat.py`) as
+a sibling of `konjo-oneway`/`konjo-prove`: brief-time classification against a fixed
+eight-class trust-boundary taxonomy (authn/authz, secret lifecycle, deserialization,
+subprocess/exec, path handling, network ingress, SQL construction, resource limits),
+a session-side record step that refuses an empty mitigation, an empty abuse case, or a
+boundary name outside the taxonomy (`threat.MissingContent`, the same
+no-content-no-credit discipline `lib/learnings.py` already applies to a different claim
+class), and `Konjo-Threat-Model: <fingerprint>` -- the third label built on
+`oneway.make_trailer`/`find_trailer` (joining `Konjo-Acknowledged-Oneway`,
+`Konjo-Prove-Merge`, and `Konjo-Doc-Verified`; `Konjo-Polarity-Waived` is the fifth
+overall). `gate_threat_model` (CI) never re-classifies -- it only checks a diff matching
+`security_globs` for the recorded trailer, same as `gate_one_way_door`/`gate_prove`.
+
+**`security_globs` is new in `profiles/_schema.yml`**, a glob-list field mirroring
+`longrun_globs`. Routing reuses a newly-extracted `_glob_match` helper
+(`packages/konjo-gates-py/.../cli.py`) generalized out of what was `_is_longrun_path` --
+the `**`-handling fnmatch logic now exists in one place instead of being duplicated a
+third time for this gate, per this sprint's own research finding that `longrun_globs` and
+`prove.perf_globs` had each grown a slightly different glob-matching implementation.
+`profiles/lopi.yml` is the first real profile to declare it, lifted verbatim from the
+`paths:` front matter already prototyped in lopi's own `.claude/rules/security.md` (one
+declaration now serves both surfaces).
+
+Ships as a real blocking gate, not advisory -- `security_globs` is opt-in per profile
+(SKIP by default for a repo that hasn't matched the default glob set), so there is no
+existing-repo baseline to ramp against the way `gate_polarity`/`gate_claude_contract`
+need to. See `.konjo/killtests/P13/KT-13.P3.md` for the fixture pair and the reasoning in
+full, including the carried limit (content is checked for shape -- non-empty, taxonomy-
+valid -- not for being the *right* mitigation, the same boundary `gate_can_fail` already
+draws for `rejects_test` commands).
+
+**Also new**: `templates/sprint-brief.md` -- Phase 13's own brief (and K1's before it)
+follows a sprint-brief shape that had no file defining it on disk, the same gap
+`KONJO_FORWARD.md` had before `KONJO-Forward-Origination-1` closed it. Originated here,
+carrying the `TRUST BOUNDARIES`/`ABUSE CASES` per-phase fields Phase 13's own brief asked
+for, with `none` recorded as the honest answer for phases that touch no boundary rather
+than the fields being silently omitted. The `craft` skill (opt-in, does not count against
+the always-on context budget) gained a "Pre-implementation contract" section: name the
+boundary, state the mitigation, name the abuse case, name the test -- before the code,
+not after -- with `konjo-threat classify`/`record` as the mechanism that turns the stated
+intent into a checked commit trailer.
+
+## CLAUDE-Contract-1: `gate_claude_contract` ships advisory -- the section-order/enforcement-naming contract is now checkable, not just auditable by hand
+
+**Default change, adoption-ramp shaped like `gate_polarity`'s.** Phase 13 ("The Authoring
+Gate") made S13 Phase 0's one-time hand audit of lopi's CLAUDE.md permanent and mechanical:
+`lib/claude_contract.py` + `gate_claude_contract` (`packages/konjo-gates-py/.../cli.py`)
+check any changed root `CLAUDE.md` against a fixed section order (org rules, stack,
+commands, invariants, repo map, repo-specific rules --
+`templates/repo-CLAUDE.md` now carries this skeleton with per-section `decays:` stamps
+via `lib/doc_staleness.py`'s new `parse_section_front_matter`/`check_sections`, extending
+the whole-document-only convention to section granularity) and require every bullet under
+an invariants/hard-rules heading to name its enforcing gate or say `ADVISORY` explicitly.
+Separately, any changed `.claude/rules/*.md` file is checked for the incident-log shape
+(`citation_ratio`): a majority of lines carrying a sprint/date citation records what broke,
+not what to check.
+
+**Applying the contract to real lopi content immediately produced a finding, not just a
+mechanism**: converting `lopi/CLAUDE.md`'s "Critical Constraints" to name enforcement
+(`docs/pilots/lopi-claude-md.proposed.md`) found that 5 of its 6 bullets have **no**
+mechanical check today -- only "no `unwrap()`/`expect()` outside tests" is backed by a
+real gate (`repo:clippy`'s `-D clippy::unwrap_used -D clippy::expect_used`). The other five
+were always advisory in practice; the file just never said so. That is exactly the
+"unenforced rule = a claim with no consumer" failure this gate exists to catch, confirmed
+on the first real file it was run against, not a hypothetical.
+
+**Also corrects a stale baseline claim.** The sprint brief that opened Phase 13 asserted
+lopi's `.claude/rules/security.md` is "a list where every line ends in a sprint citation."
+Read this sprint: 4 of its 11 substantive lines do (`citation_ratio` ~0.36, below this
+gate's 0.5 majority threshold) -- the file was evidently partially cleaned up since that
+claim was written. The gate does not fire on lopi's current `security.md` as a result,
+which is itself evidence the check works as designed (it should not flag a file that
+is not, in fact, majority-incident-log) and a correction recorded here per the sprint's
+own instruction to fix baseline drift rather than carry it forward silently.
+
+Ships `claude_contract.advisory: true` by default (WARN, not FAIL) -- the same
+coverage-floor-ratchet adoption pattern K1's `gate_polarity` and this project's other new
+gates use, since no repo's existing CLAUDE.md is likely to already be in contract.
+Fixture pair: `tests/test_claude_contract.py` (8 cases), kill-test doc
+`.konjo/killtests/P13/KT-13.P1.md`.
+
+**Known limit, carried forward rather than silently shipped past**: the enforcement-naming
+check verifies a bullet *names something shaped like* a gate reference (`gate_x`,
+`repo:x`, `konjo-x`, or `ADVISORY`) -- it does not verify that gate actually exists in the
+repo's gate set or actually enforces the claimed behavior. Closing that gap needs a
+cross-reference against the profile's declared gates, a meaningfully larger check left for
+a future sprint (see `.konjo/killtests/P13/KT-13.P1.md`'s "Limit carried forward").
+
+## Lopi-Gate-Reconciliation-1: nine of lopi's real CI checks stay repo-native by design, not by oversight -- Phase 0 connects the pilot without rebuilding its enforcement
+
+**Non-goal-respecting decision, recorded because "why nothing moved" is exactly the kind
+of call a later sprint would otherwise re-litigate.** Phase 0 ("Connect the pilot")
+authored `profiles/lopi.yml` (following the `profiles/vectro.yml`/`profiles/squish.yml`
+precedent: the profile is authored and lives in kiban, not pushed into the consuming
+repo -- this session's `konjoai/lopi` access is read-only, added for reconciliation
+research, matching how vectro's and squish's profiles were built) and read
+`konjoai/lopi`'s real `.github/workflows/konjo-gate.yml` (789 lines, jobs G0-G5) in full to
+decide, per check, PROMOTE / KEEP REPO-NATIVE / DELETE. Phase 0's own brief states a
+non-goal explicitly: "improving any gate. This phase connects what exists." That non-goal
+is why most of the checks below are KEEP REPO-NATIVE rather than PROMOTE: promoting a
+detector kiban does not yet have (coverage-floor parsing, cognitive-complexity-from-clippy-
+JSON, the DRY block-similarity scanner, the soft-gate-convention lint) is new gate-building
+work, the thing this phase explicitly declines to do. Only one genuine PROMOTE shipped:
+`cargo-audit`, because the mechanism to run it (`gate_repo_native`'s generic
+`_TOOL_SCOPE`/`_TOOL_BIN`/`_TOOL_PROBE` dispatcher) already existed in kiban -- adding
+`cargo-audit` there is a three-line dict entry, connecting an existing mechanism to a tool
+name, not building a new detector. It also retroactively activates the same `cargo-audit`
+declaration `profiles/vectro.yml` already carried, inert, since before this sprint.
+
+| Check (lopi's G0-G5) | Decision | Why |
+|---|---|---|
+| G0 doc-staleness (`konjo-doc-staleness scan`) | KEEP REPO-NATIVE | Already kiban's own script; kiban's CI plane has no *blocking* doc-staleness gate of its own yet (`gate_doc_staleness` does not exist in `konjo-gates-py`; the convention is currently session-side only, via `craft`). lopi's G0 is ahead of kiban's own CI plane here, not behind it. |
+| G1 rustfmt / clippy hard | KEEP REPO-NATIVE, already wired | `fmt-check`/`clippy` already in `_TOOL_SCOPE`; declared in `profiles/lopi.yml`'s `format_lint`. |
+| G1 clippy pedantic (advisory) | KEEP REPO-NATIVE | Soft variant of the above; not a distinct kiban concept. |
+| G1 `cargo audit` | **PROMOTE** | New `_TOOL_SCOPE`/`_TOOL_BIN`/`_TOOL_PROBE` entries in `cli.py`; zero new detector logic, the generic dispatcher already existed. |
+| G1 dead code (`RUSTFLAGS=-W dead_code`) | KEEP REPO-NATIVE | No kiban gate parses this today; building one is new detector work, out of scope per the non-goal. |
+| G1 scope assertion (`.konjo/scripts/scope_assert.py`) | KEEP REPO-NATIVE | Its own docstring names a lopi-specific business-noun term list (`lopi-app`, `CustomerTier`, Stripe fields) -- not portable. Wired into `profiles/lopi.yml`'s `gates:` (G-CAN-FAIL) via its existing `test_scope_assert_killtest.sh`, so kiban's CI plane at least confirms the check's own rejects-test still passes. |
+| G1 reachability check | KEEP REPO-NATIVE | Script's own docstring disclaims it is not a real call-graph analyzer; heuristic and workspace-topology-specific. |
+| G1 soft-gate-convention lint | KEEP REPO-NATIVE | Real, generic, and worth promoting eventually, but promoting it is new gate work; deferred, not dropped. |
+| G1b `npm audit` | KEEP REPO-NATIVE, already wired | `npm-audit` already in `_TOOL_SCOPE`; declared in `format_lint`. |
+| G2 eval-executor regression suite | KEEP REPO-NATIVE | This is lopi's own product test suite, not a kiban-shaped gate; covered by `verify_cmd`. |
+| G2 coverage-80/95 (`llvm-cov`) | KEEP REPO-NATIVE | No `gate_coverage` exists in kiban; declared in `contract_gates` as documentation of enforcement kiban is aware of, same precedent as `squish.yml`'s/`vectro.yml`'s already-inert `coverage-80` entries. |
+| G2 coverage-floor ratchet | KEEP REPO-NATIVE | Same reasoning; wired into `gates:` via its existing `test_coverage_floor_killtest.sh`. |
+| G3 mutation testing | KEEP REPO-NATIVE, near-drop-in | `cargo-mutants` is already generically supported (`gate_repo_native`'s diff-scoped mutation path); `mutation: cargo-mutants` in `profiles/lopi.yml` reuses it directly. lopi's percentage-survival reporting stays repo-native as a companion metric. |
+| G4 cognitive complexity | KEEP REPO-NATIVE | No kiban gate parses clippy JSON for this; new detector work. |
+| G4 file-size-500 | KEEP REPO-NATIVE | Same reasoning; also already inert in `squish.yml`/`vectro.yml`. |
+| G4 DRY check (`dry_check.py`) | KEEP REPO-NATIVE | Genuinely portable-looking (multi-language, stdlib-only) and already duplicated near-verbatim across lopi/squish/vectro per this sprint's research -- a strong future-PROMOTE candidate, explicitly flagged in `NEXT_SESSION_PROMPT.md` rather than silently left. |
+| G4 rustdoc missing-docs | KEEP REPO-NATIVE | Same reasoning as complexity/DRY. |
+| G4b fuzz targets | KEEP REPO-NATIVE | Target list (`jsonrpc_response_fuzz`, `claude_events_fuzz`, `github_webhook_fuzz`) is lopi-specific by construction; never actually run in CI per its own `KNOWN DEBT` marker. |
+| G5 adversarial review (`konjo_review.py`, Wall 3) | KEEP REPO-NATIVE, flagged for future consolidation | kiban already has an equivalent generic mechanism (`bin/konjo-review`/`lib/review.py`'s multi-run specialist-lane review with a red-team pass last -- the same "Wall 3" concept squish's profile comment independently describes). Replacing lopi's bespoke 10-question script with kiban's own review engine is a real consolidation opportunity, but doing it is "improving" a gate's mechanism, not connecting what exists -- out of scope for Phase 0, named here so it isn't lost. |
+| `unsafe-budget` | **Newly active** (not previously enforced at all) | kiban-native, diff-only, was already generic; `profiles/lopi.yml` is the first profile to actually turn it on for lopi. |
+
+**Nothing was deleted.** Every one of lopi's `konjo-gate.yml` jobs stays in place, unchanged,
+per Phase 0's explicit instruction not to silently drop enforcement in the name of
+consolidation. `profiles/lopi.yml` documents what kiban's CI plane is aware of and what it
+mechanically double-checks (currently: `cargo-audit`, `unsafe-budget`, `polarity`,
+`claude_contract`, plus the three `gates:` rejects-tests) alongside what remains solely
+lopi's own responsibility.
+
+**Verified, not assumed**: `PYTHONPATH=kiban python3 bin/konjo-gates --profile
+profiles/lopi.yml --base HEAD --no-self-test`, run against the real `/workspace/lopi`
+checkout, reports `all gates passed` (18/18; `can_fail` genuinely executed and passed all
+three of lopi's real kill-test scripts against the real repo, not a mock). `--no-self-test`
+because the self-test/eval-corpus gate needs a cassette recorded against a live model for
+this specific profile's specialist set, which this session cannot do offline -- recorded as
+a carried step in `NEXT_SESSION_PROMPT.md`, not silently skipped.
+
+The proposed `lopi/CLAUDE.md` conversion and the "remove the shadowed local
+`konjo-ship`" follow-up are written up in `docs/pilots/lopi-claude-md.proposed.md` rather
+than applied directly, since this session holds no push access to `konjoai/lopi`.
+
+**squish and vectro: explicitly deferred, not silently skipped.** Phase 0's step 4 asks
+for the same reconciliation on these two repos, or a recorded reason it's deferred. Both
+already have a reconciled `profiles/*.yml` (done in earlier sprints, per
+`NEXT_SESSION_PROMPT.md`'s carried notes) -- the *profile* half of Phase 0 is not new work
+for either. What's genuinely undone for both: the CLAUDE.md org-import conversion and a
+formal per-gate promote/keep/delete record, the same shape this entry just did for lopi.
+Deferred because this sprint's pilot is lopi specifically (named in the brief; its S13
+cleanup gives "a clean surface" the brief calls out by name), neither squish nor vectro was
+re-cloned this session, and duplicating the lopi reconciliation's depth for two more repos
+inside one sprint would trade real depth on the named pilot for shallow coverage of two
+unrequested ones. Next session: repeat this entry's method (`add_repo` read-only, read the
+real CI workflow in full, table of promote/keep/delete, propose the CLAUDE.md conversion)
+for squish, then vectro.
+
 ## Polarity-Waived-Trailer-1: `Konjo-Polarity-Waived` enters the trailer vocabulary -- a permanent grep surface, not reversible without invalidating history
 
 **One-way door.** `lib/oneway.py`'s trailer labels (`Konjo-Acknowledged-Oneway`,

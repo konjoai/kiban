@@ -4,6 +4,104 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-07-29
+
+Phase 13, "The Authoring Gate." Every quality mechanism in kiban ran against a diff that
+already existed; the only artifacts shaping code *before* it was written (the umbrella
+skill, `craft`) contained no invariant about code, and the pilot repo (`konjoai/lopi`)
+was pinned to kiban but ran a parallel bespoke gate, importing nothing. This sprint
+connects the pilot, makes the CLAUDE.md contract mechanical, adds a pre-implementation
+trust-boundary seam, and builds the harness needed to measure whether authoring-context
+changes work at all -- and, per its own pre-flight kill-test, does NOT add the six
+candidate always-on invariants drafted for it, because the empirical protocol needed to
+justify them (12-20 tasks, 3 runs each, against real closed work) proved infeasible to
+run with integrity inside this sprint. See `.konjo/killtests/P13/KT-13.1.md`.
+
+**Correcting the brief's own version target**: this sprint's brief named itself
+"Phase 13 (1.2.0)"; kiban had already reached 1.7.0 by the time it was worked (six
+sprints landed since the brief was drafted). Per the brief's own instruction to correct
+baseline drift rather than carry it forward, this ships as 1.8.0 (minor: additive gates
+and schema fields, no breaking change to the profile schema or gate contract), not 1.2.0.
+
+### Added
+
+- **`gate_claude_contract`** (`lib/claude_contract.py`) -- checks a changed root
+  `CLAUDE.md` against a fixed section order (org rules, stack, commands, invariants,
+  repo map, repo-specific rules) and requires every bullet under an invariants/hard-rules
+  heading to name its enforcing gate or say `ADVISORY`. Also flags a changed
+  `.claude/rules/*.md` file where a majority of lines carry a sprint/date citation (the
+  incident-log shape, not the invariant shape). Ships `claude_contract.advisory: true` by
+  default. Fixture pair: `tests/test_claude_contract.py`; kill-test:
+  `.konjo/killtests/P13/KT-13.P1.md`.
+- **`templates/repo-CLAUDE.md`** rewritten to carry the section contract, with
+  per-section `decays:` stamps (`## Stack`, `## Commands`, `## Repo map`) via
+  `lib/doc_staleness.py`'s new `parse_section_front_matter`/`check_sections`, extending
+  the `decays:` convention from whole-document to section granularity.
+- **`konjo-threat`** (`bin/konjo-threat`, `lib/threat.py`) -- brief-time classifier and
+  record for an eight-class trust-boundary taxonomy (authn/authz, secret lifecycle,
+  deserialization, subprocess/exec, path handling, network ingress, SQL construction,
+  resource limits). `classify` gives a heuristic hint; `record` refuses an empty
+  mitigation, an empty abuse case, or an unlisted boundary name, logs to the Ledger, and
+  prints the `Konjo-Threat-Model: <fingerprint>` trailer (reusing
+  `oneway.make_trailer`/`find_trailer`, no new override channel).
+- **`gate_threat_model`** in `cli.py` -- checks a diff matching a profile's new
+  `security_globs` for the recorded trailer; never re-classifies. Ships blocking (no
+  advisory ramp -- opt-in via `security_globs`, no existing-repo baseline to clean up).
+  Fixture pair: `tests/test_threat.py` + `tests/test_konjo_gates.py::test_threat_model_*`;
+  kill-test: `.konjo/killtests/P13/KT-13.P3.md`.
+- **`security_globs`** in `profiles/_schema.yml`, mirroring `longrun_globs`. Routing
+  reuses a newly-generalized `_glob_match` helper (extracted from what was
+  `_is_longrun_path`) so the `**`-handling fnmatch logic exists once, not three times.
+- **`craft` skill**: a "Pre-implementation contract" section -- before code crossing a
+  trust boundary, introducing a queue, spawning a process, or parsing external input:
+  name the boundary, state the mitigation, name the abuse case, name the test.
+- **`templates/sprint-brief.md`** -- originated (no file defined this shape before,
+  though sprint briefs following it already existed), carrying `TRUST BOUNDARIES`/
+  `ABUSE CASES` per-phase fields.
+- **`evals/genfixtures.py` + `konjo-eval gen`** -- a new fixture shape distinct from the
+  existing review-fixture corpus: a `task.json` + `candidate.diff` pair, classified
+  against an eight-class defect taxonomy. Three classes are classified mechanically by
+  reusing existing detectors (`lib.redact` for secrets, `lib.polarity` for permit
+  branches, `lib.threat` for exec hints); five report `None` (unclassified), never
+  silently zero. Seeded with three illustrative fixtures under `evals/gen_fixtures/`
+  (hand-authored, not live-generated -- see `.konjo/killtests/P13/KT-13.1.md`). Wired as
+  a report-only step in kiban's own `.github/workflows/ci.yml` (`continue-on-error: true`,
+  the command itself always exits 0). Kill-test: `.konjo/killtests/P13/KT-13.P4.md`.
+- **`profiles/lopi.yml`** -- the pilot repo's first kiban profile, reconciled against the
+  real `konjoai/lopi` repo (read-only this session). `cargo-audit` genuinely promoted
+  into `konjo-gates`' generic tool dispatcher; nine other real checks (coverage ratchet,
+  mutation reporting, dead code, DRY, rustdoc, scope assertion, reachability,
+  soft-gate-lint, adversarial review) kept repo-native by explicit decision, per Phase
+  0's own non-goal ("improving any gate. This phase connects what exists."). Full
+  decision table in `LEDGER.md`'s `Lopi-Gate-Reconciliation-1`.
+- **`docs/pilots/lopi-claude-md.proposed.md`** -- the converted `lopi/CLAUDE.md`,
+  prepared but not applied (this session holds no push access to `konjoai/lopi`); found,
+  on applying the new contract to a real file, that 5 of lopi's 6 "Critical Constraints"
+  have no mechanical enforcement today.
+- Four of `lopi`'s sprint-cited `.claude/rules/security.md` lines converted through
+  `konjo-learn` (all four found a home in this sprint's new `subprocess_exec`/
+  `network_ingress` enforcement chain; see `LEDGER.md`'s `Learn-Loop-Seed-1`).
+
+### Not done here, on purpose
+
+Phase 2 (the always-on invariant set) does not ship. KT-13.1 found the specified
+empirical protocol (12-20 real closed-work tasks, 3 runs each, classified against a
+fixed taxonomy) infeasible to run with integrity inside this sprint -- the
+implementation-task harness it depends on did not exist (`konjo-headless` is a thin
+`claude -p` wrapper, not a task-to-diff loop), and building it under time pressure while
+also running the full protocol would trade rigor for the appearance of rigor, which
+KT-13.1's own FAIL condition ("the taxonomy cannot be applied consistently") exists to
+catch. KT-13.2 (context budget headroom) passed on its own -- 1018 tokens of headroom
+against a ~144-token candidate set -- but headroom alone does not justify shipping an
+unmeasured invariant. The six candidates are recorded in `LEDGER.md` as drafted, not
+measured, not added, for a future session with the harness this sprint built
+(`evals/genfixtures.py`) and the resource budget to run it at the specified scale.
+
+squish and vectro: Phase 0's gate-reconciliation and CLAUDE.md-conversion depth (done
+for lopi this sprint) is explicitly deferred for both -- their `profiles/*.yml` were
+already reconciled in earlier sprints; what's still open is recorded in `LEDGER.md`'s
+`Lopi-Gate-Reconciliation-1` addendum.
+
 ## [1.7.0] - 2026-07-26
 
 Sprint K1 ("Failure Semantics"), Family 0 of the birth-defect gate proposal derived

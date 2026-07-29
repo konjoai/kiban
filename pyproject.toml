@@ -44,7 +44,7 @@ packages = [
 konjo_gates_py = "packages/konjo-gates-py/src/konjo_gates_py"
 
 [tool.setuptools.package-data]
-evals = ["fixtures/**/*", "cassettes/*.json"]
+evals = ["fixtures/**/*", "cassettes/*.json", "gen_fixtures/**/*"]
 
 [tool.ruff]
 line-length = 100

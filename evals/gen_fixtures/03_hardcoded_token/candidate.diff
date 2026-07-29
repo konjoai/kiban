@@ -1,0 +1,18 @@
+diff --git a/crates/lopi-webhook/src/gh_client.rs b/crates/lopi-webhook/src/gh_client.rs
+index 5555555..6666666 100644
+--- a/crates/lopi-webhook/src/gh_client.rs
++++ b/crates/lopi-webhook/src/gh_client.rs
+@@ -1,5 +1,12 @@
+ use reqwest::Client;
+
++const GITHUB_TOKEN: &str = "ghp_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a";
++
++pub async fn list_open_issues(client: &Client, repo: &str) -> anyhow::Result<Vec<Issue>> {
++    let url = format!("https://api.github.com/repos/{repo}/issues?state=open");
++    let resp = client.get(&url).bearer_auth(GITHUB_TOKEN).send().await?;
++    Ok(resp.json().await?)
++}
++
+ pub struct Issue {
+     pub number: u64,
+     pub title: String,

@@ -1,0 +1,19 @@
+diff --git a/crates/lopi-agent/src/eval_tier.rs b/crates/lopi-agent/src/eval_tier.rs
+index 3333333..4444444 100644
+--- a/crates/lopi-agent/src/eval_tier.rs
++++ b/crates/lopi-agent/src/eval_tier.rs
+@@ -40,6 +40,14 @@ pub struct LoopConfig {
+     test_command: String,
+ }
+
++pub fn run_test_command(config: &LoopConfig) -> std::io::Result<std::process::Output> {
++    // NOTE: repo-supplied test_command from .lopi/loop.toml
++    std::process::Command::new("sh")
++        .arg("-c")
++        .arg(&config.test_command)
++        .output()
++}
++
+ pub fn evaluate(config: &LoopConfig) -> EvalResult {
+     todo!()
+ }

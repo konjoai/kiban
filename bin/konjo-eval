@@ -6,9 +6,15 @@ checks each fixture against its expectation. Records per-run detection plus the
 aggregate; never reports a single-run detection rate as final. Exits nonzero on any
 missed CRITICAL bug or any control that fired.
 
+`gen` runs the Phase 13 generation-fixture corpus instead: classifies each recorded
+`candidate.diff` against the eight-class defect taxonomy and reports per-class counts.
+Report-only -- always exits 0, since a generation-quality count is noisy by nature and
+this command never gates a merge (see `.konjo/killtests/P13/KT-13.1.md`).
+
 Usage:
   konjo-eval [run] [--profile profiles/squish.yml] [--runs 3] [--mode daily|deep]
              [--json] [--corpus DIR]
+  konjo-eval gen [--corpus evals/gen_fixtures] [--json]
 """
 
 from __future__ import annotations
@@ -22,8 +28,24 @@ _KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_KIBAN_ROOT) not in sys.path:
     sys.path.insert(0, str(_KIBAN_ROOT))
 
-from evals import cassettes, runner  # noqa: E402
+from evals import cassettes, genfixtures, runner  # noqa: E402
 from lib.review import ReviewBackend  # noqa: E402
+
+
+def _print_gen_human(report: dict) -> None:
+    print(f"konjo-eval gen: {report['n_fixtures']} generation fixture(s)")
+    for fx in report["fixtures"]:
+        counts = ", ".join(
+            f"{c}={n}" for c, n in fx["counts"].items() if n
+        ) or "no mechanically-classified findings"
+        print(f"  [{fx['context_label']}] {fx['id']}: {counts}")
+    print("  totals: " + ", ".join(f"{c}={n}" for c, n in report["totals"].items()))
+    if report["unclassified_classes"]:
+        print(
+            "  NOT mechanically classified by this harness (needs a review/human pass): "
+            + ", ".join(report["unclassified_classes"])
+        )
+    print("konjo-eval gen: report-only, never blocks")
 
 
 def _print_human(report: dict) -> None:
@@ -47,7 +69,7 @@ def _print_human(report: dict) -> None:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="konjo-eval")
-    parser.add_argument("cmd", nargs="?", default="run", choices=["run", "record"])
+    parser.add_argument("cmd", nargs="?", default="run", choices=["run", "record", "gen"])
     parser.add_argument("--profile", default=str(_KIBAN_ROOT / "profiles" / "squish.yml"))
     parser.add_argument("--runs", type=int, default=runner.DEFAULT_RUNS)
     parser.add_argument("--mode", default="daily", choices=["daily", "deep"])
@@ -58,6 +80,15 @@ def main(argv: list[str]) -> int:
                         help="force the live Claude CLI backend")
     parser.add_argument("--json", action="store_true", help="emit the raw report as JSON")
     args = parser.parse_args(argv)
+
+    if args.cmd == "gen":
+        gen_corpus = pathlib.Path(args.corpus) if args.corpus else genfixtures.GEN_FIXTURES_DIR
+        report = genfixtures.run_gen_corpus(gen_corpus)
+        if args.json:
+            print(json.dumps(report, indent=2))
+        else:
+            _print_gen_human(report)
+        return 0  # report-only: never blocks, regardless of counts
 
     corpus = pathlib.Path(args.corpus) if args.corpus else runner.FIXTURES_DIR
 

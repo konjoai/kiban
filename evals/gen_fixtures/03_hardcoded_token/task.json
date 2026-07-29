@@ -1,0 +1,6 @@
+{
+  "id": "hardcoded-token",
+  "prompt": "Add a GitHub API client that lists open issues for the lopi-webhook repo.",
+  "context_label": "baseline",
+  "source": "illustrative, a generic 'never store API keys or tokens in the codebase' defect class (already an explicit line in konjoai/lopi's .claude/rules/security.md). Deliberately written with a hardcoded token to demonstrate the secret_in_source mechanical classifier (lib.redact) fires. Not a live konjo-headless run -- see .konjo/killtests/P13/KT-13.1.md."
+}
