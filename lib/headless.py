@@ -69,7 +69,5 @@ def run_headless(
     per `lib.gen_runner`) instead of the caller's own working directory; omitted, the process
     inherits the caller's cwd exactly as before this parameter existed.
     """
-    argv = headless_argv(
-        prompt, model=model, bare=bare, stream_json=stream_json, extra=extra
-    )
+    argv = headless_argv(prompt, model=model, bare=bare, stream_json=stream_json, extra=extra)
     return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=cwd)

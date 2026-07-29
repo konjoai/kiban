@@ -20,16 +20,27 @@ class _FakeBackend:
     ) -> GenerationResult:
         self.calls += 1
         return GenerationResult(
-            task_id=task.id, context_label=task.context_label, diff_text=self.diff,
-            changed_paths=["x.py"], returncode=0, ok=True, stdout_tail="",
-            model=model, duration_s=1.0, worktree="/tmp/should-not-be-recorded",
+            task_id=task.id,
+            context_label=task.context_label,
+            diff_text=self.diff,
+            changed_paths=["x.py"],
+            returncode=0,
+            ok=True,
+            stdout_tail="",
+            model=model,
+            duration_s=1.0,
+            worktree="/tmp/should-not-be-recorded",
         )
 
 
 def _task(**over: object) -> GenTask:
     base = dict(
-        id="t1", prompt="do the thing", context_label="baseline",
-        source="unit-test", repo="/repo", base_ref="HEAD",
+        id="t1",
+        prompt="do the thing",
+        context_label="baseline",
+        source="unit-test",
+        repo="/repo",
+        base_ref="HEAD",
     )
     base.update(over)
     return GenTask(**base)  # type: ignore[arg-type]

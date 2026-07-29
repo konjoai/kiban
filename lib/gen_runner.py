@@ -61,8 +61,8 @@ class GenerationResult:
     returncode: int
     ok: bool  # True iff the session exited 0 AND produced a non-empty diff
     stdout_tail: str  # last ~2000 chars, for debugging a failed/empty run -- not the
-                       # full transcript, which cassettes.py-style recording does not
-                       # want to carry either (see gen_cassettes.py)
+    # full transcript, which cassettes.py-style recording does not
+    # want to carry either (see gen_cassettes.py)
     model: str | None
     duration_s: float
     worktree: str | None  # None once cleaned up
@@ -88,11 +88,19 @@ def _make_worktree(repo_root: Path, base_ref: str, label: str) -> Path:
     path = worktree_root / branch.replace("/", "__")
     subprocess.run(
         ["git", "worktree", "add", "--detach", str(path), base_ref],
-        cwd=repo_root, capture_output=True, text=True, check=True, timeout=120,
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
     )
     subprocess.run(
         ["git", "checkout", "-B", branch],
-        cwd=path, capture_output=True, text=True, check=True, timeout=60,
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
     )
     return path
 
@@ -100,25 +108,31 @@ def _make_worktree(repo_root: Path, base_ref: str, label: str) -> Path:
 def _cleanup_worktree(repo_root: Path, worktree: Path) -> None:
     subprocess.run(
         ["git", "worktree", "remove", "--force", str(worktree)],
-        cwd=repo_root, capture_output=True, text=True, timeout=60,
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
 
 
 def _diff_and_paths(worktree: Path) -> tuple[str, list[str]]:
     # untracked new files don't show in a plain `git diff` -- stage everything first so
     # a task that creates a new file is not silently invisible to the classifier.
-    subprocess.run(
-        ["git", "add", "-A"], cwd=worktree, capture_output=True, text=True, timeout=60
-    )
+    subprocess.run(["git", "add", "-A"], cwd=worktree, capture_output=True, text=True, timeout=60)
     diff = subprocess.run(
         ["git", "diff", "--no-color", "--cached"],
-        cwd=worktree, capture_output=True, text=True, timeout=60,
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+        timeout=60,
     ).stdout
-    changed_paths = sorted({
-        line.split()[-1].removeprefix("b/")
-        for line in diff.splitlines()
-        if line.startswith("+++ ")
-    })
+    changed_paths = sorted(
+        {
+            line.split()[-1].removeprefix("b/")
+            for line in diff.splitlines()
+            if line.startswith("+++ ")
+        }
+    )
     return diff, changed_paths
 
 
@@ -174,7 +188,11 @@ class LiveGenerationBackend:
             if context_text.strip():
                 extra += ["--append-system-prompt", context_text]
             argv = headless.headless_argv(
-                task.prompt, model=model, bare=self.bare, stream_json=False, extra=extra,
+                task.prompt,
+                model=model,
+                bare=self.bare,
+                stream_json=False,
+                extra=extra,
             )
             proc = _run(argv, cwd=worktree, timeout=self.timeout)
             diff_text, changed_paths = _diff_and_paths(worktree)

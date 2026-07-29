@@ -17,9 +17,7 @@ class _FakeLedger:
 
 
 def test_classify_hints_subprocess_from_path_and_diff() -> None:
-    cls = threat.classify(
-        ["src/exec_runner.py"], "subprocess.run(user_supplied_cmd, shell=True)"
-    )
+    cls = threat.classify(["src/exec_runner.py"], "subprocess.run(user_supplied_cmd, shell=True)")
     assert threat.SUBPROCESS_EXEC in cls.boundaries
 
 

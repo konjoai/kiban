@@ -84,11 +84,13 @@ def test_new_fixtures_fire_their_target_class() -> None:
     ]:
         fixture_dir = _CORPUS / name
         diff_text = (fixture_dir / "candidate.diff").read_text()
-        changed = sorted({
-            line.split()[-1].removeprefix("b/")
-            for line in diff_text.splitlines()
-            if line.startswith("+++ ")
-        })
+        changed = sorted(
+            {
+                line.split()[-1].removeprefix("b/")
+                for line in diff_text.splitlines()
+                if line.startswith("+++ ")
+            }
+        )
         result = genfixtures.classify_diff(diff_text, changed)
         assert result.count(target), name
 

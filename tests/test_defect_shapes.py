@@ -45,9 +45,7 @@ def test_missing_test_failure_path_fires_on_happy_path_only() -> None:
         "--- a/tests/lib_tests.rs\n+++ b/tests/lib_tests.rs\n@@\n"
         '+fn test_parse_ok() { assert_eq!(parse("1"), 1); }\n'
     )
-    hits = defect_shapes.scan_missing_test_failure_path(
-        diff, ["src/lib.rs", "tests/lib_tests.rs"]
-    )
+    hits = defect_shapes.scan_missing_test_failure_path(diff, ["src/lib.rs", "tests/lib_tests.rs"])
     assert hits
 
 
@@ -60,9 +58,7 @@ def test_missing_test_failure_path_silent_when_failure_case_present() -> None:
         "+#[should_panic]\n"
         '+fn test_parse_rejects_invalid() { parse("x"); }\n'
     )
-    hits = defect_shapes.scan_missing_test_failure_path(
-        diff, ["src/lib.rs", "tests/lib_tests.rs"]
-    )
+    hits = defect_shapes.scan_missing_test_failure_path(diff, ["src/lib.rs", "tests/lib_tests.rs"])
     assert hits == []
 
 
@@ -83,6 +79,7 @@ def test_missing_test_failure_path_silent_when_only_tests_touched() -> None:
 # Found live: a `.unwrap()`/`oneshot::channel()` inside a `mod tests { ... }` block
 # scored identically to a real production error boundary / unbounded queue, because
 # nothing distinguished test scaffolding from production code in the added-line scan.
+
 
 def test_excludes_lines_after_an_added_mod_tests_marker() -> None:
     diff = (

@@ -88,12 +88,12 @@ DEFECT_TAXONOMY = (
 #                                  a noisy grep. Not attempted this sprint -- see
 #                                  NEXT_SESSION_PROMPT.md.
 MECHANICALLY_CLASSIFIED = (
-    "secret_in_source",       # lib.redact.scan_diff
+    "secret_in_source",  # lib.redact.scan_diff
     "unconfigured_permit_branch",  # lib.polarity (approximate: added-line text, not a
-                               # full post-change file -- see classify_diff's docstring)
+    # full post-change file -- see classify_diff's docstring)
     "untrusted_input_reaching_exec",  # lib.threat.classify (heuristic hint, not proof)
-    "unbounded_queue",        # lib.threat.classify's RESOURCE_LIMITS reason, reused
-    "missing_timeout",        # lib.defect_shapes.scan_missing_timeout
+    "unbounded_queue",  # lib.threat.classify's RESOURCE_LIMITS reason, reused
+    "missing_timeout",  # lib.defect_shapes.scan_missing_timeout
     "untyped_error_boundary",  # lib.defect_shapes.scan_untyped_error_boundary
     "missing_test_failure_path",  # lib.defect_shapes.scan_missing_test_failure_path
 )
@@ -126,7 +126,8 @@ def discover_gen_fixtures(corpus_dir: Path = GEN_FIXTURES_DIR) -> list[Path]:
     if not corpus_dir.exists():
         return []
     return sorted(
-        p for p in corpus_dir.iterdir()
+        p
+        for p in corpus_dir.iterdir()
         if p.is_dir() and (p / "task.json").exists() and (p / "candidate.diff").exists()
     )
 
@@ -175,7 +176,8 @@ def _added_lines(diff_text: str) -> str:
     "the new file content" -- good enough for a line-shaped regex scan (redact, the
     threat heuristics), not a substitute for parsing the real post-change file."""
     return "\n".join(
-        line[1:] for line in diff_text.splitlines()
+        line[1:]
+        for line in diff_text.splitlines()
         if line.startswith("+") and not line.startswith("+++")
     )
 
@@ -269,11 +271,13 @@ def run_gen_corpus(corpus_dir: Path = GEN_FIXTURES_DIR) -> dict[str, object]:
     for fixture_dir in fixtures:
         task = load_task(fixture_dir)
         diff_text = (fixture_dir / "candidate.diff").read_text()
-        changed_paths = sorted({
-            line.split()[-1].removeprefix("b/")
-            for line in diff_text.splitlines()
-            if line.startswith("+++ ")
-        })
+        changed_paths = sorted(
+            {
+                line.split()[-1].removeprefix("b/")
+                for line in diff_text.splitlines()
+                if line.startswith("+++ ")
+            }
+        )
         classification = classify_diff(diff_text, changed_paths)
         counts = {c: classification.count(c) for c in DEFECT_TAXONOMY}
         for c, n in counts.items():
@@ -281,12 +285,14 @@ def run_gen_corpus(corpus_dir: Path = GEN_FIXTURES_DIR) -> dict[str, object]:
                 unclassified_classes.add(c)
             else:
                 totals[c] = (totals[c] or 0) + n
-        per_fixture.append({
-            "id": task.id,
-            "context_label": task.context_label,
-            "source": task.source,
-            "counts": counts,
-        })
+        per_fixture.append(
+            {
+                "id": task.id,
+                "context_label": task.context_label,
+                "source": task.source,
+                "counts": counts,
+            }
+        )
 
     return {
         "n_fixtures": len(fixtures),

@@ -79,6 +79,7 @@ def added_lines_excluding_test_scope(diff_text: str) -> str:
             kept.append(content)
     return "\n".join(kept)
 
+
 # --- missing_timeout -------------------------------------------------------------
 # A call site shaped like an external call (network, subprocess) with no `timeout`
 # token anywhere in the same diff's added-line text. Diff-scoped, not call-site-scoped
@@ -154,7 +155,8 @@ def scan_missing_test_failure_path(diff_text: str, changed_paths: list[str]) -> 
     if not touches_production:
         return []
     new_test_lines = [
-        line for line in diff_text.splitlines()
+        line
+        for line in diff_text.splitlines()
         if line.startswith("+") and not line.startswith("+++")
     ]
     added_test_fns = _NEW_TEST_FN_RE.findall("\n".join(new_test_lines))

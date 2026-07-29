@@ -80,8 +80,12 @@ def test_live_backend_captures_diff_from_a_successful_session(
     monkeypatch.setattr(gen_runner, "_run", fake_run)
 
     task = GenTask(
-        id="t1", prompt="add a function", context_label="baseline",
-        source="unit-test", repo=str(repo), base_ref=head,
+        id="t1",
+        prompt="add a function",
+        context_label="baseline",
+        source="unit-test",
+        repo=str(repo),
+        base_ref=head,
     )
     backend = LiveGenerationBackend()
     result = backend.generate(task, context_text="some org context")
@@ -109,8 +113,12 @@ def test_live_backend_reports_timeout_as_not_ok(
     monkeypatch.setattr(gen_runner, "_run", fake_run)
 
     task = GenTask(
-        id="t2", prompt="add a function", context_label="baseline",
-        source="unit-test", repo=str(repo), base_ref=head,
+        id="t2",
+        prompt="add a function",
+        context_label="baseline",
+        source="unit-test",
+        repo=str(repo),
+        base_ref=head,
     )
     result = LiveGenerationBackend(timeout=5).generate(task, context_text="")
 
@@ -134,8 +142,12 @@ def test_keep_worktree_true_leaves_it_on_disk_and_reports_path(
     monkeypatch.setattr(gen_runner, "_run", fake_run)
 
     task = GenTask(
-        id="t3", prompt="p", context_label="baseline", source="unit-test",
-        repo=str(repo), base_ref=head,
+        id="t3",
+        prompt="p",
+        context_label="baseline",
+        source="unit-test",
+        repo=str(repo),
+        base_ref=head,
     )
     backend = LiveGenerationBackend(keep_worktree=True)
     result = backend.generate(task, context_text="")

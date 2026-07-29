@@ -65,9 +65,7 @@ _PATH_HINTS: list[tuple[str, re.Pattern[str]]] = [
 _DESERIALIZATION_RE = re.compile(
     r"(?i)\b(pickle\.loads|yaml\.load\b|json\.loads|eval\(|Deserialize)"
 )
-_SQL_RE = re.compile(
-    r"(?i)\b(SELECT\b.{0,60}\bFROM\b|format!\(.{0,20}(SELECT|INSERT|UPDATE))"
-)
+_SQL_RE = re.compile(r"(?i)\b(SELECT\b.{0,60}\bFROM\b|format!\(.{0,20}(SELECT|INSERT|UPDATE))")
 _RESOURCE_LIMITS_RE = re.compile(
     r"(?im)\b(VecDeque::new\(\)|Vec::new\(\)|"
     r"(?:unbounded_channel|unbounded|channel)(?:::<[^()]*>)?\(\))\s*;?\s*$|\bwhile\s+true\b"
@@ -83,9 +81,10 @@ _DIFF_HINTS: list[tuple[str, re.Pattern[str]]] = [
     # subprocess/OS-exec boundary at all. Found live (Phase 14, Phase 3's real
     # measurement): a `tokio::spawn(async move ...)` background task tripped this
     # hint on every run, unrelated to any actual subprocess.
-    (SUBPROCESS_EXEC, re.compile(
-        r"(?i)\b(subprocess\.|os\.system|Command::new|exec[lv])|\.spawn\(\)"
-    )),
+    (
+        SUBPROCESS_EXEC,
+        re.compile(r"(?i)\b(subprocess\.|os\.system|Command::new|exec[lv])|\.spawn\(\)"),
+    ),
     (PATH_HANDLING, re.compile(r"(?i)\b(path\.join|PathBuf::from|\.\./|realpath|canonicalize)")),
     (NETWORK_INGRESS, re.compile(r"(?i)\b(webhook|request\.(body|json)|axum::|#\[route)")),
     (SQL_CONSTRUCTION, _SQL_RE),

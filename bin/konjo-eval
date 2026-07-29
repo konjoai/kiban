@@ -44,9 +44,7 @@ from lib.review import ReviewBackend  # noqa: E402
 
 def _run_genrun(args: argparse.Namespace) -> int:
     tasks_data = json.loads(pathlib.Path(args.tasks).read_text())
-    context_text = (
-        pathlib.Path(args.context_file).read_text() if args.context_file else ""
-    )
+    context_text = pathlib.Path(args.context_file).read_text() if args.context_file else ""
 
     use_replay = args.replay and not args.record
     backend: GenerationBackend = (
@@ -61,41 +59,58 @@ def _run_genrun(args: argparse.Namespace) -> int:
     results: list[dict] = []
     for t in tasks_data:
         base_task = GenTask(
-            id=t["id"], prompt=t["prompt"], context_label=t.get("context_label", "baseline"),
-            source=t.get("source", "unknown"), repo=t["repo"], base_ref=t["base_ref"],
+            id=t["id"],
+            prompt=t["prompt"],
+            context_label=t.get("context_label", "baseline"),
+            source=t.get("source", "unknown"),
+            repo=t["repo"],
+            base_ref=t["base_ref"],
         )
         for run_idx in range(1, args.runs + 1):
-            run_task = base_task if args.runs == 1 else GenTask(
-                id=f"{base_task.id}-run{run_idx}", prompt=base_task.prompt,
-                context_label=base_task.context_label, source=base_task.source,
-                repo=base_task.repo, base_ref=base_task.base_ref,
+            run_task = (
+                base_task
+                if args.runs == 1
+                else GenTask(
+                    id=f"{base_task.id}-run{run_idx}",
+                    prompt=base_task.prompt,
+                    context_label=base_task.context_label,
+                    source=base_task.source,
+                    repo=base_task.repo,
+                    base_ref=base_task.base_ref,
+                )
             )
             result = backend.generate(run_task, context_text, model=args.model)
             classification = genfixtures.classify_diff(result.diff_text, result.changed_paths)
             counts = {c: classification.count(c) for c in genfixtures.DEFECT_TAXONOMY}
             duration = round(result.duration_s, 1)
             row = {
-                "task_id": run_task.id, "ok": result.ok, "returncode": result.returncode,
-                "duration_s": duration, "counts": counts,
+                "task_id": run_task.id,
+                "ok": result.ok,
+                "returncode": result.returncode,
+                "duration_s": duration,
+                "counts": counts,
             }
             results.append(row)
             if not args.json:
-                counts_str = ", ".join(
-                    f"{c}={n}" for c, n in counts.items() if n
-                ) or "no mechanically-classified findings"
-                print(f"  [{'OK' if result.ok else 'FAIL'}] {run_task.id} "
-                      f"({duration}s): {counts_str}")
+                counts_str = (
+                    ", ".join(f"{c}={n}" for c, n in counts.items() if n)
+                    or "no mechanically-classified findings"
+                )
+                print(
+                    f"  [{'OK' if result.ok else 'FAIL'}] {run_task.id} ({duration}s): {counts_str}"
+                )
             if out_dir is not None and result.ok:
                 genfixtures.save_gen_fixture(
-                    fixture_id=run_task.id, prompt=run_task.prompt,
-                    context_label=run_task.context_label, source=run_task.source,
-                    diff_text=result.diff_text, fixtures_dir=out_dir,
+                    fixture_id=run_task.id,
+                    prompt=run_task.prompt,
+                    context_label=run_task.context_label,
+                    source=run_task.source,
+                    diff_text=result.diff_text,
+                    fixtures_dir=out_dir,
                 )
 
     if args.record and isinstance(backend, gen_cassettes.RecordingGenBackend):
-        cassette_path = gen_cassettes.save_gen_cassette(
-            pathlib.Path(args.tasks).stem, backend.data
-        )
+        cassette_path = gen_cassettes.save_gen_cassette(pathlib.Path(args.tasks).stem, backend.data)
         if not args.json:
             print(f"recorded {cassette_path}")
 
@@ -107,9 +122,10 @@ def _run_genrun(args: argparse.Namespace) -> int:
 def _print_gen_human(report: dict) -> None:
     print(f"konjo-eval gen: {report['n_fixtures']} generation fixture(s)")
     for fx in report["fixtures"]:
-        counts = ", ".join(
-            f"{c}={n}" for c, n in fx["counts"].items() if n
-        ) or "no mechanically-classified findings"
+        counts = (
+            ", ".join(f"{c}={n}" for c, n in fx["counts"].items() if n)
+            or "no mechanically-classified findings"
+        )
         print(f"  [{fx['context_label']}] {fx['id']}: {counts}")
     print("  totals: " + ", ".join(f"{c}={n}" for c, n in report["totals"].items()))
     if report["unclassified_classes"]:
@@ -121,8 +137,10 @@ def _print_gen_human(report: dict) -> None:
 
 
 def _print_human(report: dict) -> None:
-    print(f"konjo-eval: {report['summary']['n_fixtures']} fixtures, "
-          f"runs={report['runs']}, mode={report['mode']}")
+    print(
+        f"konjo-eval: {report['summary']['n_fixtures']} fixtures, "
+        f"runs={report['runs']}, mode={report['mode']}"
+    )
     for fx in report["fixtures"]:
         mark = "PASS" if fx["passed"] else "FAIL"
         detail = (
@@ -141,25 +159,33 @@ def _print_human(report: dict) -> None:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="konjo-eval")
-    parser.add_argument("cmd", nargs="?", default="run",
-                        choices=["run", "record", "gen", "genrun"])
+    parser.add_argument("cmd", nargs="?", default="run", choices=["run", "record", "gen", "genrun"])
     parser.add_argument("--profile", default=str(_KIBAN_ROOT / "profiles" / "squish.yml"))
     parser.add_argument("--runs", type=int, default=runner.DEFAULT_RUNS)
     parser.add_argument("--mode", default="daily", choices=["daily", "deep"])
     parser.add_argument("--corpus", default=None)
-    parser.add_argument("--replay", action="store_true",
-                        help="force the deterministic replay backend (the CI path)")
-    parser.add_argument("--live", action="store_true",
-                        help="force the live Claude CLI backend")
+    parser.add_argument(
+        "--replay", action="store_true", help="force the deterministic replay backend (the CI path)"
+    )
+    parser.add_argument("--live", action="store_true", help="force the live Claude CLI backend")
     parser.add_argument("--json", action="store_true", help="emit the raw report as JSON")
     parser.add_argument("--tasks", default=None, help="genrun: path to a task spec JSON file")
-    parser.add_argument("--context-file", default=None,
-                        help="genrun: file whose content is passed as --append-system-prompt")
+    parser.add_argument(
+        "--context-file",
+        default=None,
+        help="genrun: file whose content is passed as --append-system-prompt",
+    )
     parser.add_argument("--model", default=None, help="genrun: model override")
-    parser.add_argument("--out-dir", default=None,
-                        help="genrun: save each successful run as a fixture under this dir")
-    parser.add_argument("--record", action="store_true",
-                        help="genrun: wrap the live backend and save a cassette after")
+    parser.add_argument(
+        "--out-dir",
+        default=None,
+        help="genrun: save each successful run as a fixture under this dir",
+    )
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help="genrun: wrap the live backend and save a cassette after",
+    )
     args = parser.parse_args(argv)
 
     if args.cmd == "genrun":
