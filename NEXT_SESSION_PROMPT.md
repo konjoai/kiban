@@ -43,6 +43,46 @@ call-path signature exists for them without an unacceptable false-positive rate.
 Phase 3's router ever wants these signals, they need real design work, not a quick regex
 bolt-on (the plan is explicit: no regex guesses for this category).
 
+## Plan revision after P0 shipped (read this before starting Phase 1)
+
+The plan document was updated after this sprint's P0 work was already committed
+(`KONJO_REVIEW_PIPELINE_PLAN.md`, diffed byte-for-byte against the version P0 was
+scoped against). Phase 0 itself is untouched by the update — the new text does not
+change anything already shipped. Three things are new, all Phase 1/3-scoped:
+
+1. **§2.4's scope-escape router rule now has a fail-open fix**: escalate to Tier 2 not
+   just on scope escape, but also when the plan artifact's scope field is absent, empty,
+   or schema-invalid. Directly relevant to Phase 1's plan-artifact schema — design the
+   schema so "no scope declared" is representable as invalid, not as an empty-but-valid
+   field a router could silently read as "nothing to escape."
+2. **New §7, "Borrowed patterns, remixed"** — five design patterns for later phases, each
+   a reworked (not adopted) idea from an external orchestrator, with the divergence
+   stated. Two matter directly for Phase 1:
+   - **§7.3** (validated artifacts): the plan artifact needs a JSON Schema *and* a
+     fixture-suite check (once the router exists) — schema catches malformed, fixtures
+     catch wrong. Design the plan-artifact schema now with that two-level check in mind,
+     even though the fixture suite itself is Phase 3 work.
+   - **§7.2** (context layered by volatility): `invariant`/`state`/`volatile` layers
+     split by rate-of-change (cache boundary), not by topic. Relevant to how the
+     Executor's system prompt (the plan artifact) gets assembled — the plan artifact
+     itself is `volatile` (per-call, never cached), but whatever surrounds it in the
+     Executor's prompt should sort into the other two layers deliberately, not by
+     habit. Measured, not assumed: P0's `tokens_cache_read`/`tokens_input` fields
+     already exist to check whether this actually earns its complexity — don't build
+     the layering without a before/after comparison to justify it.
+   - §7.1 (projection with provenance) and §7.4 (declarative pipeline, authority
+     stripped) are Phase 3/kiban-distribution scoped, not immediate Phase 1 blockers.
+   - **§7.5 is a new standing rule, effective now**: record in `LEDGER.md`, per external
+     (non-Konjo) repo read, URL/commit SHA/license/whether the outcome was pattern-only
+     or code-derived. P0 read no external repos (kiban/lopi/squish are all Konjoai's
+     own), so no retroactive entry was needed — but Phase 1 may read an external
+     orchestrator's source for design ideas the way §7 itself did, and that read needs
+     the same citation discipline §7.5 now requires.
+3. **Two new non-goals** (§8, renumbered from the old §7): don't adopt any external
+   orchestrator as a dependency (§7's patterns are reworked, not imported), and don't
+   lift code from noncommercially-licensed sources into any Konjo repo (pattern-only for
+   those; permissively-licensed sources are code-liftable with attribution).
+
 ## Phase 1 itself: Planner/Executor split in lopi
 
 Per the plan (section 4, Phase 1): tool profiles on agent spawn (`readonly` vs
