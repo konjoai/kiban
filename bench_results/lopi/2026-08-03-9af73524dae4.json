@@ -1,0 +1,36 @@
+{
+  "repo": "lopi",
+  "repo_kind": "rust",
+  "sha": "9af73524dae4accbe0901331ac81d69abf220de2",
+  "started_at": "2026-08-03T21:32:29Z",
+  "finished_at": "2026-08-03T21:47:27Z",
+  "tool_versions": {
+    "rustc": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+    "cargo": "cargo 1.88.0 (873a06493 2025-05-10)",
+    "os": "Linux-6.18.5-x86_64-with-glibc2.39"
+  },
+  "clean_build_wall_s": 266.14,
+  "clean_build_ok": true,
+  "test_count": null,
+  "test_wall_s": 0.11,
+  "tests_ok": false,
+  "coverage_line_pct": null,
+  "coverage_lines_found": null,
+  "coverage_lines_hit": null,
+  "coverage_tool": "cargo-llvm-cov",
+  "coverage_notes": "lcov output not produced (exit 101)",
+  "mutation_score_pct": null,
+  "mutation_caught": 0,
+  "mutation_missed": 0,
+  "mutation_unviable": 0,
+  "mutation_timeout": 0,
+  "mutation_wall_s": 630.94,
+  "mutation_per_crate": null,
+  "mutation_tool": "cargo-mutants",
+  "mutation_notes": null,
+  "errors": [
+    "test run exit 101 in 0.1s",
+    "coverage tool exit 101, no lcov.info: error: no such command: `llvm-cov`\n\nhelp: view all installed commands with `cargo --list`\nhelp: find a package to install `llvm-cov` with `cargo search cargo-llvm-cov`\n",
+    "per-crate mutation breakdown unavailable: 'str' object has no attribute 'get'"
+  ]
+}
