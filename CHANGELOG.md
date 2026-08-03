@@ -4,6 +4,48 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-08-03
+
+Sprint P0, Phase 0 of the review-pipeline plan (`KONJO_REVIEW_PIPELINE_PLAN.md`). Builds
+the measurement instrumentation the plan needs before any gate, critic, or router is
+justified — no gate, critic, or router shipped, per the sprint's own non-goals. Full
+reasoning, the two tooling corrections to the plan, and the honest partial/null results:
+`LEDGER.md`'s `Review-Pipeline-Phase-0-1`.
+
+### Added
+
+- **`kiban bench` (`bin/kiban-bench`, `lib/bench.py`)** — one-shot coverage/mutation/test/
+  build-timing baseline, per repo, using each repo's own tools (`cargo llvm-cov nextest` +
+  `cargo mutants` for Rust, `pytest --cov` + `mutmut` for Python — not tarpaulin, which
+  neither target repo uses). Full-repo mutation scope, distinct from the diff-scoped
+  `cargo-mutants --in-diff` gate already wired into `konjo_gates_py.cli` and lopi's own
+  CI. Writes a dated JSON artifact plus a compact record to `bench/<repo>-bench.jsonl`.
+- **Per-PR telemetry schema (`ledger/pr_telemetry.py`, documented in `ledger/schema.md`)**
+  — a third sibling stream on the jsonl_store substrate (append-only, injection-rejected,
+  secret-scanned), not a Decision Ledger event. All 23 Phase-0 fields defined now (11
+  git-derivable, 12 live-capture-only including the critic fields, null until Phase 3).
+- **`kiban-backfill` (`bin/kiban-backfill`, `lib/backfill.py`)** — walks a repo's merge
+  history and populates the git-derivable telemetry fields. `trigger_surface_hits` and
+  `weakening_markers` use real `syn`-based detectors, not regex, per the plan's explicit
+  instruction; grep is used only for the one case the plan permits it (`continue-on-error:
+  true` in workflow YAML).
+- **`packages/konjo-ast-diff-rs`** — new `syn`-based Rust binary, before/after AST delta
+  for one file: identical/body-changed/signature-changed classification by qualified
+  function name, plus net-new `unsafe`, `.unwrap()`/`.expect()`, `#[allow(...)]`,
+  `#[ignore]`, removed asserts, removed test functions, and a syn-matched subset of
+  trigger-surface call paths (subprocess, deserialization, network egress, sql, ffi,
+  concurrency, crypto). Not a repurposing of the phase-1 `konjo-gates-rs` stub.
+
+### Fixed
+
+- `bin/kiban-bench`'s subprocess timeout handling left orphaned worker processes (a
+  killed `mutmut run` left ~1.8GB workers running); `_run` now kills the whole process
+  group on timeout.
+- `bin/kiban-bench`'s Python coverage/test-count parsing assumed a `"N passed"` summary
+  line and a fixed-column `TOTAL` row; both assumptions broke on squish's real config
+  (`--cov-fail-under=100` suppresses the summary line; branch coverage adds columns).
+  Test count now comes from counting `-q` progress-line outcome characters.
+
 ## [1.9.0] - 2026-07-29
 
 Phase 14, "The Measurement Harness." Phase 13 shipped the seam and the contract; it

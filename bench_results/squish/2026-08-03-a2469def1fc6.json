@@ -1,0 +1,33 @@
+{
+  "repo": "squish",
+  "repo_kind": "python",
+  "sha": "a2469def1fc668d7bd94cdcab0d0757f469e66a0",
+  "started_at": "2026-08-03T02:11:40Z",
+  "finished_at": "2026-08-03T02:13:07Z",
+  "tool_versions": {
+    "python": "Python 3.11.15",
+    "os": "Linux-6.18.5-x86_64-with-glibc2.39"
+  },
+  "clean_build_wall_s": null,
+  "clean_build_ok": null,
+  "test_count": 6387,
+  "test_wall_s": 85.54,
+  "tests_ok": false,
+  "coverage_line_pct": 87.35,
+  "coverage_lines_found": null,
+  "coverage_lines_hit": null,
+  "coverage_tool": "pytest-cov",
+  "coverage_notes": null,
+  "mutation_score_pct": null,
+  "mutation_caught": null,
+  "mutation_missed": null,
+  "mutation_unviable": null,
+  "mutation_timeout": null,
+  "mutation_wall_s": 1.03,
+  "mutation_per_crate": null,
+  "mutation_tool": "mutmut",
+  "mutation_notes": "mutmut run failed (exit 1): failed to collect stats. runner returned 1",
+  "errors": [
+    "mutation run failed: failed to collect stats. runner returned 1"
+  ]
+}

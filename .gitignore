@@ -25,3 +25,6 @@ state/
 
 # editor/OS noise
 .DS_Store
+
+# Rust crates under packages/*-rs (konjo-ast-diff-rs, konjo-gates-rs)
+target/
