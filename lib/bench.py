@@ -178,7 +178,14 @@ def _tests_rust(repo: Path, result: BenchResult) -> None:
     code, out, elapsed = _run(
         ["cargo", "nextest", "run", "--workspace"], repo, timeout=1800
     )
-    if code == 127:
+    # A missing `cargo nextest` subcommand is NOT exit 127 (the shell's own "command not
+    # found" convention) -- `cargo` itself is found and found fine; it's `cargo` printing
+    # its own "error: no such command: `nextest`" and exiting 101 (confirmed live on this
+    # cargo 1.88.0: both a missing `nextest` and a missing `llvm-cov` produced exit 101,
+    # not 127). The old `code == 127` check never matched, so this fallback silently never
+    # fired when nextest wasn't installed -- the run was recorded as a genuine test
+    # failure ("test run exit 101 in 0.1s") instead of falling back to `cargo test`.
+    if code != 0 and "no such command" in out.lower():
         # nextest not installed: fall back to the repo's own declared verify_cmd
         # (`cargo test --workspace` per lopi's CLAUDE.md) so this step still produces a
         # real number instead of a silent null.
@@ -306,7 +313,15 @@ def _mutation_rust(repo: Path, result: BenchResult, timeout_s: int) -> None:
         try:
             data = json.loads(outcomes_json.read_text(encoding="utf-8"))
             for o in data.get("outcomes", []):
-                fname = o.get("scenario", {}).get("Mutant", {}).get("file", "unknown")
+                # The baseline run is its own outcome entry with `"scenario": "Baseline"`
+                # (a bare string, not a dict) -- only mutant entries carry
+                # `"scenario": {"Mutant": {...}}`. Skipping non-dict scenarios here avoids
+                # `'str' object has no attribute 'get'` on that first entry (confirmed
+                # live: every real run has exactly one Baseline entry before the mutants).
+                scenario = o.get("scenario")
+                if not isinstance(scenario, dict):
+                    continue
+                fname = scenario.get("Mutant", {}).get("file", "unknown")
                 crate = fname.split("/")[0] if "/" in fname else fname
                 bucket = per_crate.setdefault(crate, {"caught": 0, "missed": 0, "unviable": 0})
                 summary = o.get("summary", "").lower()
