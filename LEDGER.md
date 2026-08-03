@@ -8,6 +8,37 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Review-Pipeline-Phase-2-PF0: full-workspace mutation baseline launched (in progress)
+
+**Sprint P2 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, mutation-guided
+test loop). PF-0 requires the full baseline started before anything else in this
+sprint, running concurrently with the rest of the pre-flight and build work, not
+after — recording the launch here immediately so a session that ends before it
+finishes still leaves the job accounted for.**
+
+**Launched:** `python3 bin/kiban-bench run --repo /home/user/lopi --mutation-timeout
+28800` (8h cap), detached (`nohup ... &`, PID 13062), at **2026-08-03T21:32:29Z**.
+Estimated completion: by **2026-08-04T05:32:29Z** if it runs the full cap, sooner if
+`cargo mutants --workspace` finishes first. Log: `pf0-baseline.log` (session
+scratchpad, not checked in). Output lands at `bench_results/lopi/<date>-<sha>.json`
+plus `bench/lopi-bench.jsonl`, matching the existing convention `bench_results/squish/
+2026-08-03-a2469def1fc6.json` already established.
+
+**Prior sample (Phase 0, `Review-Pipeline-Phase-0-1` below): 109 mutants in 35 min at
+`--jobs 2`, capped, ~5-7% of the ~1,500-2,000 estimate.** This environment has 4 cores.
+`lib/bench.py`'s `_mutation_rust` hardcoded `--jobs 2`, leaving half the box idle for a
+run its own docstring calls "plausibly hours" — changed to `os.cpu_count()` (falls
+back to 2 only if the count can't be read), matching PF-0's explicit instruction
+("`cargo mutants --workspace --jobs <cores>`"). At roughly double the prior sample's
+throughput, a full 1,500-2,000-mutant run is estimated at 5-6 hours wall time, inside
+the 8h cap with headroom — not a guarantee, since mutant cost is not uniform across
+the workspace, which is exactly why PF-0 asked for a real run instead of an estimate.
+
+**This is a launch record, not a result.** KT-D (full-workspace baseline completion)
+and PF-3/KT-2B (the two-arm kill-test) are recorded separately once the run concludes
+or the session ends, whichever comes first — see the entry immediately following this
+one once posted, or `NEXT_SESSION_PROMPT.md` if the run outlives the session.
+
 ## Review-Pipeline-Phase-1: plan-artifact schema plus the telemetry fields it feeds (kiban's half)
 
 **Sprint P1 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1, the Planner/Executor split).

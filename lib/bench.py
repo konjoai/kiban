@@ -246,9 +246,15 @@ def _mutation_rust(repo: Path, result: BenchResult, timeout_s: int) -> None:
     the per-mutant outcome file cargo-mutants writes under --output.
     """
     out_dir = repo / ".cargo-mutants-bench"
+    # Full-workspace baseline runs are the multi-hour case bench.py's own docstring warns
+    # about ("plausibly hours"); a hardcoded --jobs 2 leaves the rest of the box idle for
+    # that entire run. Use every core the box actually has (P2 sprint's PF-0: "cargo
+    # mutants --workspace --jobs <cores>"), falling back to 2 only if the count can't be
+    # read at all.
+    jobs = str(os.cpu_count() or 2)
     code, out, elapsed = _run(
         [
-            "cargo", "mutants", "--workspace", "--jobs", "2",
+            "cargo", "mutants", "--workspace", "--jobs", jobs,
             "--output", str(out_dir),
         ],
         repo,
