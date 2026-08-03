@@ -262,7 +262,9 @@ def _mutation_rust(repo: Path, result: BenchResult, timeout_s: int) -> None:
         return
     if code == 124:
         result.mutation_notes = f"timed out after {timeout_s}s, partial results only"
-        result.errors.append(f"mutation run hit the {timeout_s}s time-box; scored from partial output")
+        result.errors.append(
+            f"mutation run hit the {timeout_s}s time-box; scored from partial output"
+        )
 
     m = _MUTANTS_SUMMARY_RE.search(out)
     caught = missed = unviable = timeout_n = None
@@ -383,7 +385,9 @@ def _mutation_python(repo: Path, result: BenchResult, timeout_s: int) -> None:
         return
     if code == 124:
         result.mutation_notes = f"timed out after {timeout_s}s, partial results only"
-        result.errors.append(f"mutation run hit the {timeout_s}s time-box; scored from partial output")
+        result.errors.append(
+            f"mutation run hit the {timeout_s}s time-box; scored from partial output"
+        )
     elif code != 0:
         # A real, non-timeout mutmut failure (e.g. its own baseline collection erroring)
         # -- record why, not just a silent None score. Confirmed live against squish:
