@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kiban.konjo.ai/schemas/plan_artifact.schema.json",
+  "title": "Konjo Plan Artifact",
+  "description": "Emitted by a readonly Planner, consumed by the Executor as its system prompt, and recorded to the ledger before the Executor spawns. See KONJO_REVIEW_PIPELINE_PLAN.md section 4 Phase 1 and section 7.3/7.4. The scope field's minItems:1 constraint is load-bearing for the future router (section 2.4): a plan artifact whose scope is absent, empty, or schema-invalid must fail this schema, or the scope-escape routing rule fails open. predicted_tier is logged for prediction-vs-actual comparison only and grants no routing authority (section 7.4) -- a future router must not read it when assigning a tier.",
+  "type": "object",
+  "properties": {
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The task goal this plan addresses, in the Planner's own words."
+    },
+    "scope": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "Explicit file/glob list the Executor may touch. Never representable as empty-but-valid -- see this schema's top-level description."
+    },
+    "invariants": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Hard constraints the Executor's diff must preserve."
+    },
+    "test_strategy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "How the Executor is expected to verify its own work."
+    },
+    "non_goals": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Explicitly out of scope for this plan, stated so the Executor does not drift into adjacent work."
+    },
+    "predicted_tier": {
+      "type": ["string", "null"],
+      "description": "The Planner's predicted review tier. Zero routing authority (section 7.4) -- logged only, so prediction-vs-actual disagreement can be measured as a scope-fidelity signal. A future router MUST ignore this field when assigning a tier."
+    },
+    "planner_model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The exact model version string that produced this plan (reproducibility, section 3.3 L23 precedent)."
+    },
+    "planner_commit": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The repo commit SHA the Planner read against."
+    }
+  },
+  "required": [
+    "goal",
+    "scope",
+    "invariants",
+    "test_strategy",
+    "non_goals",
+    "predicted_tier",
+    "planner_model",
+    "planner_commit"
+  ],
+  "additionalProperties": false
+}

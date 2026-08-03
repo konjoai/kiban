@@ -8,6 +8,54 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Review-Pipeline-Phase-1: plan-artifact schema plus the telemetry fields it feeds (kiban's half)
+
+**Sprint P1 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1, the Planner/Executor split).
+Primary repo is lopi; kiban's scope here is the plan-artifact schema and the
+telemetry wiring it feeds. Full pre-flight (PF-1 entry-point audit, PF-2/PF-3 live
+kill-tests, PF-4 prior-art check) and the Planner/Executor handoff itself are recorded
+in lopi's `LEDGER.md`, `Review-Pipeline-Phase-1` entry; read that first for the
+complete picture. No critic, router, or gate shipped, per the plan's Phase 3
+boundary.**
+
+**Design decision: hand-written validator, not a generic JSON Schema engine.**
+`schemas/plan_artifact.schema.json` is the one schema this repo needs to validate
+against today, and its constraints (`type`, `required`, `properties`, `items`,
+`minItems`, `minLength`, `additionalProperties`) are a small, fixed subset. Adding the
+`jsonschema` pip dependency for one schema would be premature machinery, the same
+call `lopi_core::schema`'s own doc comment already makes for lopi's structured-output
+validator ("a heavier external `jsonschema` crate would also pull `regex` and `url`
+into the dependency graph, not worth it for the four keywords lopi actually
+consumes"). `lib/plan_artifact_schema.py`'s validator reads the schema file's own
+declared `required`/`minItems` at import time rather than hardcoding them a second
+time, so the two cannot silently drift without `test_schema_still_declares_scope_min_
+items_one` (`tests/test_plan_artifact_schema.py`) going red. If a future schema needs
+real JSON Schema semantics (`oneOf`, `$ref`, conditional subschemas), revisit adding
+the dependency then, not preemptively now.
+
+**Design decision: `planner_scope`, not `scope`, on `PrTelemetryRecord`.** The record
+already carries a top-level `scope: str = "org"` field meaning ledger scope (`org`
+versus `repo:<name>`), predating this sprint. The plan artifact's own `scope` field
+(an explicit file/glob list) is a different type and a different meaning entirely; had
+this sprint reused the field name `scope`, either the dataclass would refuse the
+collision outright or, worse, one of the two meanings would silently overwrite the
+other depending on assignment order. Naming it `planner_scope` costs one field name
+and closes the collision permanently, rather than requiring every future reader of
+`pr_telemetry.jsonl` to remember which `scope` a given record's `scope` key means.
+Constrains future work: any future plan-artifact-derived telemetry field that could
+plausibly collide with an existing `PrTelemetryRecord` field name (there are none
+currently, `predicted_tier`/`planner_model`/`planner_commit` are all new names) should
+get the same `planner_`-prefixed treatment rather than assuming the record's flat
+namespace is safe to reuse.
+
+**Verified with one real end-to-end record**, not a synthetic fixture: the plan
+artifact used in `test_pr_telemetry_plan_artifact.py` is the live Planner run's actual
+output (built in lopi this sprint against a throwaway repo, see lopi's `LEDGER.md`),
+field for field. `apply_plan_artifact()` reuses `lib.plan_artifact_schema.validate`
+rather than re-validating by hand, so a telemetry record can never carry a scope value
+that did not independently pass schema validation, closing the same fail-open gap
+section 2.4 identifies for a future router.
+
 ## Review-Pipeline-Phase-0-1: instrumented the review-pipeline plan's telemetry, backfilled it against real history, found the plan wrong about its own tooling twice
 
 **Sprint P0 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 0). Non-goal discipline held: no gate,

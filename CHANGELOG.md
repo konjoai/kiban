@@ -4,6 +4,42 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-08-03
+
+Sprint P1, Phase 1 of the review-pipeline plan, kiban's half: the plan-artifact schema
+and the telemetry fields it feeds. The Planner/Executor split itself (tool profiles,
+the Rust `PlanArtifact` type, the handoff) lives in lopi; see lopi's `CHANGELOG.md`
+`[0.41.0]` and `LEDGER.md`'s `Review-Pipeline-Phase-1` entry for the full PF-1 through
+PF-4 pre-flight and the live kill-test results. No critic, router, or gate shipped
+here, per the plan's own Phase 3 boundary.
+
+### Added
+
+- **`schemas/plan_artifact.schema.json`** - JSON Schema (draft 2020-12) for the plan
+  artifact a readonly Planner emits: `goal`, `scope`, `invariants`, `test_strategy`,
+  `non_goals`, `predicted_tier`, `planner_model`, `planner_commit`, all required.
+  `scope.minItems: 1` is the load-bearing constraint (section 2.4's fail-open fix): an
+  absent, empty, or schema-invalid scope must fail this schema, not read as "no scope
+  escape possible" to a future router. `predicted_tier` documented at the field
+  definition as granting zero routing authority (section 7.4).
+- **`lib/plan_artifact_schema.py`** - hand-written validator (not a generic JSON
+  Schema engine; that would be premature machinery for one schema), reading the
+  schema file's own declared `required`/`minItems` at import time rather than
+  duplicating them as literals, so a schema edit that loosened the scope constraint
+  would be caught by `test_schema_still_declares_scope_min_items_one` going red, not
+  silently accepted. `validate`/`is_valid`/`validate_strict`, 9 tests: rejects empty
+  scope, missing scope, and schema-invalid scope as three distinct cases, plus
+  round-trip and unknown-field checks.
+- **`ledger/pr_telemetry.py`: `PrTelemetryRecord.predicted_tier`/`planner_scope`/
+  `planner_model`/`planner_commit`**, plus `apply_plan_artifact()` (reuses
+  `lib.plan_artifact_schema.validate` rather than re-validating by hand, so a record
+  can never carry an unvalidated scope). Named `planner_scope`, not `scope`: the
+  record's existing `scope` field already means ledger scope (`org` versus
+  `repo:<name>`); reusing that name would have silently collided two meanings.
+  Verified with one real end-to-end record (the live Planner run's actual output,
+  built in lopi this sprint), round-tripped through the JSONL store with all four
+  fields non-null and every critic field still null.
+
 ## [1.10.0] - 2026-08-03
 
 Sprint P0, Phase 0 of the review-pipeline plan (`KONJO_REVIEW_PIPELINE_PLAN.md`). Builds

@@ -16,6 +16,17 @@ Fields split by capture method, per the plan:
     sha, merged_at, files_touched, path_classes, lines_added, lines_removed,
     crates_touched, ast_delta, trigger_surface_hits, weakening_markers, new_dependencies
 
+  Plan-artifact-derived (Phase 1, live capture only): predicted_tier, planner_scope,
+    planner_model, planner_commit -- populated from the readonly Planner's PlanArtifact
+    (see lopi's `lopi-core::PlanArtifact` and `schemas/plan_artifact.schema.json`) once a
+    Phase 1 task runs through the Planner/Executor split. Named `planner_scope`, not
+    `scope` -- this record's own top-level `scope` field already means "org vs. repo"
+    ledger scope (see PrTelemetryRecord.scope above); reusing that name for the plan
+    artifact's file/glob scope would silently collide. `predicted_tier` carries zero
+    routing authority (plan section 7.4) -- it is recorded here only so a future
+    prediction-vs-actual comparison can be measured; a router must never read it from
+    this record to assign a tier.
+
   Live capture only (forward-going; cannot be recovered for a past PR):
     tokens_input, tokens_cache_read, tokens_cache_write, tokens_output, wall_clock,
     runner_minutes, coverage_delta, mutation_score_on_diff, review_rounds,
@@ -80,6 +91,12 @@ class PrTelemetryRecord:
     weakening_markers: list[str] = field(default_factory=list)
     new_dependencies: list[str] = field(default_factory=list)
 
+    # -- plan-artifact-derived (Phase 1, live capture only) ----------------------------
+    predicted_tier: str | None = None
+    planner_scope: list[str] | None = None
+    planner_model: str | None = None
+    planner_commit: str | None = None
+
     # -- live capture only (forward-going) ---------------------------------------------
     tokens_input: int | None = None
     tokens_cache_read: int | None = None
@@ -93,6 +110,22 @@ class PrTelemetryRecord:
     findings_raised: int | None = None
     findings_that_caused_a_change: int | None = None
     findings_later_contradicted: int | None = None
+
+    def apply_plan_artifact(self, plan: dict[str, Any]) -> None:
+        """Populate the plan-artifact-derived fields from a schema-valid plan artifact
+        dict (see `lib.plan_artifact_schema.validate`). Raises `PlanArtifactError` if
+        `plan` is not schema-valid -- a telemetry record must never carry a scope value
+        that could not have come from a real Planner run.
+        """
+        from lib.plan_artifact_schema import PlanArtifactError, validate
+
+        errors = validate(plan)
+        if errors:
+            raise PlanArtifactError("; ".join(errors))
+        self.predicted_tier = plan["predicted_tier"]
+        self.planner_scope = list(plan["scope"])
+        self.planner_model = plan["planner_model"]
+        self.planner_commit = plan["planner_commit"]
 
     def to_event(self) -> dict[str, Any]:
         d = asdict(self)
