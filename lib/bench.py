@@ -183,11 +183,11 @@ def _tests_rust(repo: Path, result: BenchResult) -> None:
         # (`cargo test --workspace` per lopi's CLAUDE.md) so this step still produces a
         # real number instead of a silent null.
         code, out, elapsed = _run(["cargo", "test", "--workspace"], repo, timeout=1800)
-        m = re.findall(r"(\d+) passed", out)
-        result.test_count = sum(int(x) for x in m) if m else None
+        passed_counts = re.findall(r"(\d+) passed", out)
+        result.test_count = sum(int(x) for x in passed_counts) if passed_counts else None
     else:
-        m = _NEXTEST_SUMMARY_RE.search(out)
-        result.test_count = int(m.group(1)) if m else None
+        summary_match = _NEXTEST_SUMMARY_RE.search(out)
+        result.test_count = int(summary_match.group(1)) if summary_match else None
     result.test_wall_s = round(elapsed, 2)
     result.tests_ok = code == 0
     if code not in (0,):
