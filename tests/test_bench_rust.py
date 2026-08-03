@@ -31,7 +31,9 @@ def test_tests_rust_falls_back_to_cargo_test_when_nextest_missing(tmp_path: Path
         assert cmd == ["cargo", "test", "--workspace"]
         return (0, "test result: ok. 3 passed; 0 failed", 1.23)
 
-    result = bench.BenchResult(repo="lopi", repo_kind="rust", sha="abc123", started_at="2026-08-03T00:00:00Z")
+    result = bench.BenchResult(
+        repo="lopi", repo_kind="rust", sha="abc123", started_at="2026-08-03T00:00:00Z"
+    )
     with mock.patch.object(bench, "_run", side_effect=fake_run):
         bench._tests_rust(tmp_path, result)
 
@@ -50,7 +52,9 @@ def test_tests_rust_records_real_failure_without_masking_as_missing_tool(
             return (101, "test result: FAILED. 37 passed; 1 failed", 120.1)
         raise AssertionError("should not fall back on a real test failure")
 
-    result = bench.BenchResult(repo="lopi", repo_kind="rust", sha="abc123", started_at="2026-08-03T00:00:00Z")
+    result = bench.BenchResult(
+        repo="lopi", repo_kind="rust", sha="abc123", started_at="2026-08-03T00:00:00Z"
+    )
     with mock.patch.object(bench, "_run", side_effect=fake_run):
         bench._tests_rust(tmp_path, result)
 
@@ -81,13 +85,13 @@ def test_mutation_rust_per_crate_breakdown_skips_baseline_entry(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    result = bench.BenchResult(repo="lopi", repo_kind="rust", sha="abc123", started_at="2026-08-03T00:00:00Z")
+    result = bench.BenchResult(
+        repo="lopi", repo_kind="rust", sha="abc123", started_at="2026-08-03T00:00:00Z"
+    )
     with mock.patch.object(
         bench, "_run", return_value=(0, "2 mutants tested in 0s: 1 missed, 1 caught", 1.0)
     ):
         bench._mutation_rust(tmp_path, result, timeout_s=60)
 
     assert result.errors == []
-    assert result.mutation_per_crate == {
-        "crates": {"caught": 1, "missed": 1, "unviable": 0}
-    }
+    assert result.mutation_per_crate == {"crates": {"caught": 1, "missed": 1, "unviable": 0}}
