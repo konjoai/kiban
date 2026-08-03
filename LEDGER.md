@@ -8,6 +8,173 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Review-Pipeline-Phase-0-1: instrumented the review-pipeline plan's telemetry, backfilled it against real history, found the plan wrong about its own tooling twice
+
+**Sprint P0 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 0). Non-goal discipline held: no gate,
+critic, or router shipped. Everything below is measurement infrastructure plus one
+work order.**
+
+**PF-1 corrected the plan on two tooling assumptions before any code was written, both
+confirmed against the real repos, not inferred:**
+1. **Coverage tool is wrong.** The plan specifies tarpaulin everywhere. Neither target
+   repo uses it. lopi's own CI (`konjo-gate.yml` G2) already standardized on
+   `cargo llvm-cov nextest` (lcov output, real measured coverage 68.34% locked in
+   `.konjo/coverage-floor.txt`); squish's is `pytest --cov` (its own `konjo-gate.yml` G2,
+   `coverage-80`). `kiban bench` (`lib/bench.py`) uses each repo's own tool, not a third
+   one that would disagree with the gate already enforcing it.
+2. **Mutation testing is not "wire from scratch."** `cargo-mutants` is already wired —
+   diff-scoped only (`--in-diff`, PR-triggered, `konjo-gate.yml` G3 and
+   `konjo_gates_py.cli`'s dispatcher), survival capped at 10%, never persisted anywhere
+   durable. `kiban bench`'s full-repo, un-scoped run is the genuinely new measurement;
+   the diff-scoped gate stays exactly as it was.
+
+**PF-2 (KT-0A): kledger's existing telemetry (`review_log.py`, per-review dispatch/finding
+counts) overlaps zero of the Phase 0 schema's 23 fields. Stop rule did not fire —
+proceeded with full scope.**
+
+**PF-3 (KT-0B): 204 merge commits to lopi `main` in the 90-day window, far above the
+20-commit floor.** lopi's entire git history (816 commits total) starts 2026-05-04 — the
+repo is younger than the window itself, so this backfill is lopi's whole PR history to
+date, not a rolling recent sample. Stop rule did not fire.
+
+**PF-4: full-workspace `cargo mutants` on lopi is a multi-hour job, not a single-session
+one.** Scoped trial on the smallest crate (`lopi-github`, 242 lines): 5 mutants, 64s test
+time on top of a 30s baseline build. Extrapolated against the ~77k-line workspace
+(~1,500-2,000 mutants order of magnitude), confirmed live: a real full-workspace run,
+capped at 35 minutes, reached only 109 mutants (~5-7% of the ~1,500-2,000 estimate) before
+the cap. Ran detached per the plan's own instruction rather than blocking the session;
+**this baseline is genuinely incomplete and the honest number is partial, not final** —
+49 caught / 53 missed / 7 unviable in the time available, 52.0% survival on what ran
+(missed / (caught + missed)). A real full baseline needs a dedicated multi-hour run,
+tracked in `NEXT_SESSION_PROMPT.md`. The 52% partial survival rate is itself informative
+even incomplete: comparable order of magnitude to lopi's known 68.34% line-coverage floor
+being well under its 80%/95% targets, i.e. a repo with real coverage gaps plausibly has
+real mutation-survival gaps too, consistent rather than contradictory — but this is a
+109-mutant sample, not a claim to build on without the full run.
+
+**§1, `kiban bench` (`bin/kiban-bench`, `lib/bench.py`): built, and it found two real bugs
+in itself before I'd trust its numbers.** Both found by actually running it against
+squish, not by inspection:
+1. A timed-out subprocess (`mutmut run`) left two ~1.8GB worker processes running after
+   `subprocess.run(..., timeout=...)` returned — killing the direct child doesn't kill
+   its own children. Fixed: `_run` now launches in its own process group
+   (`start_new_session=True`) and kills the whole group on timeout
+   (`os.killpg`/`SIGKILL`), confirmed live (a synthetic `sleep 30 & sleep 30 & wait`
+   under a 2s timeout leaves zero orphans after the fix, versus real orphaned mutmut
+   workers before it).
+2. squish's `pytest-cov` has `fail_under=100` configured, which makes pytest-cov call
+   `pytest.exit()` on a coverage-threshold miss — this **skips pytest's normal
+   `"N passed"` terminal summary line entirely**, confirmed live (squish's real bench run
+   produced zero such line while the suite plainly ran, 209s of real test time). Test
+   count now comes from counting `-q` progress-line outcome characters
+   (`.`/`F`/`E`/`s`/`x`/`X`) instead, cross-checked against `pytest --collect-only`'s
+   per-file counts (6,387 counted vs. 6,413 collected, <0.5% off — attributable to
+   deselection/collection-vs-run differences, not a parsing bug). Also fixed: the
+   coverage regex assumed a fixed column count before the `%`; squish's `TOTAL` row has
+   branch-coverage columns the line-coverage-only regex didn't anticipate. Now prefers
+   pytest-cov's precise `"Total coverage: XX.XX%"` line when present, falling back to the
+   `TOTAL` row's rounded percentage.
+3. A third: when `mutmut run` fails outright (not a timeout, not "tool missing"), the
+   first version of this code still reported `mutation_caught`/`mutation_missed` as `0`/
+   `0` — indistinguishable from "ran cleanly, killed nothing," when the truth is "did not
+   run at all." Fixed to leave both `None` on a hard failure and record the real reason
+   in `mutation_notes`. Found by reading squish's own real (post-fix-1/fix-2) artifact and
+   noticing a `0%`-shaped score next to zero test time made no sense for a 6,387-test repo.
+4. (Design fix alongside, not a bug: the original two-pass Python path ran the full test
+   suite twice — once plain, once with `--cov`. Consolidated to one pytest invocation
+   that produces both numbers, roughly halving squish's bench wall-clock: 92s → 86s once
+   warm, versus 209s across the original two passes.)
+
+**Verify, run against squish end to end**: real recorded artifact at
+`bench_results/squish/2026-08-03-a2469def1fc6.json`; test suite ran for real
+(85.54s, 6,387 outcomes counted from progress characters — cross-checked at 6,413 via
+`pytest --collect-only`, <0.5% off — 1 real test failure, a missing Rust extension
+`squish_quant_rs` not built in this environment, unrelated to kiban-bench, reflected via
+`tests_ok: false`), coverage 87.35% (pytest-cov, precise `"Total coverage"` line, not the
+rounded `TOTAL` row). **Mutation on squish did not complete**: `mutmut`'s own baseline
+collection failed with `AttributeError: module 'squish.cli' has no attribute
+'build_parser'`, even though `from squish import cli; cli.build_parser` resolves fine in
+a plain interpreter — consistent with mutmut's isolated source-copy diverging from the
+editable install's resolved path, not a real code defect in squish and not a
+`kiban-bench` bug. Recorded as `mutation_notes`/`errors` on the artifact
+(`mutation_caught`/`mutation_missed` both `null`, not `0`, per bug 3 above), not faked as
+a score. **Determinism (the plan's explicit ask, "confirm re-running on the same SHA
+produces the same mutation score") could not be checked for squish** because no mutation
+score was ever produced to compare — recorded as not-verified, not smoothed into "n/a."
+
+**§2, per-PR telemetry schema (`ledger/pr_telemetry.py`, `ledger/schema.md`): a third
+sibling stream on the jsonl_store substrate, not a Decision Ledger event** — a bench/PR
+measurement is not a durable call, so it doesn't go through `Ledger.decide()`. All 23
+Phase-0 fields defined now (11 git-derivable, 12 live-capture-only including the
+critic fields, null until Phase 3, per the plan's explicit instruction not to let the
+schema churn later). Verified: 3 synthetic records written and read back correctly; 50
+concurrent writes from 10 threads produced 50 distinct records with zero loss or
+corruption (append-only holds under concurrency).
+
+**§3, retroactive backfill (`bin/kiban-backfill`, `lib/backfill.py`,
+`packages/konjo-ast-diff-rs`): all 204 merge commits backfilled, zero unparseable
+`.rs` files.** The plan's explicit instruction — "use syn for the AST delta and for
+locating unsafe, .unwrap(), and attribute additions... grep is acceptable only for
+`continue-on-error` in workflow YAML" — is followed literally: `konjo-ast-diff-rs` is a
+new, separate `syn`-based Rust binary (not a repurposing of the phase-1
+`konjo-gates-rs` CI-gate-runner stub, which is reserved for different future work),
+invoked once per touched `.rs` file per commit. It classifies every function/method by
+qualified name into identical/body-changed/signature-changed, and detects net-new
+`unsafe`, `.unwrap()`/`.expect()`, `#[allow(...)]`, `#[ignore]`, removed
+`assert!`/`assert_eq!`/etc., removed test functions, and a syn-matched (not regex-guessed)
+subset of trigger-surface call paths (subprocess, deserialization, network egress, sql,
+ffi, concurrency, crypto — **not** `auth`/`path_construction`, explicitly not covered:
+no syn-safe call-path signature exists for either without an unacceptable false-positive
+rate, recorded as a known gap, not silently claimed). One real bug found and fixed during
+this build: `assert!(true);` in statement position parses as `Stmt::Macro`, not
+`Expr::Macro` — a visitor overriding only `visit_expr` silently missed every
+statement-form assert; fixed by overriding `visit_macro` instead (catches both forms),
+confirmed by a regression test that failed before the fix and passes after.
+
+**Hand-check, 5 commits drawn with a fixed random seed (42) for reproducibility:**
+`lines_added`/`lines_removed`/`files_touched` matched `git diff --numstat` exactly on all
+5 (2342/571/30, 76/24/5, 4910/93/55, 2130/303/57, 10476/1833/144). AST-derived
+trigger-surface counts spot-checked against the real diffs matched exactly on both
+checked (a `concurrency:2` claim on one commit matched 2 real `Mutex::new`/`tokio::spawn`
+additions; a `sql:6` claim on another matched 6 real `sqlx::query_as` additions). One
+field on the largest sampled commit (144 files, a real reorganization) showed a
+divergence worth stating plainly: `removed_test_fn` recorded 42, a naive line-diff grep
+for removed `#[test]`/`#[tokio::test]` attribute lines found 45. Traced to git's
+line-based diff algorithm counting a test function that moved within the file (unchanged
+content, different position) as both a deletion and an addition — the `syn`-based
+whole-file count correctly does not count that as "removed" (nothing about the function
+actually changed), the line-diff grep does. **Disagreement count: 0 of 5 records wrong;
+1 of 5 showed one field where two legitimately different measurement methods disagree,
+and the syn-based one is the more defensible answer, not a detector bug** — stated
+plainly rather than folded into "4/5 clean."
+
+**§4, cost circuit breaker: shipped as a work order, not a speculative patch, exactly as
+instructed.** PF-1 found lopi already has real token/cost accounting the plan didn't know
+about — `TurnMetrics` persisted to SQLite, a per-session USD hard ceiling
+(`EconomicsConfig::hard_session_ceiling`, reactive, polled every 10s), a mid-stream kill
+at 95% of a CLI session's budget, and a second, parallel, **explicitly unwired** budget
+system (`lopi_ratelimit::BudgetGovernor` — `lopi-orchestrator/src/budget/mod.rs` states
+outright it is dead code, never call it from here). No per-day ceiling existed in any
+form, enforced or estimate-only, and neither existing mechanism is a pre-call gate — both
+fire reactively, after tokens are already spent. Shipped for real this sprint: the pure
+`CostCircuitBreaker::check` decision logic and `EconomicsConfig`'s two new
+`Option<u64>` ceiling fields (`crates/lopi-core/src/cost_breaker.rs`,
+`crates/lopi-core/src/economics_config.rs`), 6 passing unit tests with stubbed counters,
+`cargo build`/`cargo test -p lopi-core` both green. **Not shipped**: wiring the check into
+`claude_spawn.rs:130`/`:255` and `api_client.rs:196`/`:240` — `ClaudeCode` is a pure
+CLI-argument builder today with no config/DB handle at all, so live wiring is a
+cross-cutting change to its construction chain across `lopi-agent`, not a same-file patch.
+Precise integration points, the recommended error-propagation shape (reusing the
+`ERR_BUDGET_HARD_STOP`/`terminal_errors.rs` terminal-classification precedent, confirmed
+by reading that file, not guessed), and why `BudgetGovernor` must stay untouched: all in
+`lopi/docs/work-orders/cost-circuit-breaker.md`.
+
+**Where the plan was wrong, restated plainly (not buried above):** tarpaulin (both
+repos use something else), "wire cargo-mutants from scratch" (already wired,
+diff-scoped), and "build a circuit breaker" framed as if nothing existed (lopi already
+had three overlapping-but-incomplete mechanisms; the gap was specifically a pre-call
+token gate with a daily scope, not the whole concept).
+
 ## Task-to-Diff-Loop-1: `lib/gen_runner.py` + `evals/gen_cassettes.py` + `konjo-eval genrun` exist -- the missing measurement instrument KT-13.1 named, built and run for real
 
 **One-way door: the harness Phase 2's six candidate invariants (and every future

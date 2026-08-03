@@ -1,0 +1,27 @@
+# konjo-ast-diff-rs
+#
+# `syn`-based AST delta detector for the review-pipeline plan's Phase 0 backfill (Sprint
+# P0, section 3). The plan is explicit that trigger_surface_hits and weakening_markers
+# "need real detectors, not regex guesses... use syn for the AST delta and for locating
+# unsafe, .unwrap(), and attribute additions." kiban itself is Python; this is a small,
+# separate binary crate (not a repurposing of the phase-1 `konjo-gates-rs` CI-plane gate
+# runner stub, which is reserved for a different future purpose) invoked as a subprocess
+# from `lib/ast_diff.py` per touched .rs file, per merge commit.
+
+[package]
+name = "konjo-ast-diff-rs"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "syn-based before/after AST delta for one Rust source file (Phase 0 backfill)"
+
+[[bin]]
+name = "konjo-ast-diff"
+path = "src/main.rs"
+
+[dependencies]
+syn = { version = "2", features = ["full", "visit"] }
+proc-macro2 = "1"
+quote = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

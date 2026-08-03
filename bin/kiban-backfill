@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""kiban-backfill: populate git-derivable PR-telemetry fields for every merge commit in a
+window (Sprint P0 section 3).
+
+  kiban-backfill run --repo /path/to/lopi --repo-name lopi --since 2026-05-05
+
+Live-capture-only fields stay null (see `ledger/pr_telemetry.py`). Requires
+`packages/konjo-ast-diff-rs` built in release or debug mode
+(`cargo build --release -p konjo-ast-diff-rs` from that directory).
+"""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from lib import backfill  # noqa: E402
+from ledger.pr_telemetry import PrTelemetry, PrTelemetryRecord  # noqa: E402
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    repo = pathlib.Path(args.repo).resolve()
+    ast_diff_bin = backfill._find_ast_diff_bin(_KIBAN_ROOT)
+    if ast_diff_bin is None:
+        print(
+            "kiban-backfill: konjo-ast-diff binary not found -- build it first:\n"
+            "  cd packages/konjo-ast-diff-rs && cargo build --release",
+            file=sys.stderr,
+        )
+        return 2
+
+    commits = backfill.list_merge_commits(repo, args.since)
+    print(f"kiban-backfill: {len(commits)} merge commits since {args.since} in {repo}")
+
+    pt = PrTelemetry()
+    written = skipped = 0
+    for i, c in enumerate(commits, 1):
+        sha, parent, merged_at = c["sha"], c["parent"], c["merged_at"]
+        if not args.force and pt.for_sha(sha, repo=args.repo_name):
+            skipped += 1
+            continue
+
+        files, added, removed, _per_file = backfill.numstat(repo, sha)
+        path_classes = sorted({backfill.classify_path(f) for f in files})
+        crates = backfill.crates_touched(files)
+        rust_files = [f for f in files if f.endswith(".rs")]
+        workflow_files = [f for f in files if f.startswith(".github/workflows/")]
+
+        agg = backfill.ast_delta_for_commit(repo, sha, parent, rust_files, ast_diff_bin)
+        if backfill.continue_on_error_added(repo, sha, workflow_files):
+            agg.weakening_markers.append("continue-on-error:1")
+
+        new_deps = backfill.new_dependencies_for_commit(repo, sha, files)
+
+        rec = PrTelemetryRecord(
+            repo=args.repo_name,
+            source="backfill",
+            recorded_by="kiban-backfill",
+            sha=sha,
+            merged_at=merged_at,
+            files_touched=files,
+            path_classes=path_classes,
+            lines_added=added,
+            lines_removed=removed,
+            crates_touched=crates,
+            ast_delta={
+                "identical": agg.identical,
+                "bodies_changed": agg.bodies_changed,
+                "signatures_changed": agg.signatures_changed,
+            },
+            trigger_surface_hits=agg.trigger_surface_hits,
+            weakening_markers=agg.weakening_markers,
+            new_dependencies=new_deps,
+        )
+        pt.append(rec)
+        written += 1
+        if agg.files_unparseable:
+            print(f"  [{i}/{len(commits)}] {sha[:12]}: unparseable: {agg.files_unparseable}",
+                  file=sys.stderr)
+        if i % 25 == 0 or i == len(commits):
+            print(f"  ... {i}/{len(commits)} processed")
+
+    print(f"kiban-backfill: wrote {written}, skipped {skipped} (already recorded)")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="kiban-backfill")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    r = sub.add_parser("run", help="backfill git-derivable telemetry for merge commits in a window")
+    r.add_argument("--repo", required=True, help="path to target repo")
+    r.add_argument("--repo-name", required=True, help="repo name to tag records with")
+    r.add_argument("--since", required=True, help="git --since date, e.g. 2026-05-05")
+    r.add_argument("--force", action="store_true", help="re-record even if a record for this sha exists")
+    r.set_defaults(func=cmd_run)
+
+    args = parser.parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
