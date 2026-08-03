@@ -4,6 +4,37 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-08-03
+
+Sprint P2, `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, pre-flight
+(PF-0 through PF-3/KT-2A/KT-2B) against lopi. **PF-3/KT-2B passed 10/10 vs 2/10** --
+the pre-registered stop rule ("mutation-guided regeneration must beat plain 'write
+more tests' by >= 3 kills out of 10") cleared by a margin of 8; the build phase
+(sections 1-4: uncovered-item extraction, surviving-mutant feedback formatter, the
+loop+gate, the `konjo/mutation-hunt` skill) is the next session's work -- see
+`NEXT_SESSION_PROMPT.md`. Full pre-flight detail, including the failed-then-retried
+PF-0 baseline attempt and its root cause, is in `LEDGER.md`'s
+`Review-Pipeline-Phase-2-PF` entry.
+
+### Fixed
+
+- **`lib/bench.py`'s `_tests_rust`**: the nextest-missing fallback checked
+  `code == 127` (the shell's "not found" convention). Cargo 1.88.0 exits 101 for an
+  unrecognized subcommand instead, so the fallback to `cargo test --workspace` never
+  fired -- a missing `cargo-nextest` install was recorded as a genuine test failure.
+  Now detects "no such command" in the output text.
+- **`lib/bench.py`'s `_mutation_rust`**: the per-crate breakdown crashed
+  (`'str' object has no attribute 'get'`) on `outcomes.json`'s Baseline entry, whose
+  `scenario` field is the bare string `"Baseline"`, not `{"Mutant": {...}}` like every
+  real mutant entry -- masked as "per-crate mutation breakdown unavailable" on every
+  real run. Now skips non-dict scenarios.
+- **`lib/bench.py`'s `_mutation_rust`**: `--jobs` was hardcoded to 2, leaving half a
+  4-core box idle on a run its own docstring calls "plausibly hours". Now
+  `os.cpu_count()` (falls back to 2 only if the count can't be read).
+
+Both bugs confirmed against a real run's `outcomes.json`, not synthesized; both
+covered by new regression tests (`tests/test_bench_rust.py`).
+
 ## [1.11.0] - 2026-08-03
 
 Sprint P1, Phase 1 of the review-pipeline plan, kiban's half: the plan-artifact schema

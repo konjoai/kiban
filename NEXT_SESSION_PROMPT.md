@@ -1,73 +1,99 @@
-# Next session: Phase 2 of the review-pipeline plan (test loop, in kiban)
+# Next session: Phase 2 build (sections 1-4), review-pipeline plan
 
-Sprint P1 (`CHANGELOG.md` [1.11.0], full reasoning in `LEDGER.md`'s
-`Review-Pipeline-Phase-1`, primary detail in lopi's own `LEDGER.md` entry of the same
-name) shipped the Planner/Executor split in lopi and the plan-artifact schema plus
-telemetry wiring here. Nothing below is a critic, a gate, or a router; those stay out
-of scope until Phase 3.
+Sprint P2's pre-flight (`CHANGELOG.md` [1.12.0], full reasoning in `LEDGER.md`'s
+`Review-Pipeline-Phase-2-PF`) ran all four pre-flight items -- PF-0 through
+PF-3/KT-2A/KT-2B -- against real code, real compiles, real test runs. **PF-3/KT-2B
+passed 10/10 vs 2/10**, clearing the pre-registered stop rule ("B beats A by >= 3
+kills") by a margin of 8. Nothing in sections 1-4 (uncovered-item extraction, the
+surviving-mutant feedback formatter, the loop+gate, the `konjo/mutation-hunt` skill)
+was built this session -- read `LEDGER.md`'s `Review-Pipeline-Phase-2-PF` entry first,
+it is not summarized twice here.
 
-## What P1 actually shipped, corrected against measurement
+## What's already established, do not re-derive
 
-1. **`ToolProfile` is centrally enforced, live-confirmed twice.** lopi's PF-1
-   entry-point audit found 12 Task-construction paths, 6 live in the deployed binary,
-   all 6 funneling through one `ClaudeCode` construction site
-   (`crates/lopi-agent/src/runner/run_loop.rs`). `permission_mode` was already
-   centralized there; `ToolProfile::Readonly` (forces `DontAsk` plus a fixed read-only
-   allow-list) extends that same choke point, not a new one. Confirmed live: a raw
-   `claude -p` spawn and a spawn through lopi's own `ClaudeCode` wrapper, both under
-   this profile, both had the `Write` tool call denied and terminated cleanly.
-2. **`RepoProfile` (directory scope) is a separate, still-inconsistent mechanism, not
-   fixed this sprint.** MCP `lopi_submit_task` and the web `POST /api/tasks` handler
-   both skip it and both default `task.source` to `Cli`. `allowed_dirs`/
-   `forbidden_dirs` were never a hard boundary anywhere regardless (advisory prompt
-   text plus a post-hoc, detect-not-block diff-scope check), so closing the
-   `RepoProfile` gap alone would not make directory scope enforced. Recorded as a real
-   gap, not silently assumed fixed.
-3. **`allow_self_modify` is enforced at exactly 2 of ~12 entry points** (`lopi run`,
-   `lopi bypass`), `pub(crate)` to lopi's `src/` binary so no library crate can call it
-   even if it tried. A future decision needed: library-crate-visible check, or stay a
-   documented binary-only convention.
-4. **The plan artifact has a real schema, structurally validated on both sides.**
-   `schemas/plan_artifact.schema.json` here; `lopi_core::PlanArtifact` there, a
-   `#[serde(try_from = ...)]`-validated type that cannot be constructed with an empty
-   `scope` by any path. TOON round-trip confirmed to preserve every field.
-   `PrTelemetryRecord` gained `predicted_tier`/`planner_scope`/`planner_model`/
-   `planner_commit`, verified with one real end-to-end record from a live Planner run.
-5. **The Planner/Executor handoff is live-confirmed end to end but not wired into the
-   default loop.** `lopi_agent::planner_executor` is new, additive, independently
-   tested (including a real live run: a readonly Planner produced a valid plan, the
-   raw goal never reached the Executor's prompt, the Executor correctly implemented
-   exactly the plan's scope). It does not replace `AgentRunner::run()`'s existing
-   plan/implement/test/score/retry loop; that integration is unscoped, deliberately
-   left for a future sprint given how much machinery that loop already carries
-   (progress gates, stability harness, verifier, adaptive retry, successor tasks).
+1. **cargo-mutants' own `mutants.json`/`outcomes.json` already carries everything
+   section 2's formatter needs**: file, line+column span (mutated expression *and*
+   enclosing item), qualified function name, replacement text, and a ready unified
+   diff. Confirmed empirically (PF-2/KT-2A) against a real scoped run. **No new AST
+   resolver is needed for this** -- `konjo-ast-diff-rs` is a different tool (before/after
+   two-version diff by name, no span tracking at all currently) and was confirmed not
+   to be the right building block here. Don't reach for it for section 2; it may still
+   be the right tool for section 1's uncovered-line-to-item mapping (lcov gives line
+   numbers, not spans, so *something* has to walk `syn` AST for that) -- but that's a
+   `--line <N>` lookup mode `konjo-ast-diff-rs` does not have today, not a reuse of its
+   existing before/after diff mode.
+2. **The existing mutation gate that can actually reject is lopi's own
+   `.github/workflows/konjo-gate.yml` G3 job** (`grep`s cargo-mutants' one-line summary,
+   hard `exit(1)` over 10% survival, no `continue-on-error`). `konjo_gates_py.cli`'s
+   generic dispatcher is deliberately disabled for lopi (`mutation: "none -- ..."` in
+   `.konjo/profile.yml`) because its text-diff net-new mechanism false-positives on
+   every run against cargo-mutants' timing-carrying output. Section 3's "the gate must
+   be able to reject" instruction is about **building a new gate for the loop's own
+   round output**, not fixing the existing G3/dispatcher split -- that split is a known,
+   working (if awkwardly duplicated) arrangement, not a bug to route around here.
+3. **`lib/bench.py` had three real, now-fixed bugs** (two found and fixed this
+   session, one pre-existing from Phase 0): nextest-missing fallback exit-code check,
+   the Baseline-entry crash in the per-crate breakdown, and the `--jobs 2` hardcode.
+   `bench_results/lopi/` will have a real completed artifact once the retried PF-0
+   baseline (launched 22:04:23Z, 8h cap) finishes -- check there first before
+   re-running anything. If it's still running or the log shows it finished, see the
+   next section.
 
-## Before starting Phase 2, read
+## PF-0 baseline: check status first
 
-`lopi/LEDGER.md`'s `Review-Pipeline-Phase-1` entry in full (the PF-1 table is the
-complete per-entry-point audit) and `lopi/crates/lopi-agent/src/planner_executor.rs`'s
-module doc comment (states exactly why it is additive, not wired in, this sprint).
+The retried run may have finished, still be running, or have hit the 8h cap by the
+time this is read. Check:
+```
+cat bench_results/lopi/*.json 2>/dev/null | tail -30   # a completed artifact, if one landed
+ps aux | grep kiban-bench                              # still running?
+```
+If still running and you need the box for other work, **do not run another heavy
+`cargo` job against lopi's own workspace concurrently** -- that is exactly what caused
+the first PF-0 attempt to fail (a nested-cargo-spawn test in `lopi-spec` starved under
+self-contention and blew its 120s timeout; see `LEDGER.md` for the full diagnosis).
+Small, scoped fixture runs (e.g. section 3's `evals/fixtures/rust/` end-to-end verify)
+are lower risk since they don't touch lopi's own `cargo test --workspace`, but still
+avoid running two heavy cargo/rustc jobs on this 4-core box at once.
 
-## Phase 2 itself: test loop in kiban
+Once it completes, record the real number in `LEDGER.md` (KT-D's input) -- do not
+report a still-running or capped-out partial as the baseline.
 
-Per the plan (section 4, Phase 2): Executor writes tests, each repo's own coverage
-tool measures the gap (`cargo llvm-cov nextest` for lopi, `pytest --cov` for squish,
-never a third tool that would disagree with the gate already enforcing it), uncovered
-lines map to enclosing items via a `syn` walk, feed back only uncovered item bodies,
-and on a coverage plateau run `cargo mutants --in-diff` and feed surviving mutants
-back with the specific mutation shown. Gate: zero surviving mutants on changed lines,
-or an explicit kledger waiver with a reason. New skill: `konjo/mutation-hunt`.
+## Phase 2 build: sections 1-4
 
-**Before Phase 2's exit gate means anything**, the full-workspace mutation baseline
-still needs to complete (Sprint P0's 35-minute capped run reached 109 of an estimated
-1,500 to 2,000 mutants; this is an order-of-magnitude sample, not a control, per P0's
-own `NEXT_SESSION_PROMPT.md`). Run `cargo mutants --workspace --jobs 4` (or higher)
-to completion, detached, likely overnight or via a dedicated long-running job, not
-inside a single interactive session, before KT-D can conclude anything.
+Full detail in `KONJO_REVIEW_PIPELINE_PLAN.md`'s Sprint P2 companion doc §1-§4. In
+order, since each depends on the last:
 
-## Do not build yet (still Phase 3+ per the plan)
+1. **§1 Uncovered-item extraction.** Parse lcov (lopi) / coverage.py (squish), map
+   uncovered lines to enclosing items, rank by uncovered-line count. This needs a
+   file+line -> enclosing-item lookup that doesn't exist yet -- likely a new mode on
+   `konjo-ast-diff-rs` (add span tracking to `ItemSig`, since it currently has none;
+   `syn`'s spans are available via `proc-macro2`'s span-locations feature). Verify
+   against lopi at HEAD (coverage run needs `cargo-llvm-cov` installed -- not present
+   in this session's environment, install it first), hand-check 3 items against the
+   lcov report directly.
+2. **§2 Surviving-mutant feedback formatter.** One structured record per surviving
+   mutant: enclosing item source, exact mutation, file:line, tests that exercise the
+   item and still passed. That last field has no existing per-test coverage
+   attribution in either repo (lcov/coverage.py give hit counts, not per-test
+   attribution) -- a first cut will likely need to approximate this (e.g. grep test
+   bodies for call-sites referencing the mutated item's qualified name) and should say
+   so explicitly rather than overclaim precision. Verify against 10 real surviving
+   mutants (the PF-3 sample, or a fresh scoped run) -- confirm every record resolves to
+   a real item and mutation.
+3. **§3 The loop and the gate.** Round cap and per-round token ceiling are both
+   required (L25 precedent) -- this is explicitly called out as the most plausible
+   runaway-cost surface in the whole plan; do not skip either. The gate must reject on
+   real conditions, not just format nicely. Verify with one real end-to-end run on a
+   deliberately under-tested fixture in `evals/fixtures/rust/` (this is a kiban-owned
+   fixture directory, not a lopi one -- low contention risk). Report rounds taken,
+   mutants killed per round, tokens spent per round.
+4. **§4 `konjo/mutation-hunt` skill.** Package §2+§3 as a reusable skill, squish/vectro
+   consume via pin bump. Per Sprint S13's own rule: wire a real call site, a skill file
+   nobody invokes is not a shipped feature.
 
-The router, `routing.toml`, any critic, any new/blocking gate, Kani harnesses, or any
-change to a coverage threshold anywhere. Wiring `planner_executor` into lopi's default
-retry loop is Phase 1 follow-up work, not Phase 2 scope either; a future session should
-scope it deliberately rather than bundling it into the test-loop sprint.
+## Non-goals, still
+
+Same as PF's own non-goals list: no critic, router, or `routing.toml`; no
+`planner_executor` wiring into `AgentRunner::run()`; no `RepoProfile`/
+`allow_self_modify`/cost-breaker fixes; no `auth`/`path_construction` trigger
+detection; no Kani; no coverage-floor changes.
