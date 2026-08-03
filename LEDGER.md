@@ -8,36 +8,149 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
-## Review-Pipeline-Phase-2-PF0: full-workspace mutation baseline launched (in progress)
+## Review-Pipeline-Phase-2-PF: pre-flight complete, PF-3/KT-2B passed, PF-0 baseline in progress
 
 **Sprint P2 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, mutation-guided
-test loop). PF-0 requires the full baseline started before anything else in this
-sprint, running concurrently with the rest of the pre-flight and build work, not
-after — recording the launch here immediately so a session that ends before it
-finishes still leaves the job accounted for.**
+test loop). All four pre-flight items (PF-0 through PF-3/KT-2A/KT-2B) executed this
+session with real, verified runs -- no step simulated or estimated where a real run
+was feasible.**
 
-**Launched:** `python3 bin/kiban-bench run --repo /home/user/lopi --mutation-timeout
-28800` (8h cap), detached (`nohup ... &`, PID 13062), at **2026-08-03T21:32:29Z**.
-Estimated completion: by **2026-08-04T05:32:29Z** if it runs the full cap, sooner if
-`cargo mutants --workspace` finishes first. Log: `pf0-baseline.log` (session
-scratchpad, not checked in). Output lands at `bench_results/lopi/<date>-<sha>.json`
-plus `bench/lopi-bench.jsonl`, matching the existing convention `bench_results/squish/
-2026-08-03-a2469def1fc6.json` already established.
+### PF-0: full-workspace mutation baseline
 
-**Prior sample (Phase 0, `Review-Pipeline-Phase-0-1` below): 109 mutants in 35 min at
-`--jobs 2`, capped, ~5-7% of the ~1,500-2,000 estimate.** This environment has 4 cores.
-`lib/bench.py`'s `_mutation_rust` hardcoded `--jobs 2`, leaving half the box idle for a
-run its own docstring calls "plausibly hours" — changed to `os.cpu_count()` (falls
-back to 2 only if the count can't be read), matching PF-0's explicit instruction
-("`cargo mutants --workspace --jobs <cores>`"). At roughly double the prior sample's
-throughput, a full 1,500-2,000-mutant run is estimated at 5-6 hours wall time, inside
-the 8h cap with headroom — not a guarantee, since mutant cost is not uniform across
-the workspace, which is exactly why PF-0 asked for a real run instead of an estimate.
+**First attempt failed for a real, diagnosed reason, not tooling flakiness.** Launched
+`python3 bin/kiban-bench run --repo /home/user/lopi --mutation-timeout 28800` (8h cap)
+at 21:32:29Z. It exited in ~15 min with `mutation_caught=0 mutation_missed=0` --
+**not** a completed-with-zero-survivors result. cargo-mutants' own debug log
+(`mutants.out/debug.log`) shows why: its baseline `cargo test` (run once, before any
+mutant) failed with exit 101 after 219s, and cargo-mutants correctly refused to test
+any mutants against a red baseline ("cargo test failed in an unmutated tree, so no
+mutants were tested"). The actual failure: `lopi-spec::test_runner::tests::
+run_tests_spawns_real_cargo_test` timed out -- a test that itself spawns a nested
+`cargo test` against a scratch fixture crate, hardcoded to a 120s timeout. This
+session had multiple heavy cargo/rustc jobs running concurrently at that moment (the
+PF-2/PF-3 probes below, sharing this same 4-core box with the baseline's own `cargo
+test --workspace`, which spawns its own multi-threaded test run) -- confirmed by
+re-running the exact same test alone on an otherwise-idle box: **0.53s**, nowhere near
+its 120s budget. Not a lopi code defect, not a mutation-tooling defect -- a real
+resource-contention hazard from running this sprint's own parallel verification work
+on the same box as the baseline it was supposed to protect. Recorded as a finding, not
+smoothed over: a fixed 120s timeout on a nested-cargo-spawn test is latent risk on any
+CPU-constrained CI runner, independent of this sprint, but fixing it is lopi test code
+and out of this sprint's declared scope ("Repo: kiban (primary). No lopi changes").
 
-**This is a launch record, not a result.** KT-D (full-workspace baseline completion)
-and PF-3/KT-2B (the two-arm kill-test) are recorded separately once the run concludes
-or the session ends, whichever comes first — see the entry immediately following this
-one once posted, or `NEXT_SESSION_PROMPT.md` if the run outlives the session.
+**Retried clean**, `.cargo-mutants-bench` wiped first, no competing jobs this run,
+launched 22:04:23Z, same 8h cap. Live status as of this entry: see
+`NEXT_SESSION_PROMPT.md` if this session ends before it concludes -- do not treat any
+number recorded before completion as the baseline, per the plan's own instruction.
+
+**Two more real bugs found and fixed in `lib/bench.py` while diagnosing the above**
+(same finding class as `Review-Pipeline-Phase-0-1`'s "kiban bench found two real bugs
+in itself" below -- a third and fourth):
+1. `_tests_rust`'s nextest-missing fallback checked `code == 127` (the shell's "not
+   found" convention). Cargo 1.88.0 exits **101** for an unrecognized subcommand, not
+   127 (confirmed live, same signature on both a missing `nextest` and a missing
+   `llvm-cov`) -- the fallback to `cargo test --workspace` never fired, and a missing
+   tool was recorded as a genuine test failure. Now detects "no such command" in the
+   output text instead of trusting a specific exit code.
+2. `_mutation_rust`'s per-crate breakdown crashed (`'str' object has no attribute
+   'get'`) on `outcomes.json`'s Baseline entry, whose `scenario` field is the bare
+   string `"Baseline"`, not `{"Mutant": {...}}` like every real mutant entry -- masked
+   as "per-crate mutation breakdown unavailable" on every real run. Now skips
+   non-dict scenarios.
+   Both confirmed against this session's own real `outcomes.json`, not synthesized;
+   both covered by new regression tests (`tests/test_bench_rust.py`, 3 tests, run
+   against the full 287-test suite green).
+
+### PF-1: existing mutation feedback surface (`konjo_gates_py.cli`, `lib/bench.py`)
+
+**Two independent mutation mechanisms exist, and only one of them can reject.**
+`konjo_gates_py.cli`'s generic `gate_repo_native("cargo-mutants", ...)` dispatcher
+(`packages/konjo-gates-py/src/konjo_gates_py/cli.py:832-871`) captures only raw
+stdout+stderr **text** via `newonly.net_new` (`lib/newonly.py`) -- it never passes
+`--json`, never reads `mutants.out/`, and diffs normalized text lines HEAD-vs-base to
+decide net-new. It is **deliberately disabled for lopi**: lopi's own `.konjo/
+profile.yml:104` sets `mutation: "none -- kept repo-native (G3's survival-rate gate);
+newonly's line-diff can't scope cargo-mutants' timing-carrying log output"` -- that
+line-diff mechanism produced a false net-new finding on every run regardless of
+content (confirmed live on PR #184 per the comment at `lopi/.github/workflows/
+konjo-gate.yml:720-726`), so it was turned off rather than shipped broken.
+
+The **real, blocking** mutation gate is lopi's own `.github/workflows/konjo-gate.yml`
+G3 job (lines 370-445): `cargo mutants --in-diff <(git diff) --timeout 60 --jobs 2`,
+piped to a log file, then a bash+python step `grep`s the single aggregate summary line
+("N mutants tested in Xm: A missed, B caught") and hard-fails via `exit(1)` when
+`missed/(missed+caught) > 10`. This step has no `continue-on-error` -- a real block,
+not advisory, confirmed by reading the step definition (no such key present, unlike 10
+other steps in the same file that do carry it). It is also text-only: no per-mutant
+identity is retained past that one grep, and `mutation_report.txt` is uploaded as a
+raw CI artifact, not parsed further.
+
+`lib/bench.py`'s `_mutation_rust` is the **one existing path that already reads
+structured JSON** (`mutants.out/outcomes.json`), but pre-fix only extracted `file` and
+a coarse `caught`/`missed`/`unviable` bucket per crate -- discarding line, function
+name, and replacement text entirely, and crashing on the Baseline entry (fixed above).
+
+### PF-2 / KT-2A: does the mutation report resolve to an enclosing item?
+
+**Pass, and better than expected -- no new resolver needed.** Ran a real scoped
+`cargo mutants --package lopi-github --jobs 4` (5 real candidates, a live probe, not a
+dry read) and inspected the actual `mutants.json`/`outcomes.json` cargo-mutants 27.1.0
+produces. Every mutant record already carries all five fields PF-2 asked for, natively:
+`file`, a `span` (line **and** column, start and end) for both the mutated expression
+and its enclosing item, `function.function_name` (already dotted through impl blocks,
+e.g. `GitHubClient::new_with_base_url` -- the same qualified-name convention `konjo-
+ast-diff-rs` uses independently), `replacement`, and a ready unified `diff` string the
+original expression is trivially recoverable from (the diff's removed lines, or the
+source at `span` pre-mutation).
+
+**`konjo-ast-diff-rs` is not needed for this and could not have supplied the fifth
+field as currently written even if it were used**: its `ItemSig` struct (`packages/
+konjo-ast-diff-rs/src/main.rs:75-79`) carries `qualified_name`/`signature_tokens`/
+`body_tokens` but **no span at all** -- it is a before/after two-version diff tool
+keyed by name, not a by-line lookup, so a mutation's file:line could not be resolved
+through it even in principle without adding span tracking first. Moot here:
+cargo-mutants' own output already resolves everything needed, confirmed empirically,
+not assumed.
+
+### PF-3 / KT-2B: does mutation-guided regeneration beat plain "write more tests"?
+
+**Pass, by a wide margin -- 10/10 vs 2/10, real code, real compile, real test runs.**
+
+Sample: since the Phase-0 109-mutant partial baseline's per-mutant data was never
+persisted (`bench_results/lopi/` was empty before this session), a fresh real sample
+was needed. Scoped `cargo mutants --package lopi-webhook --package lopi-ratelimit
+--jobs 1` surfaced 20 real survivors concentrated in `lopi-ratelimit`'s token-bucket
+arithmetic (`TokenBucket::acquire`/`try_acquire`, `BucketState::refill`) -- the
+existing test suite there is entirely boolean-shaped (`assert!`/`assert_eq!` on
+granted/denied), never asserting exact post-operation token counts. 10 of the 20 were
+selected, spanning all three functions and both `FnValue` (whole-body-deleted) and
+`BinaryOperator` (single-operator-swap) mutation genres.
+
+Protocol (pre-registered to `pf3-protocol.md` before any test was written): two
+independent subagents, zero shared context. **Arm A** got only the three functions'
+source (no mutation info) and was asked to write thorough tests. **Arm B** got the
+same source plus the exact 10 mutations (file:line, original -> replacement, diff) and
+was asked to write one assertion per mutant that kills it. Verification was
+mechanical, not self-reported: each test had to first **pass against the real,
+unmutated crate** (voided otherwise) before being run against the mutated source via
+`patch -p0` of cargo-mutants' own diff output; FAIL-under-mutation = killed.
+
+**Arm B: 10/10 tests passed against real code on the first try; 10/10 killed their
+target mutant.** **Arm A: 1 of 3 tests (`test_refill_arm_a`) passed against real code
+on the first try; the other 2 failed even after one blind corrective round** (fed the
+raw panic output, no mutation hint) -- both tripped on the same real, pre-existing
+gotcha the crate's *own* existing test suite explicitly comments on:
+`BucketState::refill()` reads `std::time::Instant::now()` (real wall-clock), not
+tokio's virtual clock, so `#[tokio::test(start_paused = true)]` doesn't freeze it, and
+exact-equality assertions on token counts fail on real scheduling jitter. Those two
+tests are **void**, not counted as kills either way. Net: **Arm A killed 2/10 (both
+via the one valid test, which happened to cover the 2 `refill` mutants); Arm B killed
+10/10.**
+
+Pre-registered stop rule was "B beats A by >= 3 kills" -- actual margin is 8. The
+loop's central premise holds on this sample. Proceeding to sections 1-4.
+
+**Citation discipline (Sec 7.5):** no external repo read this session; N/A.
 
 ## Review-Pipeline-Phase-1: plan-artifact schema plus the telemetry fields it feeds (kiban's half)
 
