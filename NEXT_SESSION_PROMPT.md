@@ -10,18 +10,20 @@ be re-derived.
 
 ## What's already done and should not be re-derived
 
-1. **PF-0: a full-workspace `cargo mutants --workspace` baseline is running against
-   lopi** (`bench_results/lopi/20260803T213525Z_full_baseline/` inside the lopi repo,
-   gitignored by design -- the committed record is lopi's `LEDGER.md` entry). 5,315
-   mutants found, ~3.8% tested as of this sprint's end. **Whoever picks this up must
-   check whether it's still running first** (`ps aux | grep cargo-mutants` in a lopi
-   checkout) -- if the container that ran it was reclaimed, it's dead and needs
-   relaunching (`cargo mutants --workspace --jobs <cores> -o bench_results/lopi/
-   <timestamp>_full_baseline` -- no `--timeout` override, let it auto-scale from its
-   own measured baseline test time; a fixed `--timeout 60` killed the first attempt
-   outright because lopi's own baseline test pass takes longer than that). Given the
-   ~20-hour extrapolated completion time, this needs a runner that can actually stay
-   up for it (dedicated CI, persistent infrastructure), not another ephemeral
+1. **PF-0: a full-workspace `cargo mutants --workspace` baseline against lopi has not
+   completed and is currently stopped, not running** -- see lopi's `LEDGER.md`,
+   `Review-Pipeline-Phase-2` entry for the full record of three launch attempts.
+   5,315 mutants found; best progress reached was 10.2% (544 mutants) before dying.
+   **Do not relaunch this inside another interactive Claude Code session and expect
+   it to finish.** Two independent launches each died within roughly an hour of
+   starting, both times near a gap between the session's own turns rather than at a
+   random point mid-run, with no panic/OOM/kill signal in either case -- the
+   diagnosis in lopi's `LEDGER.md` is that this class of session environment
+   suspends (preserving disk, killing live processes) when idle between turns, which
+   no amount of relaunching from inside it can fix. Confirm that diagnosis or refute
+   it before trying a fourth time the same way; either way, the real fix is a runner
+   that stays up unattended for the full ~20-hour extrapolated completion time
+   (dedicated CI, persistent infrastructure), not another ephemeral
    interactive session left to run in the background and hope.
 2. **PF-1 confirmed lopi's mutation gate (`konjo-gate.yml` G3) already rejects on
    breach** -- no fix owed to section 3's "the gate must be able to reject"
