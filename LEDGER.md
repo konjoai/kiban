@@ -8,6 +8,57 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Review-Pipeline-Phase-2-Addendum: bench.py bug fixes, a third PF-0 data point, a stronger PF-3 replication
+
+**Same sprint as `Review-Pipeline-Phase-2` below (a parallel session ran concurrently
+against the same lopi checkout state; this entry adds what that one didn't cover
+rather than re-deriving it -- read that entry first**).
+
+**Three real, now-fixed bugs in `lib/bench.py`, none touched by the parallel
+session's work below.** Confirmed against this session's own real `outcomes.json` and
+CI runs, not synthesized; all three covered by new regression tests
+(`tests/test_bench_rust.py`, 3 tests, full 287-test suite green):
+1. `_tests_rust`'s nextest-missing fallback checked `code == 127` (the shell's "not
+   found" convention). Cargo 1.88.0 exits **101** for an unrecognized subcommand
+   instead -- the fallback to `cargo test --workspace` never fired, and a missing
+   `cargo-nextest` install was recorded as a genuine test failure. Now detects "no
+   such command" in the output text.
+2. `_mutation_rust`'s per-crate breakdown crashed (`'str' object has no attribute
+   'get'`) on `outcomes.json`'s Baseline entry, whose `scenario` field is the bare
+   string `"Baseline"`, not `{"Mutant": {...}}` like every real mutant entry. Now
+   skips non-dict scenarios.
+3. `_mutation_rust`'s `--jobs` was hardcoded to 2, leaving half a 4-core box idle on a
+   run its own docstring calls "plausibly hours". Now `os.cpu_count()`.
+
+**A third independent PF-0 attempt reached 926/5,315 mutants (17.4%) before dying
+without writing a completion artifact -- further corroboration of the session-
+lifecycle diagnosis below, not a contradiction of it.** Launched clean (no competing
+jobs) at 22:04:23Z; last confirmed alive and progressing normally at 22:20Z (136
+tested); found dead with no process, no `bench_results/lopi/` artifact, and no
+completion line in its own log roughly 19 hours later. This is a *better* partial
+result than either of the two attempts recorded below (544 mutants / 10.2%), which
+strengthens rather than weakens the "background baseline runs do not reliably survive
+this session's lifecycle" conclusion -- three independent launches, three different
+stopping points, zero clean completions. Reinforces the handoff's own recommendation:
+a runner that stays up unattended (dedicated CI, persistent infrastructure), not
+another interactive-session background job.
+
+**A second, independently-designed PF-3/KT-2B pilot replicated the result more
+decisively: 10/10 vs 2/10** (versus 9/10 vs 7/10 below), a different sample (`lopi-
+webhook`+`lopi-ratelimit` scoped run, 10 real survivors) and a different agent
+topology (2 fresh-context agents, one per arm, each handling all 10 mutants, versus
+15 agents below, one per mutant-arm pair). Verification was mechanical: each
+candidate test had to pass against the real, unmutated crate first (voided
+otherwise) before being run against the mutated source via `patch -p0` of
+cargo-mutants' own diff output; FAIL-under-mutation = killed. Two of arm A's three
+tests never reliably passed against real code even after one blind corrective round
+(fed the raw panic output, no mutation hint) -- both tripped on the same real,
+pre-existing gotcha this session's sample and the one below both independently
+surfaced: `BucketState::refill()`/equivalent reads real `std::time::Instant`, not
+tokio's virtual clock, so `#[tokio::test(start_paused = true)]` doesn't freeze it.
+Two independent samples, two different agent counts, the same qualitative result and
+the same specific failure mode in arm A's tests -- this is not one lucky run.
+
 ## Review-Pipeline-Phase-2: mutation-guided test loop -- PF-3 passed, §2 shipped, §1/§3/§4 deferred on PF-0
 
 **Sprint P2 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2, the surviving-mutant -> assertion

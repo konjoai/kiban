@@ -13,7 +13,7 @@ be re-derived.
 1. **PF-0: a full-workspace `cargo mutants --workspace` baseline against lopi has not
    completed and is currently stopped, not running** -- see lopi's `LEDGER.md`,
    `Review-Pipeline-Phase-2` entry for the full record of three launch attempts.
-   5,315 mutants found; best progress reached was 10.2% (544 mutants) before dying.
+   5,315 mutants found; best progress reached was 17.4% (926 mutants, a third independent launch from a parallel session, clean start, no artifact written before it died the same way) -- see LEDGER.md's `Review-Pipeline-Phase-2-Addendum`.
    **Do not relaunch this inside another interactive Claude Code session and expect
    it to finish.** Two independent launches each died within roughly an hour of
    starting, both times near a gap between the session's own turns rather than at a
@@ -42,6 +42,15 @@ be re-derived.
    fixture and a real 11-mutant `lopi-ratelimit` run.** `format_feedback(repo,
    mutants_out_dir, cap=20)` is the entry point section 3's loop should call directly
    -- do not write a second surviving-mutant parser.
+6. **Three real bugs in `lib/bench.py` found and fixed** (nextest-missing fallback's
+   exit-code check, a crash on `outcomes.json`'s Baseline entry, a hardcoded
+   `--jobs 2`) -- see `LEDGER.md`'s `Review-Pipeline-Phase-2-Addendum`, covered by
+   `tests/test_bench_rust.py`.
+7. **A second PF-3/KT-2B pilot (different sample, different agent topology)
+   replicated the result more decisively: 10/10 vs 2/10.** Two of the losing arm's
+   three tests never reliably passed against real code even after one correction
+   round -- same root cause (`Instant` vs tokio's virtual clock) both pilots hit
+   independently. Two samples now agree qualitatively; this is not one lucky run.
 
 ## Section 1: uncovered-item extraction (not started)
 

@@ -4,6 +4,35 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-08-04
+
+Sprint P2 continued: three real bug fixes to `lib/bench.py` (untouched by [1.12.0]'s
+work) found while independently re-running the same sprint's pre-flight, plus a
+second, more decisive PF-3/KT-2B replication (10/10 vs 2/10, mechanically verified)
+and a third PF-0 baseline data point (926/5,315 mutants, 17.4%, before dying --
+further corroborating [1.12.0]'s session-lifecycle diagnosis). Full detail in
+`LEDGER.md`'s `Review-Pipeline-Phase-2-Addendum` entry; not re-summarized here beyond
+the `### Fixed` section below, which is genuinely new code.
+
+### Fixed
+
+- **`lib/bench.py`'s `_tests_rust`**: the nextest-missing fallback checked
+  `code == 127` (the shell's "not found" convention). Cargo 1.88.0 exits 101 for an
+  unrecognized subcommand instead, so the fallback to `cargo test --workspace` never
+  fired -- a missing `cargo-nextest` install was recorded as a genuine test failure.
+  Now detects "no such command" in the output text.
+- **`lib/bench.py`'s `_mutation_rust`**: the per-crate breakdown crashed
+  (`'str' object has no attribute 'get'`) on `outcomes.json`'s Baseline entry, whose
+  `scenario` field is the bare string `"Baseline"`, not `{"Mutant": {...}}` like every
+  real mutant entry -- masked as "per-crate mutation breakdown unavailable" on every
+  real run. Now skips non-dict scenarios.
+- **`lib/bench.py`'s `_mutation_rust`**: `--jobs` was hardcoded to 2, leaving half a
+  4-core box idle on a run its own docstring calls "plausibly hours". Now
+  `os.cpu_count()` (falls back to 2 only if the count can't be read).
+
+All three confirmed against a real run's `outcomes.json`, not synthesized; all three
+covered by new regression tests (`tests/test_bench_rust.py`).
+
 ## [1.12.0] - 2026-08-03
 
 Sprint P2, Phase 2 of the review-pipeline plan: the surviving-mutant -> assertion
