@@ -4,17 +4,15 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.12.0] - 2026-08-03
+## [1.13.0] - 2026-08-04
 
-Sprint P2, `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, pre-flight
-(PF-0 through PF-3/KT-2A/KT-2B) against lopi. **PF-3/KT-2B passed 10/10 vs 2/10** --
-the pre-registered stop rule ("mutation-guided regeneration must beat plain 'write
-more tests' by >= 3 kills out of 10") cleared by a margin of 8; the build phase
-(sections 1-4: uncovered-item extraction, surviving-mutant feedback formatter, the
-loop+gate, the `konjo/mutation-hunt` skill) is the next session's work -- see
-`NEXT_SESSION_PROMPT.md`. Full pre-flight detail, including the failed-then-retried
-PF-0 baseline attempt and its root cause, is in `LEDGER.md`'s
-`Review-Pipeline-Phase-2-PF` entry.
+Sprint P2 continued: three real bug fixes to `lib/bench.py` (untouched by [1.12.0]'s
+work) found while independently re-running the same sprint's pre-flight, plus a
+second, more decisive PF-3/KT-2B replication (10/10 vs 2/10, mechanically verified)
+and a third PF-0 baseline data point (926/5,315 mutants, 17.4%, before dying --
+further corroborating [1.12.0]'s session-lifecycle diagnosis). Full detail in
+`LEDGER.md`'s `Review-Pipeline-Phase-2-Addendum` entry; not re-summarized here beyond
+the `### Fixed` section below, which is genuinely new code.
 
 ### Fixed
 
@@ -32,8 +30,47 @@ PF-0 baseline attempt and its root cause, is in `LEDGER.md`'s
   4-core box idle on a run its own docstring calls "plausibly hours". Now
   `os.cpu_count()` (falls back to 2 only if the count can't be read).
 
-Both bugs confirmed against a real run's `outcomes.json`, not synthesized; both
+All three confirmed against a real run's `outcomes.json`, not synthesized; all three
 covered by new regression tests (`tests/test_bench_rust.py`).
+
+## [1.12.0] - 2026-08-03
+
+Sprint P2, Phase 2 of the review-pipeline plan: the surviving-mutant -> assertion
+feedback loop. Pre-flight (PF-0 through PF-3) plus section 2's feedback formatter
+ship here; sections 1, 3, and 4 are deferred to next session -- see `LEDGER.md`'s
+`Review-Pipeline-Phase-2` entry for the full reasoning (PF-0's full-workspace baseline
+is not complete, and section 3 is explicitly calibrated against it).
+
+### Added
+
+- **`lib/mutation_feedback.py`** - one structured `FeedbackRecord` per surviving
+  mutant from a `cargo mutants --output` report: file, line, qualified enclosing
+  item name, original expression, replacement, the full item source, a best-effort
+  file-scoped list of tests that still pass despite the mutation, and a one-line
+  rationale. Reuses `outcomes.json`'s existing schema (the same one `lib/bench.py`'s
+  `_mutation_rust` already parses) rather than a second parser; needs no AST tooling
+  (`konjo-ast-diff-rs`) since cargo-mutants already resolves each mutant to its
+  enclosing item's qualified name and full line span (PF-2, confirmed live). Output
+  is capped and deterministically ordered, matching the plan's L5 (structured, no
+  prose) and no-silent-caps rules.
+- **`tests/test_mutation_feedback.py`** - 8 tests against a synthetic repo + outcomes
+  fixture shaped like a real `cargo mutants` report, plus a live cross-check against
+  an 11-mutant real `lopi-ratelimit` scoped run (not committed here; see lopi's
+  `LEDGER.md` for that run's provenance).
+
+### Findings (no code)
+
+- **PF-3 (KT-2B) passed**: a 10-real-mutant pilot found mutation-specific test
+  generation (arm B) kills 9/10 surviving mutants versus 7/10 for generic
+  "write more tests" (arm A), never losing a case arm A won. Full reasoning,
+  including a secondary finding that arm A's own generated tests were less reliable
+  (not just less effective), in `LEDGER.md`.
+- **PF-1 confirmed lopi's mutation gate (`konjo-gate.yml` G3) is genuinely blocking**,
+  not advisory -- no fix owed to section 3's "the gate must be able to reject"
+  requirement.
+- **The full-workspace mutation baseline (lopi, `cargo mutants --workspace`) is
+  launched but not complete** (3.8% done at last check this session) -- KT-D remains
+  blocked on it, as it was after Sprint P0.
 
 ## [1.11.0] - 2026-08-03
 
