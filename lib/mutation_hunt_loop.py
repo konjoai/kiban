@@ -80,7 +80,7 @@ class RoundResult:
     clean_tree: CleanTreeCheck | None
     surviving_count_before: int | None
     surviving_count_after: int | None
-    surviving_total_before_cap: int | None  # section 2b: the full count, not format_feedback's capped view
+    surviving_total_before_cap: int | None  # section 2b: full count, pre-format_feedback cap
     truncated: bool  # section 2b: surviving_total_before_cap > len(feedback)
     feedback: list[dict]
     tokens_input: int | None
@@ -137,7 +137,9 @@ def _run_round_generation(
     return diff_text, changed_paths, proc.returncode == 0, usage
 
 
-def check_clean_tree(worktree: Path, *, crate: str | None = None, timeout: int = 300) -> CleanTreeCheck:
+def check_clean_tree(
+    worktree: Path, *, crate: str | None = None, timeout: int = 300
+) -> CleanTreeCheck:
     """PF-3's secondary finding, enforced: a generated test that fails on the
     *unmutated* tree is not a test, and must not count as this round's progress."""
     argv = ["cargo", "test"]
@@ -182,10 +184,15 @@ def run_cargo_mutants_in_diff(
     diff_path = out_dir.with_suffix(".diff")
     diff_path.parent.mkdir(parents=True, exist_ok=True)
     diff_path.write_text(diff_proc.stdout)
-    argv = ["cargo", "mutants", "--in-diff", str(diff_path), "--output", str(out_dir), "--jobs", "2"]
+    argv = [
+        "cargo", "mutants", "--in-diff", str(diff_path),
+        "--output", str(out_dir), "--jobs", "2",
+    ]
     if crate:
         argv += ["-p", crate]
-    proc = subprocess.run(argv, cwd=worktree, capture_output=True, text=True, timeout=_MUTANT_TIMEOUT_S)
+    proc = subprocess.run(
+        argv, cwd=worktree, capture_output=True, text=True, timeout=_MUTANT_TIMEOUT_S
+    )
     outcomes = out_dir / "mutants.out" / "outcomes.json"
     if not outcomes.exists():
         raise MutationHuntError(
@@ -214,7 +221,9 @@ def _feedback_prompt(records: list[dict]) -> str:
         "",
     ]
     for r in records:
-        still_passing = ", ".join(r["tests_still_passing"]) or "(no tests currently exercise this line)"
+        still_passing = (
+            ", ".join(r["tests_still_passing"]) or "(no tests currently exercise this line)"
+        )
         parts.append(
             f"- {r['file']}:{r['line']} in `{r['function']}`: replacing `{r['original']}` "
             f"with `{r['replacement']}` still passes: {still_passing}\n"
@@ -224,7 +233,9 @@ def _feedback_prompt(records: list[dict]) -> str:
 
 
 def _clean_tree_failure_prompt(check: CleanTreeCheck) -> str:
-    failed = "\n".join(f"- {t}" for t in check.failed_tests) or "(test names not parsed from output)"
+    failed = (
+        "\n".join(f"- {t}" for t in check.failed_tests) or "(test names not parsed from output)"
+    )
     return (
         "The tests you just added fail on the unmutated tree -- they are not "
         "measuring what they claim to. Fix them so they pass against the current, "
@@ -336,7 +347,9 @@ def run_mutation_hunt_loop(
             run_cargo_mutants_in_diff(worktree, diff_base_ref, out_dir, crate=crate)
             mutants_dir = out_dir / "mutants.out"
             all_missed = mutation_feedback.load_missed_mutants(mutants_dir)
-            feedback_records = mutation_feedback.format_feedback(worktree, mutants_dir, cap=feedback_cap)
+            feedback_records = mutation_feedback.format_feedback(
+                worktree, mutants_dir, cap=feedback_cap
+            )
             surviving_total = len(all_missed)
             truncated = surviving_total > len(feedback_records)
 
@@ -344,7 +357,8 @@ def run_mutation_hunt_loop(
                 round_num=round_num, prompt_kind=prompt_kind, changed_paths=changed_paths,
                 generation_ok=True, clean_tree=clean,
                 surviving_count_before=surviving_before, surviving_count_after=surviving_total,
-                surviving_total_before_cap=surviving_total, truncated=truncated, feedback=feedback_records,
+                surviving_total_before_cap=surviving_total, truncated=truncated,
+                feedback=feedback_records,
                 tokens_input=tokens_in, tokens_output=tokens_out,
                 tokens_cache_read=cache_read, cost_usd=cost,
             ))
@@ -365,7 +379,8 @@ def run_mutation_hunt_loop(
             )
             gate_pass = already_waived
             if not gate_pass:
-                waiver_suggestion = f"{oneway.make_trailer(oneway.MUTATION_WAIVED_TRAILER, fp)} — <reason>"
+                trailer = oneway.make_trailer(oneway.MUTATION_WAIVED_TRAILER, fp)
+                waiver_suggestion = f"{trailer} — <reason>"
 
         return LoopResult(
             rounds=rounds, terminated_reason=reason, gate_pass=gate_pass,

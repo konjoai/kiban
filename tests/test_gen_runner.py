@@ -169,7 +169,8 @@ def test_parse_usage_reads_the_terminal_result_event() -> None:
 
 
 def test_parse_usage_returns_all_none_without_a_result_line() -> None:
-    assert gen_runner._parse_usage("plain text reply, not stream-json\n") == (None, None, None, None)
+    result = gen_runner._parse_usage("plain text reply, not stream-json\n")
+    assert result == (None, None, None, None)
 
 
 def test_live_backend_capture_usage_populates_token_fields(
@@ -183,7 +184,10 @@ def test_live_backend_capture_usage_populates_token_fields(
     def fake_run(argv: list[str], *, cwd: Path, timeout: int) -> subprocess.CompletedProcess[str]:
         assert "--output-format" in argv and "stream-json" in argv
         (cwd / "added.py").write_text("x = 1\n")
-        stdout = '{"type":"result","total_cost_usd":0.05,"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":100}}\n'
+        stdout = (
+            '{"type":"result","total_cost_usd":0.05,"usage":{"input_tokens":10,'
+            '"output_tokens":20,"cache_read_input_tokens":100}}\n'
+        )
         return subprocess.CompletedProcess(argv, returncode=0, stdout=stdout, stderr="")
 
     monkeypatch.setattr(gen_runner, "_run", fake_run)

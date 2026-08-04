@@ -61,7 +61,9 @@ def _missed_mutant(file="src.rs", line=1, replacement="0"):
     }
 
 
-def test_loop_terminates_on_zero_surviving_first_round(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_loop_terminates_on_zero_surviving_first_round(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     repo = _init_repo(tmp_path)
     _one_uncovered_item(monkeypatch)
     monkeypatch.setattr(mhl, "_run_round_generation", _fake_generation_writes_a_file)
@@ -81,7 +83,9 @@ def test_loop_terminates_on_zero_surviving_first_round(tmp_path: Path, monkeypat
     assert result.waiver_trailer_suggestion is None
 
 
-def test_loop_uses_feedback_shape_from_round_two_onward(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_loop_uses_feedback_shape_from_round_two_onward(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     repo = _init_repo(tmp_path)
     _one_uncovered_item(monkeypatch)
     monkeypatch.setattr(mhl, "_run_round_generation", _fake_generation_writes_a_file)
@@ -110,7 +114,7 @@ def test_loop_uses_feedback_shape_from_round_two_onward(tmp_path: Path, monkeypa
     assert result.terminated_reason == "zero_surviving"
     assert len(result.rounds) == 2
     assert result.rounds[0].prompt_kind == "uncovered_item"
-    assert result.rounds[1].prompt_kind == "mutation_feedback"  # arm-B shape, not a fresh item prompt
+    assert result.rounds[1].prompt_kind == "mutation_feedback"  # arm-B shape, not a fresh prompt
     assert result.rounds[0].mutants_killed is None  # no prior round to diff against
     assert result.rounds[1].mutants_killed == 1
 
@@ -123,7 +127,9 @@ def test_loop_hits_round_cap_with_mutants_still_surviving_and_suggests_waiver(
     monkeypatch.setattr(mhl, "_run_round_generation", _fake_generation_writes_a_file)
     monkeypatch.setattr(mhl, "check_clean_tree", lambda *a, **k: mhl.CleanTreeCheck(ok=True))
     monkeypatch.setattr(mhl, "run_cargo_mutants_in_diff", lambda *a, **k: Path("unused"))
-    monkeypatch.setattr(mutation_feedback, "load_missed_mutants", lambda *a, **k: [_missed_mutant()])
+    monkeypatch.setattr(
+        mutation_feedback, "load_missed_mutants", lambda *a, **k: [_missed_mutant()]
+    )
     monkeypatch.setattr(mutation_feedback, "format_feedback", lambda *a, **k: [{
         "file": "src.rs", "line": 1, "function": "a", "original": "1",
         "replacement": "0", "item_source": "fn a() {}", "tests_still_passing": [],
@@ -140,7 +146,9 @@ def test_loop_hits_round_cap_with_mutants_still_surviving_and_suggests_waiver(
     assert oneway.MUTATION_WAIVED_TRAILER in result.waiver_trailer_suggestion
 
 
-def test_existing_waiver_trailer_satisfies_the_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_existing_waiver_trailer_satisfies_the_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     repo = _init_repo(tmp_path)
     _one_uncovered_item(monkeypatch)
     monkeypatch.setattr(mhl, "_run_round_generation", _fake_generation_writes_a_file)
@@ -151,7 +159,9 @@ def test_existing_waiver_trailer_satisfies_the_gate(tmp_path: Path, monkeypatch:
         "replacement": "0", "item_source": "fn a() {}", "tests_still_passing": [],
         "rationale": "x",
     }]
-    monkeypatch.setattr(mutation_feedback, "load_missed_mutants", lambda *a, **k: [_missed_mutant()])
+    monkeypatch.setattr(
+        mutation_feedback, "load_missed_mutants", lambda *a, **k: [_missed_mutant()]
+    )
     monkeypatch.setattr(mutation_feedback, "format_feedback", lambda *a, **k: feedback)
 
     fp = mhl._mutant_fingerprint(feedback)
@@ -172,7 +182,9 @@ def test_loop_stops_on_token_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyP
     def big_usage_generation(worktree, prompt, **kwargs):
         (worktree / "touched.rs").write_text("fn touched() {}\n")
         subprocess.run(["git", "add", "-A"], cwd=worktree, capture_output=True, text=True)
-        diff = subprocess.run(["git", "diff", "--cached"], cwd=worktree, capture_output=True, text=True).stdout
+        diff = subprocess.run(
+            ["git", "diff", "--cached"], cwd=worktree, capture_output=True, text=True
+        ).stdout
         return diff, ["touched.rs"], True, (500_000, 500_000, 0, 5.0)
 
     monkeypatch.setattr(mhl, "_run_round_generation", big_usage_generation)
@@ -189,7 +201,9 @@ def test_loop_stops_on_token_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_loop_reports_generation_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     repo = _init_repo(tmp_path)
     _one_uncovered_item(monkeypatch)
-    monkeypatch.setattr(mhl, "_run_round_generation", lambda *a, **k: ("", [], False, gen_runner._NO_USAGE))
+    monkeypatch.setattr(
+        mhl, "_run_round_generation", lambda *a, **k: ("", [], False, gen_runner._NO_USAGE)
+    )
 
     result = mhl.run_mutation_hunt_loop(
         repo, _head(repo), uncovered_by_file={"src.rs": {1}}, ast_diff_binary=None,
@@ -209,7 +223,9 @@ def test_clean_tree_failure_retries_within_round_cap_without_running_mutants(
 
     def flaky_clean_tree(*a, **k):
         calls["n"] += 1
-        return mhl.CleanTreeCheck(ok=(calls["n"] >= 2), failed_tests=[] if calls["n"] >= 2 else ["test x"])
+        return mhl.CleanTreeCheck(
+            ok=(calls["n"] >= 2), failed_tests=[] if calls["n"] >= 2 else ["test x"]
+        )
 
     mutants_called = {"n": 0}
 
@@ -228,17 +244,21 @@ def test_clean_tree_failure_retries_within_round_cap_without_running_mutants(
     assert result.rounds[0].clean_tree.ok is False
     assert result.rounds[0].prompt_kind == "uncovered_item"
     assert result.rounds[1].prompt_kind == "clean_tree_failure"
-    assert mutants_called["n"] == 1  # round 1's failed clean tree never reached cargo-mutants
+    assert mutants_called["n"] == 1  # round 1's failed clean tree never reached mutants
     assert result.terminated_reason == "zero_surviving"
 
 
-def test_section_2b_flags_truncation_when_feedback_is_capped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_section_2b_flags_truncation_when_feedback_is_capped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     repo = _init_repo(tmp_path)
     _one_uncovered_item(monkeypatch)
     monkeypatch.setattr(mhl, "_run_round_generation", _fake_generation_writes_a_file)
     monkeypatch.setattr(mhl, "check_clean_tree", lambda *a, **k: mhl.CleanTreeCheck(ok=True))
     monkeypatch.setattr(mhl, "run_cargo_mutants_in_diff", lambda *a, **k: Path("unused"))
-    monkeypatch.setattr(mutation_feedback, "load_missed_mutants", lambda *a, **k: [_missed_mutant()] * 25)
+    monkeypatch.setattr(
+        mutation_feedback, "load_missed_mutants", lambda *a, **k: [_missed_mutant()] * 25
+    )
     monkeypatch.setattr(mutation_feedback, "format_feedback", lambda *a, **k: [{
         "file": "src.rs", "line": 1, "function": "a", "original": "1",
         "replacement": "0", "item_source": "fn a() {}", "tests_still_passing": [],

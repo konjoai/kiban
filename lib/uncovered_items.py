@@ -139,7 +139,9 @@ def _run_ast_diff_items(binary: Path, source: str) -> list[dict]:
     except subprocess.TimeoutExpired as exc:
         raise UncoveredItemsError(f"{binary} --items timed out: {exc}") from exc
     if proc.returncode != 0:
-        raise UncoveredItemsError(f"{binary} --items failed (exit {proc.returncode}): {proc.stderr}")
+        raise UncoveredItemsError(
+            f"{binary} --items failed (exit {proc.returncode}): {proc.stderr}"
+        )
     try:
         out = json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
@@ -168,7 +170,9 @@ def map_rust_items(
     return out
 
 
-def _qualified_name(node: ast.AST, class_stack: list[str]) -> str:
+def _qualified_name(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, class_stack: list[str]
+) -> str:
     prefix = "".join(f"{c}::" for c in class_stack)
     return f"{prefix}{node.name}"
 
