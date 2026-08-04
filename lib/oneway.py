@@ -28,6 +28,11 @@ PROVE_MERGE_TRAILER = "Konjo-Prove-Merge"
 # G-POLARITY's waiver trailer (K1). Same record-and-check mechanism, same fingerprint:
 # `Konjo-Polarity-Waived: <fp> — <reason>`. No second override channel -- this is the one.
 POLARITY_WAIVED_TRAILER = "Konjo-Polarity-Waived"
+# review-pipeline Sprint P2b, section 3: a mutation-hunt loop that hits its round cap
+# or token ceiling with mutants still surviving needs an explicit override, not a
+# silent pass. Same trailer substrate as POLARITY_WAIVED_TRAILER above (`make_trailer`/
+# `find_trailer`), not a second channel: `Konjo-Mutation-Waived: <fp> — <reason>`.
+MUTATION_WAIVED_TRAILER = "Konjo-Mutation-Waived"
 
 
 @dataclass

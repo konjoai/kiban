@@ -25,6 +25,63 @@ struct Input {
     after: Option<String>,
 }
 
+/// `--items` mode input: one source file, no before/after diffing.
+#[derive(Deserialize)]
+struct ItemsInput {
+    source: String,
+}
+
+/// `--items` mode output: one entry per fn/method, real line spans, no delta.
+/// Section 1's uncovered-item extraction calls this per touched file to map
+/// uncovered lines to their enclosing item -- see `lib/uncovered_items.py`.
+#[derive(Serialize)]
+struct ItemSpanOut {
+    qualified_name: String,
+    start_line: usize,
+    end_line: usize,
+}
+
+#[derive(Serialize)]
+struct ItemsOutput {
+    parse_error: Option<String>,
+    items: Vec<ItemSpanOut>,
+}
+
+fn run_items_mode() {
+    let mut buf = String::new();
+    if io::stdin().read_to_string(&mut buf).is_err() {
+        eprintln!("konjo-ast-diff --items: failed to read stdin");
+        std::process::exit(2);
+    }
+    let input: ItemsInput = match serde_json::from_str(&buf) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("konjo-ast-diff --items: invalid input JSON: {e}");
+            std::process::exit(2);
+        }
+    };
+    let parsed = match syn::parse_file(&input.source) {
+        Ok(f) => f,
+        Err(e) => {
+            let out = ItemsOutput { parse_error: Some(e.to_string()), items: vec![] };
+            println!("{}", serde_json::to_string(&out).unwrap());
+            return;
+        }
+    };
+    let mut sigs = Vec::new();
+    collect_items(&parsed.items, "", &mut sigs);
+    let items = sigs
+        .into_iter()
+        .map(|s| ItemSpanOut {
+            qualified_name: s.qualified_name,
+            start_line: s.start_line,
+            end_line: s.end_line,
+        })
+        .collect();
+    let out = ItemsOutput { parse_error: None, items };
+    println!("{}", serde_json::to_string(&out).unwrap());
+}
+
 #[derive(Serialize, Default)]
 struct Delta {
     parse_error: Option<String>,
@@ -76,6 +133,12 @@ struct ItemSig {
     qualified_name: String,
     signature_tokens: String,
     body_tokens: String,
+    /// 1-indexed, inclusive, covering the whole item (attrs through closing brace).
+    /// Populated via `syn`'s `Spanned` trait, which needs proc-macro2's
+    /// `span-locations` feature to return real line numbers outside a proc-macro
+    /// (confirmed live, Sprint P2b PF-1b -- see this crate's Cargo.toml comment).
+    start_line: usize,
+    end_line: usize,
 }
 
 fn sig_tokens(sig: &Signature) -> String {
@@ -83,14 +146,18 @@ fn sig_tokens(sig: &Signature) -> String {
 }
 
 fn collect_items(items: &[Item], prefix: &str, out: &mut Vec<ItemSig>) {
+    use syn::spanned::Spanned;
     for item in items {
         match item {
             Item::Fn(f) => {
                 let stmts = &f.block.stmts;
+                let span = f.span();
                 out.push(ItemSig {
                     qualified_name: format!("{prefix}{}", f.sig.ident),
                     signature_tokens: sig_tokens(&f.sig),
                     body_tokens: quote::quote!(#(#stmts)*).to_string(),
+                    start_line: span.start().line,
+                    end_line: span.end().line,
                 });
             }
             Item::Impl(imp) => {
@@ -99,10 +166,13 @@ fn collect_items(items: &[Item], prefix: &str, out: &mut Vec<ItemSig>) {
                 for ii in &imp.items {
                     if let ImplItem::Fn(m) = ii {
                         let stmts = &m.block.stmts;
+                        let span = m.span();
                         out.push(ItemSig {
                             qualified_name: format!("{prefix}{ty_name}::{}", m.sig.ident),
                             signature_tokens: sig_tokens(&m.sig),
                             body_tokens: quote::quote!(#(#stmts)*).to_string(),
+                            start_line: span.start().line,
+                            end_line: span.end().line,
                         });
                     }
                 }
@@ -236,6 +306,16 @@ fn scan_triggers(file: &File) -> TriggerVisitor {
 }
 
 fn main() {
+    // `--items` is a separate mode (single-file item+span listing, no before/after
+    // diffing) rather than a second binary: section 1 needs exactly the item-span
+    // extraction `collect_items` already does, and the plan's own instruction is to
+    // extend this crate rather than write a second walker. Default (no flag) behavior
+    // is unchanged, so the existing `lib/ast_diff.py` caller needs no changes.
+    if std::env::args().nth(1).as_deref() == Some("--items") {
+        run_items_mode();
+        return;
+    }
+
     let mut buf = String::new();
     if io::stdin().read_to_string(&mut buf).is_err() {
         eprintln!("konjo-ast-diff: failed to read stdin");
