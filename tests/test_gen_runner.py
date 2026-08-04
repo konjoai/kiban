@@ -156,3 +156,49 @@ def test_keep_worktree_true_leaves_it_on_disk_and_reports_path(
         assert Path(result.worktree).exists()
     finally:
         gen_runner._cleanup_worktree(repo, Path(result.worktree))
+
+
+def test_parse_usage_reads_the_terminal_result_event() -> None:
+    stdout = (
+        '{"type":"assistant","message":{"usage":{"input_tokens":2,"output_tokens":1}}}\n'
+        '{"type":"result","total_cost_usd":0.0107,'
+        '"usage":{"input_tokens":2,"output_tokens":5,"cache_read_input_tokens":35375}}\n'
+    )
+    tokens_in, tokens_out, cache_read, cost = gen_runner._parse_usage(stdout)
+    assert (tokens_in, tokens_out, cache_read, cost) == (2, 5, 35375, 0.0107)
+
+
+def test_parse_usage_returns_all_none_without_a_result_line() -> None:
+    result = gen_runner._parse_usage("plain text reply, not stream-json\n")
+    assert result == (None, None, None, None)
+
+
+def test_live_backend_capture_usage_populates_token_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _init_repo(tmp_path)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    def fake_run(argv: list[str], *, cwd: Path, timeout: int) -> subprocess.CompletedProcess[str]:
+        assert "--output-format" in argv and "stream-json" in argv
+        (cwd / "added.py").write_text("x = 1\n")
+        stdout = (
+            '{"type":"result","total_cost_usd":0.05,"usage":{"input_tokens":10,'
+            '"output_tokens":20,"cache_read_input_tokens":100}}\n'
+        )
+        return subprocess.CompletedProcess(argv, returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(gen_runner, "_run", fake_run)
+
+    task = GenTask(
+        id="t4", prompt="p", context_label="baseline", source="unit-test",
+        repo=str(repo), base_ref=head,
+    )
+    backend = LiveGenerationBackend(capture_usage=True)
+    result = backend.generate(task, context_text="")
+    assert result.tokens_input == 10
+    assert result.tokens_output == 20
+    assert result.tokens_cache_read == 100
+    assert result.cost_usd == 0.05

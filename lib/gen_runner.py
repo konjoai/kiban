@@ -29,6 +29,7 @@ makes a recorded run replay offline, the same cassette discipline
 
 from __future__ import annotations
 
+import json
 import subprocess
 import time
 import uuid
@@ -66,6 +67,16 @@ class GenerationResult:
     model: str | None
     duration_s: float
     worktree: str | None  # None once cleaned up
+    # Real per-call token usage, from the CLI's own stream-json `result` event --
+    # only populated when the caller opts into `capture_usage` (review-pipeline
+    # Sprint P2b, section 3's per-round token-ceiling reporting). None, not 0, when
+    # not requested or when the result event could not be parsed -- a real round
+    # with zero tokens is not a thing, so None means "not measured," not "measured
+    # zero."
+    tokens_input: int | None = None
+    tokens_output: int | None = None
+    tokens_cache_read: int | None = None
+    cost_usd: float | None = None
 
 
 class GenerationBackend(Protocol):
@@ -76,6 +87,38 @@ class GenerationBackend(Protocol):
 
 def _run(argv: list[str], *, cwd: Path, timeout: int) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+
+
+_NO_USAGE = (None, None, None, None)
+
+
+def _parse_usage(stdout: str) -> tuple[int | None, int | None, int | None, float | None]:
+    """Pull real token usage/cost from a stream-json session's terminal `result` event.
+
+    `--output-format stream-json` emits one JSON object per line; the last line with
+    `"type":"result"` carries the whole session's `usage` (input_tokens, output_tokens,
+    cache_read_input_tokens) and `total_cost_usd` -- confirmed live against the
+    installed CLI (Sprint P2b PF-*, section 3 token-per-round reporting). Scanned from
+    the end since `result` is always the final event; a malformed or missing line
+    returns all-None rather than raising -- this is enrichment, not something a
+    generation round should fail over.
+    """
+    for line in reversed((stdout or "").splitlines()):
+        line = line.strip()
+        if not line or '"type":"result"' not in line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        usage = data.get("usage") or {}
+        return (
+            usage.get("input_tokens"),
+            usage.get("output_tokens"),
+            usage.get("cache_read_input_tokens"),
+            data.get("total_cost_usd"),
+        )
+    return _NO_USAGE
 
 
 def _make_worktree(repo_root: Path, base_ref: str, label: str) -> Path:
@@ -165,6 +208,7 @@ class LiveGenerationBackend:
         bare: bool = False,
         permission_mode: str = "acceptEdits",
         tools: str = DEFAULT_TOOLS,
+        capture_usage: bool = False,
     ) -> None:
         self.timeout = timeout
         self.max_budget_usd = max_budget_usd
@@ -172,6 +216,9 @@ class LiveGenerationBackend:
         self.bare = bare
         self.permission_mode = permission_mode
         self.tools = tools
+        # Opt-in: switches to stream-json so the real `result` event's usage/cost can
+        # be parsed. Default False keeps existing callers (plain text stdout) unchanged.
+        self.capture_usage = capture_usage
 
     def generate(
         self, task: GenTask, context_text: str, *, model: str | None = None
@@ -191,12 +238,13 @@ class LiveGenerationBackend:
                 task.prompt,
                 model=model,
                 bare=self.bare,
-                stream_json=False,
+                stream_json=self.capture_usage,
                 extra=extra,
             )
             proc = _run(argv, cwd=worktree, timeout=self.timeout)
             diff_text, changed_paths = _diff_and_paths(worktree)
             duration = time.monotonic() - start
+            usage = _parse_usage(proc.stdout) if self.capture_usage else _NO_USAGE
             return GenerationResult(
                 task_id=task.id,
                 context_label=task.context_label,
@@ -208,6 +256,10 @@ class LiveGenerationBackend:
                 model=model,
                 duration_s=duration,
                 worktree=str(worktree) if self.keep_worktree else None,
+                tokens_input=usage[0],
+                tokens_output=usage[1],
+                tokens_cache_read=usage[2],
+                cost_usd=usage[3],
             )
         except subprocess.TimeoutExpired as exc:
             duration = time.monotonic() - start

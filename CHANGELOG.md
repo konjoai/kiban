@@ -4,6 +4,107 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-08-04
+
+Sprint P2b, finishing Phase 2 of the review-pipeline plan: sections 1, 3, and 4, the
+work P2 deferred. See `LEDGER.md`'s `Review-Pipeline-Phase-2b` entry for the full
+pre-flight corrections (PF-0b, PF-1b) and the real end-to-end verify run's numbers.
+Lands on top of [1.13.0] below (a parallel P2 session's addendum, merged first).
+
+### Added
+
+- **`konjo-ast-diff-rs --items` mode** - `ItemSig` gains real `start_line`/`end_line`
+  (proc-macro2's `span-locations` feature, confirmed live: without it the accessors
+  aren't even callable outside a proc-macro, and with it they return real 1-indexed
+  lines, not dummy zeros -- PF-1b). A new `--items` CLI mode emits one
+  `{qualified_name, start_line, end_line}` per fn/method for a single source file, no
+  before/after diffing -- additive, the existing default (delta) mode is unchanged.
+- **`lib/uncovered_items.py`** (section 1) - maps lcov (`cargo llvm-cov`) and
+  `coverage json` (pytest-cov) output to enclosing items. Rust files route through
+  `konjo-ast-diff-rs --items`; Python files need no external tool (`ast`'s own
+  `lineno`/`end_lineno` are real spans already). Ranked by uncovered-line count
+  descending, ties broken by file then start line. `relativize()` normalizes
+  `cargo llvm-cov`'s absolute `SF:` paths to repo-relative (needed live -- lcov output
+  from this exact toolchain uses absolute paths).
+- **`lib/mutation_hunt_loop.py`** (section 3) - the surviving-mutant -> assertion
+  loop. Round 1 seeds from section 1's ranked uncovered items; round 2+ seeds from
+  the prior round's `format_feedback` records only (arm-B shape per PF-3 -- the
+  specific mutation plus which tests still passed, never a fresh generic prompt).
+  One persistent git worktree for the whole loop. Round cap (default 3) and
+  per-round token ceiling (default 150k, real usage via `gen_runner`'s new
+  `capture_usage`) are both enforced. A round whose new tests fail the clean-tree
+  check (PF-3's secondary finding) skips mutation testing that round rather than
+  letting cargo-mutants error out against a broken baseline. Gate: zero surviving
+  mutants, or an existing `Konjo-Mutation-Waived` trailer (new constant in
+  `lib/oneway.py`, same `make_trailer`/`find_trailer` substrate `Konjo-Polarity-
+  Waived` already uses -- no second override channel).
+- **Section 2b wired**: the loop compares `format_feedback`'s capped length against
+  `load_missed_mutants`'s full count every round and flags truncation -- the
+  documented caller obligation from section 2 is now actually discharged, not left
+  for a future caller to remember.
+- **`bin/kiban-mutation-hunt`** - the real CLI call site for the loop and for
+  `plugins/konjo/skills/mutation-hunt/SKILL.md` (section 4). Exits 0 iff the gate
+  passes. A skill file with no real caller is not a shipped feature (Sprint S13's
+  rule) -- this is the caller.
+- **`lib/gen_runner.py`**: `LiveGenerationBackend` gains an opt-in `capture_usage`
+  flag (default `False`, existing callers unchanged) that switches to stream-json and
+  parses the terminal `result` event for real `tokens_input`/`tokens_output`/
+  `tokens_cache_read`/`cost_usd` -- section 3's per-round token reporting needs real
+  numbers, not the chars/4 estimate `lib/context_budget.py` uses elsewhere.
+
+### Fixed (caught while building section 3, not pre-existing)
+
+- **`cargo mutants --in-diff` must scope against the *production* diff under test,
+  not the round's own diff.** `--in-diff` only generates mutants for lines present in
+  the given diff; a round that only adds tests touches zero production lines, so
+  scoping against its own diff produces "INFO No mutants to filter" every time --
+  confirmed live building this loop's first real run. `run_mutation_hunt_loop` now
+  takes a separate `diff_base_ref` (what `--in-diff` scopes against, fixed for the
+  whole loop) from `base_ref` (where the worktree checks out, which may already
+  contain the change under test).
+- **`cargo mutants --in-diff` needs `-p <crate>` when run from a multi-crate
+  workspace root**, or it can report zero discoverable mutants almost instantly even
+  though the diff plainly touches the target crate -- confirmed live (0 vs 15
+  discovered mutants on an identical diff, the only difference being `-p`).
+  `run_cargo_mutants_in_diff` now takes `crate` and passes it through.
+
+### Findings (no code)
+
+- **PF-1b**: `syn`'s spans give real line numbers outside a proc-macro only with
+  proc-macro2's `span-locations` feature explicitly enabled -- confirmed with a
+  minimal scratch crate before touching `konjo-ast-diff-rs`, not assumed from docs.
+  Section 1 took the "extend `konjo-ast-diff-rs`" path per the plan's main
+  instruction; the `outcomes.json` fallback path was not needed.
+- **Section 1 verify**: ranked uncovered items for `lopi-ratelimit`/`lopi-github`
+  against a real `cargo llvm-cov` lcov report, hand-checked 3 items directly against
+  the raw lcov `DA:` lines and the source. **0 disagreements.**
+- **Section 3 real end-to-end run** (fixture: lopi's new `evals/fixtures/rust/
+  undertested/`, 15 mutants, 2 functions): **3 rounds** (round cap reached).
+  Mutants killed per round: round 1 (uncovered-item prompt) 8/15 killed by the
+  model's first pass, 7 surviving; round 2 (mutation-feedback prompt) 5 more killed,
+  2 surviving; round 3 (mutation-feedback prompt) 0 killed, 2 still surviving.
+  **Tokens per round: 1,989 / 8,602 / 12,571 (23,162 total)**, cost $0.13 / $0.31 /
+  $0.41 ($0.84 total). **Clean-tree test failures: 0** across all 3 rounds -- every
+  generated test passed on unmutated code on its first attempt. The 2 mutants that
+  survived all 3 rounds are the same pair of boundary comparisons
+  (`clamp_score`'s `raw < 0` / `raw > 100`) and are genuinely equivalent mutants at
+  this fixture's chosen boundary values (`<` vs `<=` at 0, `>` vs `>=` at 100 --
+  both branches return the same clamped value at the boundary itself), which no test
+  can kill -- the loop correctly terminated at the round cap with a suggested
+  `Konjo-Mutation-Waived` trailer rather than looping forever, and the gate correctly
+  reports FAILED (not waived by anything in this run, since no commit carries the
+  trailer yet). Gate did not pass this run; that is the honest, expected outcome for
+  a fixture with a deliberately-included equivalent mutant, not a loop defect.
+- **Section 4**: skill packaged, real CLI call site (`bin/kiban-mutation-hunt`),
+  wired into lopi's `konjo-gate.yml` as an opt-in `workflow_dispatch` job -- **not
+  live-runnable yet**: it clones kiban at the pinned `v1.8.0` tag, which predates
+  this sprint's work. Needs a kiban release cut and lopi's pin bumped before the CI
+  call site itself has been triggered for real (the CLI itself has, directly, per
+  the section 3 finding above).
+- **PF-0b**: full-workspace mutation baseline resumed as 18 scoped per-crate runs
+  instead of one 20-hour run (P2's baseline died twice in an interactive session).
+  See `LEDGER.md` for exactly which crates completed this sprint.
+
 ## [1.13.0] - 2026-08-04
 
 Sprint P2 continued: three real bug fixes to `lib/bench.py` (untouched by [1.12.0]'s

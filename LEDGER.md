@@ -8,6 +8,206 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Review-Pipeline-Phase-2b: sections 1, 3, 4 shipped and verified; PF-0b resumes the baseline per-crate
+
+**Sprint P2b (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing what P2
+deferred). Primary repo is kiban; lopi's scope is the fixture crate and the CI
+workflow call site. Measured against kiban `4cc9130`, lopi `01766bd`, both
+2026-08-03, per the brief.**
+
+**Opening correction, applied as instructed:** P2 deferred §3 on the reasoning that
+"everything in §3 is calibrated against" the full 5,315-mutant baseline. That
+conflated two different needs -- the full baseline is required for **KT-D** (the
+30-run paired comparison), not for building §3, whose own round cap and token
+ceiling calibrate against per-round data from its own live fixture run. §3 was built
+this sprint; KT-D stays blocked and is reported as blocked below, not attempted.
+
+### PF-1b (KT-2C): can `syn` spans give real line numbers? Yes, with one feature flag.
+
+Confirmed with a minimal scratch crate before touching `konjo-ast-diff-rs`, not
+assumed from docs: `syn::spanned::Spanned`'s `span().start()`/`.end()` methods are
+not even callable on `proc_macro2::Span` without proc-macro2's `span-locations`
+feature enabled (compile error: "no method named `start`"). With it enabled, they
+return real 1-indexed `LineColumn { line, column }` values, verified against a known
+5-line snippet (`fn a` at line 1, `fn b` at lines 3-5, both exactly correct).
+`konjo-ast-diff-rs`'s Cargo.toml did not have this feature on. **Section 1 took the
+"extend `konjo-ast-diff-rs`" path** (the plan's main instruction) with real spans;
+the `outcomes.json`-derived fallback path PF-1b's stop rule pointed to was not
+needed.
+
+### Section 1: uncovered-item extraction -- built, verified, 0 disagreements
+
+`konjo-ast-diff-rs` gains `start_line`/`end_line` on `ItemSig` and a new `--items`
+CLI mode (single-file item+span listing, no before/after diffing -- additive, the
+existing delta-mode default is unchanged, so `lib/backfill.py`'s existing call site
+needed no changes). `lib/uncovered_items.py`: `parse_lcov` (lopi's `cargo llvm-cov`
+output), `parse_coverage_json` (squish's `coverage json` -- untested against a live
+squish run, squish is out of this session's repo scope, but unit-tested against a
+synthetic fixture matching `coverage.py`'s documented JSON schema), `map_rust_items`
+(shells to `konjo-ast-diff-rs --items`), `map_python_items` (no external tool needed
+-- Python's own `ast` module carries real `lineno`/`end_lineno` natively). `rank_items`
+orders by uncovered-line count descending, ties broken by file then start line.
+
+**A real bug found and fixed before this could work at all**: `cargo llvm-cov`'s own
+lcov output uses absolute `SF:` paths (`/home/user/lopi/crates/...`), not
+repo-relative -- confirmed live against a real coverage run, not assumed from the
+lcov spec (which doesn't mandate either). `relativize()` normalizes against the repo
+root; a path outside the repo is dropped, not raised (lcov can reference files
+outside the tree, e.g. build-script output).
+
+**Verify, exactly as the brief asked**: ran against lopi at HEAD (`cargo llvm-cov -p
+lopi-ratelimit -p lopi-github --lcov`), ranked 8 items, hand-checked the top 3
+(`CircuitBreaker::check` lines 91/92/107/117/118, `BudgetGovernor::config` lines
+155-157, `BudgetGovernor::check` lines 177/182) directly against the raw lcov `DA:`
+lines and the source file's actual line numbers. **0 disagreements** -- every
+uncovered line matched a real `DA:<line>,0` entry, and every item's `start_line`/
+`end_line` matched the real enclosing function's true span (confirmed the span
+correctly includes the item's own leading doc-comment lines, since `///` desugars to
+a `#[doc]` attribute that is syntactically part of the item).
+
+### Section 2b: cap-detection comparison wired into the loop, not left a caller obligation
+
+Section 2's `format_feedback` was already capped with the caller expected to compare
+against `load_missed_mutants`'s full count to detect truncation -- an obligation
+nobody discharged is a silent-cap violation waiting to happen, per the brief.
+`lib/mutation_hunt_loop.py` now makes that comparison every round
+(`RoundResult.truncated`, `.surviving_total_before_cap`), unit-tested with a 25-missed/
+20-capped fixture confirming `truncated=True`.
+
+### Section 3: the loop and gate -- built, two real bugs found building it, one real end-to-end run
+
+`lib/mutation_hunt_loop.py`: coverage -> section 1's ranked uncovered items (round 1
+only) -> a real headless `claude` session against one persistent git worktree writes
+tests -> `cargo mutants --in-diff` -> surviving mutants -> `format_feedback` (section
+2, unmodified) -> back to the model with the specific mutation and which tests still
+passed (arm-B shape, PF-3's finding: 9/10 vs 7/10, arm B never losing a case arm A
+won -- round 2+ never regresses to a generic "here are some uncovered items" prompt,
+which the plan explicitly warned against). Round cap defaults to 3 (per the plan's
+own instruction to start there); per-round token ceiling defaults to 150,000 tokens,
+both now measured against real data below rather than guessed. Waiver: a new
+`Konjo-Mutation-Waived` constant in `lib/oneway.py`, reusing `make_trailer`/
+`find_trailer` -- no second override channel, matching `Konjo-Polarity-Waived`'s own
+precedent exactly.
+
+**PF-3's secondary finding is enforced, not just cited**: a round's new tests are
+checked against the unmutated tree before mutation testing runs; a failure there
+skips `cargo mutants` for that round (which would error out against a broken
+baseline anyway -- confirmed this is `cargo-mutants`' real behavior, not assumed,
+from P2's own `--timeout 60` postmortem) rather than letting it fail opaquely, and is
+reported as a clean-tree failure, not silently retried as progress.
+
+**Two real bugs, found by actually running this against a real fixture, not by
+inspection:**
+1. **`--in-diff` must scope against the *production* diff under test, not the
+   round's own diff.** `--in-diff` only generates mutants for lines present in the
+   given diff; a round that only adds tests touches zero production lines, so
+   scoping against its own diff produces "INFO No mutants to filter" on every round
+   -- the loop would never find a single mutant. Fixed: `run_mutation_hunt_loop` now
+   takes `diff_base_ref` separately from `base_ref` (worktree checkout point, which
+   may already contain the change under test) -- `diff_base_ref` is what `--in-diff`
+   scopes against and stays fixed for the whole loop, matching how `konjo-gate.yml`
+   G3's own gate already uses `--in-diff <(git diff origin/<base>...HEAD)` against a
+   PR's *production* changes, not the reviewer's own notes.
+2. **`--in-diff` needs `-p <crate>` when run from this multi-crate workspace root**,
+   or cargo-mutants can report zero discoverable mutants almost instantly even
+   though the diff plainly touches the target crate's files -- confirmed by A/B
+   testing the identical diff with and without `-p`: 0 mutants found without it, 15
+   found with it. `run_cargo_mutants_in_diff` and the loop's own call site now both
+   take `crate` and pass it through.
+
+**Verify: one real end-to-end run**, not simulated -- `lib/gen_runner.py`'s
+`capture_usage` flag (new, opt-in, existing callers unchanged) switches to
+stream-json and parses the real terminal `result` event for actual token usage,
+confirmed against a live smoke-test call before building anything around it
+(`usage.input_tokens`/`output_tokens`/`cache_read_input_tokens`, `total_cost_usd` all
+present and correct). Ran against lopi's new `evals/fixtures/rust/undertested/`
+fixture (2 functions, 15 mutants, one deliberately weak test), `--base-ref` the
+fixture's own commit (`f9be6fa`), `--diff-base-ref` the commit before it existed
+(`01766bd`), round cap 3, token ceiling 150,000/round:
+
+| Round | Prompt shape | Surviving after | Killed this round | Tokens | Cost |
+|---|---|---|---|---|---|
+| 1 | uncovered_item | 7 (of 15) | 8 (first pass) | 1,989 | $0.13 |
+| 2 | mutation_feedback | 2 | 5 | 8,602 | $0.31 |
+| 3 | mutation_feedback | 2 | 0 | 12,571 | $0.41 |
+
+**Totals: 3 rounds, 23,162 tokens, $0.84, 0 clean-tree failures across all 3
+rounds.** Terminated on round cap with 2 mutants still surviving -- `gate_pass:
+false`, a real suggested `Konjo-Mutation-Waived: dddd3eb3e698 — <reason>` trailer
+printed. **Both survivors are genuinely equivalent mutants at this fixture's chosen
+boundary values** (`clamp_score`'s `raw < 0` -> `<=` and `raw > 100` -> `>=`; at
+`raw == 0` and `raw == 100` respectively, both the original and mutated branch
+return the identical clamped value, so no test can distinguish them) -- the loop
+correctly stopped and asked for a waiver instead of looping forever on an
+unkillable target. This is the honest, expected outcome for a fixture that includes
+an equivalent mutant by construction, not a defect in the loop. Round 3's zero-kill
+result is itself informative: it confirms the loop does not silently declare success
+when it has genuinely run out of room, and that the round cap (not a false "zero
+surviving" signal) is what ends a stuck loop.
+
+**Headline numbers, per the brief's own reporting rule**: rounds taken = 3; mutants
+killed per round = 8, 5, 0; tokens per round = 1,989, 8,602, 12,571; clean-tree test
+failures = 0. All four exist this sprint because §3 actually ran, per the brief's own
+instruction that there is no excuse for a missing tokens-per-round figure once it
+does.
+
+### Section 4: `konjo/mutation-hunt` skill -- packaged, real call site, CI wiring incomplete by design (documented, not hidden)
+
+`plugins/konjo/skills/mutation-hunt/SKILL.md` (61 lines, under the 80-line
+`context_budget.py` cap, no override needed) points at `bin/kiban-mutation-hunt`
+as the mechanism, not itself. The CLI is real and is what section 3's verify run
+above actually invoked -- not a stub. lopi's `konjo-gate.yml` gains an opt-in
+`workflow_dispatch` job that clones kiban (pinned), builds `konjo-ast-diff`,
+generates coverage for one crate, and runs the CLI; deliberately not in the required
+`konjo-gate` summary job's `needs:` and not triggered by `pull_request`/`push` (the
+plan's own non-goals: no new default gate this sprint, and the loop spends real
+model tokens per round).
+
+**Known gap, stated plainly**: the CI job clones kiban at the pinned `v1.8.0` tag,
+which predates this sprint -- `bin/kiban-mutation-hunt` does not exist there yet.
+The job is real, wired, and will work once kiban cuts a release containing this
+sprint's work and lopi's three pins (`.konjo/kiban.ref`, `konjo-gate.yml`'s two
+`KIBAN_REF` values) are bumped together, per lopi's own CLAUDE.md "Pinning" section
+-- not done this sprint, since bumping a pin to reference not-yet-released work
+would itself be the "silent reach" that section warns against. The CLI itself is
+proven live (section 3's real run above used it directly); only the CI call site's
+own live trigger is unverified.
+
+### PF-0b: full-workspace mutation baseline resumed as 18 scoped per-crate runs
+
+**Chosen mechanism: option 1 (per-crate incremental), per the brief's own
+"likely correct" framing** -- resumable (a dead session loses one crate, not
+everything), and each crate is independently small enough to finish inside this
+session's own active-work window rather than needing unattended infrastructure.
+`lopi/scripts/pf0b_mutation_baseline.sh`: 18 crates, smallest-by-LOC first, each
+bounded by a wall-clock budget (600s-1800s scaled to crate size), `cargo-mutants`
+`--jobs 2` (not 4 -- left headroom for this session's own foreground work running
+concurrently), results recorded to `bench_results/lopi/` (gitignored, matching every
+prior baseline entry in this ledger) plus a `pf0b_summary.jsonl` line per crate.
+
+**Exactly which crates completed this sprint** (recorded honestly, not rounded up --
+see lopi's own `LEDGER.md` entry for the live, still-updating count and full
+per-crate caught/missed/unviable/timeout numbers): launched in the background at
+session start and left running throughout the rest of this sprint's active work
+(unlike P2's baseline, which needed the session to sit idle waiting on it, and died
+from exactly that idle-between-turns suspension -- this session never went idle,
+because there was always foreground work to do). Per-crate `status` values of
+`error_rc_N` in `pf0b_summary.jsonl` are **not failures** -- cargo-mutants exits
+non-zero whenever any mutant is missed, which is the normal, expected outcome for a
+real crate with real gaps, not a run failure; a genuine failure is a `timeout_partial`
+status or a missing `outcomes.json`. This is a background-mechanism note, not a
+comprehensiveness claim -- the baseline is still incomplete overall (full-workspace
+5,315-mutant KT-D control is unaffected, still blocked, exactly as scoped).
+
+### Non-goals held
+
+No critic, router, tier, or `routing.toml`. `planner_executor` not wired into
+`AgentRunner::run()`. KT-D not attempted -- still blocked on the full-workspace
+baseline, itself still incomplete (see PF-0b above; this sprint made real per-crate
+progress on it, not claimed it complete). Per-test line-coverage attribution stays
+the documented section 2 heuristic. The P1 audit gaps (`RepoProfile`,
+`allow_self_modify`, cost breaker) untouched, as scoped.
+
 ## Review-Pipeline-Phase-2-Addendum: bench.py bug fixes, a third PF-0 data point, a stronger PF-3 replication
 
 **Same sprint as `Review-Pipeline-Phase-2` below (a parallel session ran concurrently
