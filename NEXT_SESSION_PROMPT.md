@@ -29,6 +29,15 @@ before starting anything below.
    -- proven live by section 3's run above, not a stub.** The CI call site in lopi's
    `konjo-gate.yml` (`mutation-hunt` job, `workflow_dispatch` only) is real but NOT
    live-runnable yet -- see the pin gap below.
+5. **A parallel P2 session's addendum landed on `main` alongside this sprint** (see
+   `LEDGER.md`'s `Review-Pipeline-Phase-2-Addendum`): three real `lib/bench.py` bugs
+   fixed (nextest-missing fallback's exit-code check, a crash on `outcomes.json`'s
+   Baseline entry, a hardcoded `--jobs 2`), covered by `tests/test_bench_rust.py`;
+   a second PF-3/KT-2B pilot replicated the original result more decisively (10/10
+   vs 2/10, same `Instant`-vs-tokio-virtual-clock root cause both pilots hit
+   independently); and a corrected best-progress figure for the still-incomplete
+   full-workspace baseline, **17.4% (926 mutants)**, from a third independent launch
+   that also died the same way -- lopi's own `LEDGER.md` has the full detail.
 
 ## Open work
 
