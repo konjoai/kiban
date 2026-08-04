@@ -8,6 +8,159 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Review-Pipeline-Phase-2: mutation-guided test loop -- PF-3 passed, §2 shipped, §1/§3/§4 deferred on PF-0
+
+**Sprint P2 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2, the surviving-mutant -> assertion
+loop). Primary repo is lopi for the pre-flight measurement work (PF-0 baseline, PF-3
+kill-test); kiban's scope is the feedback formatter (section 2) plus this record. No
+critic, router, or gate shipped, per the plan's own non-goals. §1 (uncovered-item
+extraction), §3 (the loop + gate), and §4 (`konjo/mutation-hunt` skill) are not built
+this sprint -- see the deferral reasoning below, not silently dropped.**
+
+**PF-0: the full-workspace baseline is launched but NOT complete -- report accordingly.**
+First launch attempt failed outright: `--timeout 60` bounds every cargo command
+including the one-time baseline (unmutated-tree) test pass, and lopi's own
+`cargo test --workspace` takes longer than 60s cold. Zero mutants ran. Relaunched with
+`--timeout` omitted (cargo-mutants auto-scales the per-mutant timeout from its own
+measured baseline time) -- see lopi's `LEDGER.md`, `Review-Pipeline-Phase-2` entry for
+the full failure detail and both launch timestamps. **5,315 mutants found**, not the
+1,500-2,000 the plan's own §0.1 estimated from the 109-mutant partial sample -- a
+~3.5x undercount worth flagging for anyone sizing future full-workspace runs from that
+estimate. At last check this session (2026-08-03T22:20Z, ~45 minutes of wall-clock into
+the corrected run): 109 caught, 65 missed, 28 unviable, 1 timeout -- 203 of 5,315
+mutants tested (3.8%). At this rate the run needs on the order of 20 hours to finish,
+which is longer than a single interactive session can sustain inside this container
+(background processes do not survive container reclamation) -- **whoever picks up §3
+next should relaunch this on a runner that can actually stay up for it** (a dedicated
+CI job, a detached process on persistent infrastructure), not assume a `nohup`'d
+process in an ephemeral session container will still be running when they return.
+KT-D (Phase 2's own kill-test, a 30-run paired Wilcoxon) is blocked on this run's
+completion and is not attempted this sprint.
+
+**PF-1: the mutation gate lopi actually uses is genuinely blocking, not advisory --
+confirmed by reading the workflow, not assumed.** Two separate paths exist and only
+one applies to lopi:
+1. `.github/workflows/konjo-gate.yml` G3 (`konjo-gate.yml:370-448`) runs
+   `cargo mutants --in-diff <base-diff> --timeout 60 --jobs 2`, parses the summary
+   line, and calls Python's `exit(1)` when survival exceeds 10%
+   (`konjo-gate.yml:433-436`) -- no `continue-on-error` anywhere in the job, checked
+   line by line, not inferred from the step name.
+2. `konjo_gates_py.cli`'s own dispatcher (`_tool_argv`/`gate_repo_native`,
+   `cli.py:729-871`) wraps `cargo mutants --in-diff` through `newonly.net_new` and
+   blocks (`FAIL` is in `_BLOCKING`, `cli.py:81`) on net-new findings -- but **lopi does
+   not use this path**: `.konjo/profile.yml:104` sets
+   `mutation: "none -- kept repo-native"` specifically because cargo-mutants' own
+   stdout carries wall-clock timing on every line, which defeats `net_new`'s line-diff
+   (confirmed against a real PR #184 failure, documented in lopi's own profile
+   comment). `_gate_plan` (`cli.py:914-917`) skips any `mutation` value starting with
+   `"none"`.
+   Net effect: the feedback loop this sprint is building sits on top of a gate that
+   **can and does reject** for lopi (path 1). Section 3's "the gate must be able to
+   reject" requirement needed no fix here -- a real difference from the shape the plan
+   anticipated ("if PF-1 found the existing mutation step advisory, fixing that is in
+   scope"), worth recording so a future sprint doesn't assume it still needs fixing.
+3. Neither per-PR path persists `--output`/`mutants.out/` today -- only `kiban bench`
+   (`lib/bench.py`'s `_mutation_rust`, `bench.py:244-315`) already parses
+   cargo-mutants' structured `outcomes.json`, and section 2's formatter follows that
+   same schema rather than inventing a second parser.
+
+**PF-2 (KT-2A): cargo-mutants' own report already resolves all 5 needed fields --
+`konjo-ast-diff-rs` is not needed for section 2, only for section 1.** Confirmed
+directly against a live `cargo mutants --output` run (cargo-mutants v27.1.0):
+`outcomes.json`'s `scenario.Mutant` embeds `file`, the exact mutated `span`
+(file:line:col), `replacement`, and -- the one the plan flagged as possibly needing
+`konjo-ast-diff-rs`'s `collect_items` -- `function.function_name`, which is **already
+qualified** for methods (`"BudgetGovernor::config"`, not bare `"config"`) and comes
+with the enclosing item's own full line span (`function.span`). "Original expression"
+isn't a discrete field but is trivially the pre-mutation source at that span, already
+on disk. Stop rule did not fire. `konjo-ast-diff-rs`'s existing `ItemSig`
+(`packages/konjo-ast-diff-rs/src/main.rs:75-119`) remains real, separate, necessary
+work for section 1 specifically -- it has no line-span capture today (built for
+token-stream diffing, not line-to-item mapping), so section 1 needs to extend it, not
+just reuse it as-is. Not done this sprint (see deferral below).
+
+**PF-3 (KT-2B) PASSED: mutation-guided regeneration beats plain "write more tests," on
+real surviving mutants, arm B strictly dominates arm A.** The plan's own P0 partial
+baseline (109 mutants) was not recoverable from disk (its `.cargo-mutants-bench/`
+output was never committed, by design, and the container that ran it is gone) -- see
+lopi's `LEDGER.md` for the substitution reasoning. Ten real surviving mutants were
+pulled instead from a scoped `cargo mutants -p lopi-ratelimit` run (11 found, 10
+used, spanning 5 distinct enclosing items across `lib.rs`/`budget.rs`: arithmetic
+refill-rate bugs, a no-op function body, a getter returning a leaked default, and a
+boundary comparison operator). Two arms, 15 independent fresh-context agents (5 arm A,
+10 arm B, zero shared context between any two), each producing Rust test code with no
+tool access beyond reading the prompt:
+
+- **Arm A** (given the enclosing item's source only, asked to "write tests"): **7/10
+  mutants killed.**
+- **Arm B** (given the enclosing item plus the specific surviving mutation, told which
+  existing tests still passed despite it): **9/10 mutants killed.**
+- Arm B never lost a case arm A won; it won on 2 (a deficit-sign arithmetic bug and a
+  boundary `>`/`>=` comparison, the latter only killable by realizing a
+  *zero-usd-per-hour* governor config makes the equivalence observable -- exactly the
+  kind of mutation-specific reasoning "write more tests" has no reason to attempt).
+  Both arms missed the same one mutant (`Duration::from_secs_f64(deficit % rate)` vs
+  `/ rate`) -- a timing-precision bug neither a generic nor a mutation-informed
+  black-box unit test found tractable without controlling the tokio clock more
+  carefully than either arm attempted.
+- **A secondary, unplanned finding: arm A's generated tests were less reliable, not
+  just less effective.** 3 of arm A's 5 tests for `TokenBucket::acquire` failed on
+  *unmutated* code -- a real bug in the generated tests (conflating tokio's paused
+  virtual clock with `BucketState::refill()`'s use of real `std::time::Instant`, a
+  gotcha the pre-existing test suite's own comments already document for exactly this
+  reason) that had nothing to do with any mutation. Those 3 were excluded and the
+  remaining 2 working tests re-verified against all 4 of that item's mutants before
+  counting; arm B's 10 tests all passed on unmutated code on the first attempt.
+  n=1 item, not a general claim -- but consistent with the mechanism the plan
+  predicted (a specific target narrows what the model has to get right).
+- Not a substitute for the real KT-D (30-run paired Wilcoxon, blocked on PF-0's
+  completion) -- a pre-registered pilot at the size the plan itself specified (10
+  mutants), sized to decide whether to proceed to section 2 onward, not to close the
+  kill-test permanently.
+
+**Section 2 shipped and verified: `lib/mutation_feedback.py` + `tests/
+test_mutation_feedback.py` (8 tests, all passing).** One `FeedbackRecord` per
+surviving mutant: `file`, `line`, `function` (qualified), `original`, `replacement`,
+`item_source` (the full enclosing item, read from `function.span`), `tests_still_
+passing`, one-line `rationale`. Capped (`cap`, default 20), deterministically ordered
+(file, then line) so repeated runs against an unchanged report produce the same
+truncated set -- no silent-cap violation, callers can compare the returned length
+against `load_missed_mutants`'s full count to detect truncation. **"Tests that
+exercise this item" is a documented heuristic, not precise call-graph attribution** --
+every `#[test]`/`#[tokio::test]` in the same file's `mod tests` block, because true
+per-test coverage attribution needs per-test line coverage this sprint does not
+compute. Verified against the real 11-mutant `lopi-ratelimit` scoped run (not just the
+synthetic pytest fixture): all 11 records resolved to a real item, a real mutation,
+and a real (if file-scoped, not item-scoped) test list.
+
+**Deferred to next session, not silently dropped:**
+1. **Section 1 (uncovered-item extraction).** Real, scoped work:
+   `konjo-ast-diff-rs`'s `ItemSig`/`collect_items` need line-span capture added (they
+   currently carry only `qualified_name`/token-stream text, built for before/after
+   body diffing, not line-to-item mapping) before lcov/coverage.py output can be
+   mapped to enclosing items the way section 1 needs. Not started this sprint --
+   section 2 turned out not to need it (PF-2), so it wasn't pulled forward by
+   necessity, and there wasn't session time left to do it carefully alongside
+   everything else above.
+2. **Section 3 (the loop + gate) and section 4 (`konjo/mutation-hunt` skill).**
+   Deliberately not attempted, not a time-ran-out cut: the plan's own PF-0 instruction
+   states "everything in section 3 is calibrated against it" (the full baseline) --
+   building the round cap, token ceiling, and gate wiring against a baseline that is
+   3.8% complete would mean calibrating against a number known to be wrong, and
+   section 3's own verify step ("report rounds taken, mutants killed per round, and
+   tokens spent per round" on a real end-to-end fixture run) cannot honestly be
+   claimed done without a real run, which was not attempted. **No "tokens per round"
+   figure exists this sprint for that reason** -- this is the reporting rule's
+   headline number that has no value to report, not an omission.
+   The waiver/ledger substrate section 3 needs already exists and needs no new
+   plumbing: `lib/oneway.py`'s trailer mechanism (`POLARITY_WAIVED_TRAILER` at
+   `oneway.py:30`, `make_trailer`/`find_trailer`), the same one `gate_polarity` (K1)
+   already reuses -- a mutation-loop waiver mints a sibling trailer
+   (`Konjo-Mutation-Waived`) through the same functions, not a second override
+   channel.
+3. `evals/fixtures/rust/` does not exist yet (only `mojo/`, `squish/`, `typescript/`
+   under `evals/fixtures/`) -- section 3's verify step needs to create it, not find it.
+
 ## Review-Pipeline-Phase-1: plan-artifact schema plus the telemetry fields it feeds (kiban's half)
 
 **Sprint P1 (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1, the Planner/Executor split).
