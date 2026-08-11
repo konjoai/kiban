@@ -39,8 +39,13 @@ longrun_globs:              # paths whose scripts must wire the resume contract 
 
 polarity:                   # G-POLARITY (K1): no unknown path returns a passing value
   enabled: bool              # false to skip entirely (default true)
-  advisory: bool             # true reports without blocking (adoption ramp); default
-                             # true for a repo backfilling this gate, false for a new one
+  tier: string               # Adoption-Ramp-1: "blocking" or "advisory" (default:
+                             # "advisory"); preferred over `advisory:` below
+  advisory: bool             # DEPRECATED ALIAS for `tier:` (true == advisory, false ==
+                             # blocking) -- kept working so existing profiles don't
+                             # break; default true for a repo backfilling this gate,
+                             # false (or `tier: blocking`) for one that has cleaned its
+                             # baseline
   exempt_globs: [string]     # paths where the shape is legitimate; state the reason in
                              # the profile comment next to the glob, not just the glob
 
@@ -48,12 +53,29 @@ gates:                       # G-CAN-FAIL (K1): every quality gate names its rej
   - name: string             # the gate's name, as it appears in this repo's own CI
     rejects_test: string     # a command that supplies a known-bad input and asserts
                              # REJECTION; konjo-gates runs it and requires it to pass
+    tier: string             # Adoption-Ramp-1: "blocking" or "advisory" (default:
+                             # "advisory"). The general form of the `advisory: bool`
+                             # flags below -- may be declared here for a gate with no
+                             # dedicated profile sub-block, or directly on a gate's own
+                             # sub-block (e.g. `polarity: {tier: ...}`). A gate may be
+                             # promoted to `tier: blocking` only once it meets BOTH
+                             # promotion criteria: a passing `rejects_test` above, and a
+                             # measured false-positive rate below a stated ceiling over
+                             # at least N runs (see lib/gate_stats.py). konjo-gates'
+                             # `gate_can_fail` meta-gate fails a profile that declares
+                             # `tier: blocking` without a passing `rejects_test` --
+                             # a gate that cannot demonstrate it can fail must not be
+                             # allowed to block.
 
 claude_contract:             # Phase 13, Phase 1: the CLAUDE.md section contract
   enabled: bool               # false to skip entirely (default true)
-  advisory: bool               # true reports without blocking (adoption ramp); default
-                               # true for a repo backfilling this gate, false once its
-                               # CLAUDE.md is brought into contract
+  tier: string                 # Adoption-Ramp-1: "blocking" or "advisory" (default:
+                               # "advisory"); preferred over `advisory:` below
+  advisory: bool               # DEPRECATED ALIAS for `tier:` (true == advisory, false
+                               # == blocking) -- kept working so existing profiles don't
+                               # break; default true for a repo backfilling this gate,
+                               # false (or `tier: blocking`) once its CLAUDE.md is
+                               # brought into contract
 
 security_globs:               # Phase 13, Phase 3: paths gate_threat_model treats as
                               # crossing a trust boundary -- authn/authz, secret lifecycle,

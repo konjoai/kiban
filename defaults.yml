@@ -3,6 +3,17 @@
 # overrides a specific one with a reason. Gates marked (stubbed) have their contract
 # specified but no working logic this sprint; they are Phase 1+.
 
+# Adoption-Ramp-1: every gate's tier (see profiles/_schema.yml's `gates[].tier` /
+# `polarity.tier` / `claude_contract.tier`) defaults to "advisory" when a profile
+# doesn't declare one -- consuming `resolve_tier` in
+# packages/konjo-gates-py/src/konjo_gates_py/cli.py. A gate earns "blocking" only after
+# meeting BOTH promotion criteria: a passing `rejects_test` kill-test, and a measured
+# false-positive rate under a stated ceiling over at least N runs (lib/gate_stats.py).
+# This mirrors gate_polarity's own pre-existing default and generalizes it org-wide --
+# quality tooling that blocks merge before it has demonstrated it deserves to block
+# merge is exactly the failure mode Gate-Tiering-1 (konjoai/lopi) found and fixed.
+default_tier: advisory
+
 universal_gates:
 
   secrets_redact:

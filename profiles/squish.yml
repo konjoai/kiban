@@ -107,9 +107,23 @@ killtest: true
 # is already clean. What flips this to blocking: squish merging the proposed CLAUDE.md
 # conversion (or an equivalent), the same way lopi's own PR #184 did. See LEDGER.md's
 # Claude-Contract-Ramp-1.
+# Adoption-Ramp-1 (B4): tier set explicitly rather than left on the schema default, so
+# this profile's own drift (or lack of it) from that default is visible on read, not
+# implicit. Matches the advisory: true value above -- resolve_tier checks tier: first.
 claude_contract:
   enabled: true
+  tier: advisory
   advisory: true
+
+# G-POLARITY (K1): no polarity: block existed here before Adoption-Ramp-1 -- the gate
+# still ran (profile.get("polarity", {}) defaults enabled/tier both to their own
+# defaults), just implicitly. Declared explicitly now for the same reason as
+# claude_contract above. squish has not been measured against this gate yet, so
+# tier: advisory (the safe default for an unmeasured baseline) rather than a promotion
+# guess.
+polarity:
+  enabled: true
+  tier: advisory
 
 # Phase 10: how the agent verifies its own work before claiming done. Derived from the
 # confirmed pytest coverage gate (konjo-gate.yml G2, coverage-80); running the suite is

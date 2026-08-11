@@ -4,6 +4,58 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-08-11
+
+Sprint "Gate Tiering and the Adoption Ramp", Part B (Adoption-Ramp-1) -- companion to
+`konjoai/lopi`'s own Gate-Tiering-1 (Part A). Gives the org-wide framework the
+BLOCKING/ADVISORY adoption ramp lopi's own CI needed, so quality tooling stops
+blocking merges on legacy findings before it has demonstrated it deserves to. See
+`LEDGER.md`'s `Adoption-Ramp-1` entry for the full rationale, including a real profile
+drift found and fixed in `profiles/lopi.yml`.
+
+### Added
+
+- **`tier` field** on `profiles/_schema.yml`'s `gates[]`, `polarity`, and
+  `claude_contract` -- `"blocking"` or `"advisory"`, default `"advisory"`. The
+  existing `advisory: bool` flags on `polarity`/`claude_contract` keep working as
+  aliases (`resolve_tier` in `packages/konjo-gates-py/src/konjo_gates_py/cli.py`).
+  `defaults.yml` documents the org-wide `default_tier: advisory`.
+- **`_tier_verdict` shared helper** -- the `WARN if advisory else FAIL` pattern
+  `gate_polarity` and `gate_claude_contract` each hard-coded independently is now one
+  function both route through.
+- **`gate_blocking_promotion` meta-gate** (wired into `konjo-gates`' plan, after
+  `can_fail`) -- fails a profile that declares `tier: blocking` on a `gates:` entry
+  with no passing `rejects_test`. A gate that cannot demonstrate it can fail must not
+  be allowed to block.
+- **`ledger/pr_telemetry.py`**: `GateRunRecord` (name, verdict, duration_s, overridden,
+  waived) and `PrTelemetryRecord.gate_results` / `add_gate_result()` -- what a gate
+  costs, not just what it catches.
+- **`lib/gate_stats.py`** (mirrors `lib/specialist_stats.py`'s shape): aggregates
+  `gate_results` into per-gate `BLOCKING_READY` / `ADVISORY_ONLY` /
+  `INSUFFICIENT_DATA` tags, driven by a false-positive rate (overridden-or-waived
+  verdicts) against a stated ceiling (default 5%) over a sample floor (default 20
+  runs).
+- **`templates/repo-ci.yml`**: `gate:override` break-glass (PR label + mandatory
+  `Konjo-Override:` trailer) as a final step.
+- **`templates/repo-profile.yml`** (kept in sync with `profiles/_template.yml`): every
+  gate scaffolds `tier: advisory` with a comment naming the promotion criteria.
+- **`templates/repo-CLAUDE.md`**: the Invariants section contract now requires each
+  bullet to name both its enforcing gate and that gate's tier.
+- Kill-tests: `tests/test_gate_tiering.py` (tier resolution, alias compatibility,
+  default-to-advisory), `tests/test_gate_tiering_killtest.sh` (the
+  `gate_blocking_promotion` meta-gate genuinely fails a profile declaring
+  `tier: blocking` without a `rejects_test`), `tests/test_gate_stats.py`
+  (classification boundaries).
+
+### Fixed
+
+- `profiles/lopi.yml` did not match `konjoai/lopi`'s real `.konjo/profile.yml` --
+  fixed three live behavioral drifts (a `claude_contract` tier claim that didn't match
+  reality, an `npm-audit` entry the real profile deliberately excludes, and a
+  `mutation: cargo-mutants` value that would genuinely dispatch a confirmed-broken
+  net-new-diffing path) plus three additive/cleanup drifts (missing
+  `function-length`/`indexing-floor`/`gate-tiering` entries, a dead `packs:` field).
+
 ## [1.14.0] - 2026-08-04
 
 Sprint P2b, finishing Phase 2 of the review-pipeline plan: sections 1, 3, and 4, the

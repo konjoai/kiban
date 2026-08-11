@@ -7,6 +7,19 @@
 #
 # Pin KIBAN_REF to a tag or sha so a kiban change rolls out to this repo on a deliberate
 # schedule, not all repos at once.
+#
+# Adoption-Ramp-1 / Gate-Tiering-1: the two-tier aggregator, generalized. konjoai/lopi's
+# own konjo-gate.yml predates `tier:` and is a flat `needs:`-all aggregator across eight
+# already-separate CI jobs, so it needed a standalone script
+# (`.konjo/scripts/gate_verdict.sh`) to reconcile those eight results into
+# BLOCKING/ADVISORY tiers after the fact. A repo starting from THIS template does not
+# need that reconciliation step: every gate's tier (`tier: blocking`/`advisory` in
+# `.konjo/profile.yml`, default advisory) is resolved *inside* the single `konjo-gates`
+# invocation below (`resolve_tier`/`_tier_verdict` map `tier: blocking` to a FAIL verdict
+# and everything else to WARN), and the driver's own exit code already only goes nonzero
+# on a FAIL/ERROR verdict -- never on a WARN. One job, one command, tiering already
+# embedded. The only piece a generic library invocation cannot provide for itself is the
+# break-glass below, since `gate:override` is a GitHub-specific, per-PR concept.
 
 name: konjo-gates
 
@@ -51,4 +64,40 @@ jobs:
       # to also stream the exact scanner argv and each HEAD/base scan pass with its
       # duration -- useful when a single gate is unexpectedly slow.
       - name: Run gates against the repo profile
+        id: gates
+        continue-on-error: true   # ADVISORY BY DESIGN: the real verdict is checked and enforced by the break-glass step below, which distinguishes a genuine failure from a valid override -- this step's own exit code alone cannot make that distinction
         run: konjo-gates --profile .konjo/profile.yml --base "origin/${{ github.base_ref || 'main' }}"
+
+      # Gate-Tiering-1's break-glass, generalized: a `gate:override` PR label plus a
+      # mandatory `Konjo-Override: <reason>` trailer in the PR body bypasses a
+      # BLOCKING (FAIL/ERROR) verdict from the step above. The label alone is not
+      # enough -- the trailer is required whenever the label is present, whether or
+      # not a gate actually failed, so the escape hatch always costs a sentence.
+      - name: Evaluate gates verdict (with gate:override break-glass)
+        env:
+          GATES_OUTCOME: ${{ steps.gates.outcome }}
+          GATE_OVERRIDE_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'gate:override') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ "$GATE_OVERRIDE_LABEL" = "true" ]; then
+            if ! printf '%s' "$PR_BODY" | grep -qE '^Konjo-Override:[[:space:]]*[^[:space:]].*$'; then
+              echo "::error::'gate:override' label present but the PR body has no 'Konjo-Override: <reason>' trailer. The escape hatch must cost a sentence, not nothing."
+              exit 1
+            fi
+          fi
+
+          if [ "$GATES_OUTCOME" = "success" ]; then
+            echo "All BLOCKING gates passed."
+            exit 0
+          fi
+
+          if [ "$GATE_OVERRIDE_LABEL" = "true" ]; then
+            echo "OVERRIDDEN — gate:override label present with a verified Konjo-Override trailer."
+            echo "actor: $ACTOR"
+            echo "::warning::Merge proceeded under gate:override. Record a Ledger entry for this override."
+            exit 0
+          fi
+
+          echo "::error::konjo-gates reported a BLOCKING failure — merge blocked. Add the gate:override label plus a Konjo-Override: <reason> PR-body trailer to bypass, and record the reason in the Ledger."
+          exit 1

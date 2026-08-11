@@ -2,6 +2,19 @@
 # The empty profile the other Konjo repos copy into their own .konjo/profile.yml.
 # Fill every field. Use UNVERIFIED on anything you have not confirmed against the repo
 # rather than guessing. Do not create profiles for other repos in this kiban repo.
+#
+# Adoption-Ramp-1: every gate below scaffolds as `tier: advisory` -- reports, never
+# blocks merge. A gate earns `tier: blocking` only once it meets BOTH promotion
+# criteria (`lib/gate_stats.py`):
+#   1. A passing kill-test: a `gates:` entry naming a `rejects_test` that supplies a
+#      known-bad input and asserts REJECTION. konjo-gates' `gate_blocking_promotion`
+#      meta-gate fails outright if a gate claims `tier: blocking` without one.
+#   2. A measured false-positive rate under a stated ceiling (default 5%), over at
+#      least N runs (default floor 20) of recorded PR telemetry
+#      (`ledger/pr_telemetry.py`'s `gate_results`) -- i.e. how often a human later
+#      overrode or waived this gate's own FAIL/WARN verdict.
+# Do not hand-set `tier: blocking` on a new gate to skip the ramp -- that is exactly
+# the failure Gate-Tiering-1 (konjoai/lopi) found and fixed.
 
 repo: "<repo-name>"
 
@@ -22,6 +35,25 @@ specialists:
 prove:
   enabled: false
   baseline: "<baseline-tag>"
+
+# G-POLARITY (K1): ships tier: advisory (reports, never blocks) until the
+# promotion criteria above are met.
+polarity:
+  enabled: true
+  tier: advisory
+
+# Phase 13, Phase 1: the CLAUDE.md section contract. Same ramp as polarity above.
+claude_contract:
+  enabled: true
+  tier: advisory
+
+# G-CAN-FAIL (K1): every quality gate names its rejecting test. Each entry scaffolds
+# as tier: advisory; promote individually once both criteria above are met for that
+# specific gate.
+gates:
+  - name: "<gate-name>"
+    rejects_test: "<command that supplies a known-bad input and asserts REJECTION>"
+    tier: advisory
 
 killtest: true
 

@@ -330,6 +330,49 @@ def _is_polarity_exempt(path: str, exempt_globs: list[str]) -> bool:
     return any(Path(path).match(g) for g in exempt_globs)
 
 
+def resolve_tier(cfg: dict | None, profile: dict, gate_name: str) -> str:
+    """Resolve a gate's tier ("blocking" or "advisory") -- Adoption-Ramp-1.
+
+    `tier` is the general form of the `advisory: bool` flags `gate_polarity` and
+    `gate_claude_contract` each hard-coded independently before this. Precedence:
+
+      1. An explicit `tier:` directly on the gate's own profile sub-block (`cfg`,
+         e.g. `profile["polarity"]`).
+      2. A `tier:` on the matching entry (by `name`) in the profile's `gates:`
+         list -- lets a gate with no dedicated sub-block (e.g. a repo-native
+         ratchet check named only in `gates:`) still declare a tier.
+      3. The legacy `advisory: bool` alias on `cfg`, if present (`True` ->
+         advisory, `False` -> blocking) -- kept working so no existing profile
+         breaks; new profiles should prefer `tier:`.
+      4. Default: `"advisory"`. A gate must earn BLOCKING by meeting the
+         promotion criteria in `lib/gate_stats.py` (a passing kill-test AND a
+         measured false-positive rate under a stated ceiling) -- the standing
+         default for a repo backfilling this gate, same rationale
+         `gate_polarity`'s docstring already gave for its own default.
+    """
+    cfg = cfg or {}
+    if "tier" in cfg:
+        tier = str(cfg["tier"]).strip().lower()
+        if tier in ("blocking", "advisory"):
+            return tier
+    for g in profile.get("gates", []) or []:
+        if g.get("name") == gate_name and "tier" in g:
+            tier = str(g["tier"]).strip().lower()
+            if tier in ("blocking", "advisory"):
+                return tier
+    if "advisory" in cfg:
+        return "advisory" if bool(cfg["advisory"]) else "blocking"
+    return "advisory"
+
+
+def _tier_verdict(tier: str) -> str:
+    """The shared `WARN if advisory else FAIL` severity mapping -- every gate result
+    driven by a tier ramp should route through this instead of hand-rolling the
+    comparison, so a future tier value (or a change to what FAIL/WARN mean) only
+    needs to change here."""
+    return FAIL if tier == "blocking" else WARN
+
+
 def gate_polarity(changed: list[str], base: str, profile: dict) -> GateResult:
     """K1, Family 0: does an unknown path return a passing value?
 
@@ -352,10 +395,12 @@ def gate_polarity(changed: list[str], base: str, profile: dict) -> GateResult:
         return GateResult("polarity", SKIP, "disabled (polarity.enabled: false)")
     exempt_globs = list(cfg.get("exempt_globs", []))
     # Ship-default is advisory (WARN, not FAIL) for a repo that has not opted in yet --
-    # the coverage-floor ratchet pattern: adopt, clean the baseline, then set
-    # `advisory: false` once clean. A profile with no `polarity:` block at all is exactly
-    # that unopted-in case.
-    advisory = bool(cfg.get("advisory", True))
+    # the coverage-floor ratchet pattern: adopt, clean the baseline, then promote to
+    # `tier: blocking` (or the legacy `advisory: false`) once clean and the
+    # promotion criteria in lib/gate_stats.py are met. A profile with no `polarity:`
+    # block at all is exactly that unopted-in case. See resolve_tier's own docstring
+    # for the full precedence (tier: > gates[].tier > advisory: alias > default).
+    tier = resolve_tier(cfg, profile, "polarity")
 
     net_new: list[polarity.Finding] = []
     for path in changed:
@@ -392,7 +437,7 @@ def gate_polarity(changed: list[str], base: str, profile: dict) -> GateResult:
         f"override field, or add the trailer "
         f"'{oneway.make_trailer(oneway.POLARITY_WAIVED_TRAILER, fp)} — <reason>' to a commit"
     )
-    return GateResult("polarity", WARN if advisory else FAIL, detail)
+    return GateResult("polarity", _tier_verdict(tier), detail)
 
 
 _RULES_FILE_RE = re.compile(r"^\.claude/rules/.*\.md$")
@@ -412,13 +457,15 @@ def gate_claude_contract(changed: list[str], profile: dict) -> GateResult:
 
     Offline, no model, no network -- pure regex/heading parse over files already on disk.
     Ships advisory by default (WARN, not FAIL) so an adopting repo's non-conformant
-    CLAUDE.md doesn't retroactively block unrelated work; `claude_contract.advisory: false`
-    promotes it to blocking once a repo's CLAUDE.md has been brought into contract.
+    CLAUDE.md doesn't retroactively block unrelated work; `tier: blocking` (or the
+    legacy `claude_contract.advisory: false` alias) promotes it once a repo's CLAUDE.md
+    has been brought into contract. See resolve_tier's own docstring for the full
+    precedence.
     """
     cfg = profile.get("claude_contract", {}) or {}
     if not cfg.get("enabled", True):
         return GateResult("claude_contract", SKIP, "disabled (claude_contract.enabled: false)")
-    advisory = bool(cfg.get("advisory", True))
+    tier = resolve_tier(cfg, profile, "claude_contract")
 
     claude_hits = [p for p in changed if Path(p).name == "CLAUDE.md"]
     rule_hits = [p for p in changed if _RULES_FILE_RE.match(p)]
@@ -454,7 +501,7 @@ def gate_claude_contract(changed: list[str], profile: dict) -> GateResult:
             )
 
     if problems:
-        return GateResult("claude_contract", WARN if advisory else FAIL, "; ".join(problems))
+        return GateResult("claude_contract", _tier_verdict(tier), "; ".join(problems))
     n = len(claude_hits) + len(rule_hits)
     return GateResult("claude_contract", PASS, f"{n} file(s) contract-clean")
 
@@ -509,6 +556,60 @@ def gate_can_fail(profile: dict) -> GateResult:
             "; ".join(failures) + ". A green run is not evidence a gate works. Only a red one is.",
         )
     return GateResult("can_fail", PASS, f"{len(declared)} gate(s) each have a passing rejects_test")
+
+
+def gate_blocking_promotion(profile: dict) -> GateResult:
+    """Adoption-Ramp-1 meta-gate: a gate declaring `tier: blocking` must have a
+    passing `rejects_test`.
+
+    `gate_can_fail` above already requires every entry in `gates:` to name a
+    `rejects_test`, tier or no tier -- this gate is the narrower, tier-specific half
+    of B2's two promotion criteria (a passing kill-test AND a measured
+    false-positive rate under a stated ceiling, from `lib/gate_stats.py`): it exists
+    so the specific claim "this gate is safe to block merge" is checked on its own,
+    independent of `gate_can_fail`'s blanket rule, and survives even if a future
+    change ever loosens that blanket rule for advisory-tier entries. A gate that
+    cannot demonstrate it can fail must not be allowed to block.
+
+    A profile with no `gates:` entry declaring `tier: blocking` skips -- nothing to
+    check yet, the same reasoning `gate_can_fail` gives for an empty `gates:` list.
+    """
+    declared = profile.get("gates", []) or []
+    blocking = [g for g in declared if resolve_tier(g, profile, g.get("name", "")) == "blocking"]
+    if not blocking:
+        return GateResult("blocking_promotion", SKIP, "no gate declares tier: blocking")
+
+    failures: list[str] = []
+    for g in blocking:
+        name = g.get("name", "<unnamed>")
+        cmd = str(g.get("rejects_test", "")).strip()
+        if not cmd:
+            failures.append(f"{name}: tier: blocking but no rejects_test declared")
+            continue
+        try:
+            argv = shlex.split(cmd)
+            proc = subprocess.run(argv, capture_output=True, text=True)
+        except (ValueError, OSError) as exc:
+            failures.append(
+                f"{name}: tier: blocking but rejects_test {cmd!r} could not run ({exc})"
+            )
+            continue
+        if proc.returncode != 0:
+            failures.append(
+                f"{name}: tier: blocking but rejects_test {cmd!r} did not pass "
+                f"(exit {proc.returncode})"
+            )
+
+    if failures:
+        return GateResult(
+            "blocking_promotion", FAIL,
+            "; ".join(failures) + ". A gate that cannot demonstrate it can fail must not "
+            "be allowed to block merge -- demote to tier: advisory or fix the kill-test.",
+        )
+    return GateResult(
+        "blocking_promotion", PASS,
+        f"{len(blocking)} tier: blocking gate(s) each have a passing rejects_test",
+    )
 
 
 _DEFAULT_LONGRUN_GLOBS = ("benchmarks/**", "**/bench_*.py", "scripts/train_*.py")
@@ -902,6 +1003,7 @@ def _gate_plan(
         ("polarity", lambda: gate_polarity(changed, base, profile)),
         ("claude_contract", lambda: gate_claude_contract(changed, profile)),
         ("can_fail", lambda: gate_can_fail(profile)),
+        ("blocking_promotion", lambda: gate_blocking_promotion(profile)),
         ("longrun", lambda: gate_longrun(changed, profile)),
     ]
     if self_test:

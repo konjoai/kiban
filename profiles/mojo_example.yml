@@ -35,6 +35,16 @@ prove:
   enabled: false
   baseline: "none"
 
+# Adoption-Ramp-1 (B4): tier set explicitly -- same UNVERIFIED status as the rest of
+# this seeded example.
+polarity:
+  enabled: true
+  tier: advisory
+
+claude_contract:
+  enabled: true
+  tier: advisory
+
 killtest: true
 
 eval_corpus:
