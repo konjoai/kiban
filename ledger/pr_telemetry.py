@@ -54,6 +54,30 @@ Source = Literal["backfill", "live"]
 
 
 @dataclass
+class GateRunRecord:
+    """One gate's outcome for one PR telemetry record -- Adoption-Ramp-1.
+
+    The missing half of what the framework measured before this: kill-tests
+    (`konjo-eval`, `specialist_stats`) already measure whether a gate catches a
+    defect. Nothing measured what a gate *costs* -- `lib/gate_stats.py` is that
+    missing half, fed by the `gate_results` list this record type populates.
+
+    `overridden`/`waived` are the false-positive signal: a FAIL/WARN verdict a human
+    later reversed (a `gate:override` label + `Konjo-Override:` trailer for a
+    BLOCKING gate, or a `Konjo-*-Waived:` trailer for an advisory finding like
+    polarity's) means the gate's own verdict was wrong for that run, not that the
+    change was bad. `duration_s` is wall-clock cost, same unit `wall_clock` already
+    uses for the whole PR.
+    """
+
+    name: str = ""
+    verdict: str = ""  # PASS / WARN / FAIL / SKIP / ERROR -- konjo_gates_py.cli's own constants
+    duration_s: float | None = None
+    overridden: bool = False
+    waived: bool = False
+
+
+@dataclass
 class AstDelta:
     """Per-file-or-item AST classification for one merge commit's diff.
 
@@ -110,6 +134,24 @@ class PrTelemetryRecord:
     findings_raised: int | None = None
     findings_that_caused_a_change: int | None = None
     findings_later_contradicted: int | None = None
+    gate_results: list[GateRunRecord] = field(default_factory=list)
+
+    def add_gate_result(
+        self,
+        name: str,
+        verdict: str,
+        *,
+        duration_s: float | None = None,
+        overridden: bool = False,
+        waived: bool = False,
+    ) -> None:
+        """Append one gate's outcome (`lib/gate_stats.py`'s input shape)."""
+        self.gate_results.append(
+            GateRunRecord(
+                name=name, verdict=verdict, duration_s=duration_s,
+                overridden=overridden, waived=waived,
+            )
+        )
 
     def apply_plan_artifact(self, plan: dict[str, Any]) -> None:
         """Populate the plan-artifact-derived fields from a schema-valid plan artifact

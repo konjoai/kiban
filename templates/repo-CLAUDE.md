@@ -54,11 +54,16 @@ verified-date: <YYYY-MM-DD> -->
 
 ## Invariants
 
-<!-- Every bullet here names the gate that enforces it, or says ADVISORY explicitly.
-     gate_claude_contract fails a bullet that does neither -- an unenforced "invariant"
-     is a claim with no consumer. Example:
-     - No unwrap()/expect() outside tests (enforced: repo:clippy -D clippy::unwrap_used)
-     - No blocking I/O on async paths (ADVISORY -- no mechanical check yet) -->
+<!-- Every bullet here names the gate that enforces it AND that gate's tier
+     (Adoption-Ramp-1: BLOCKING blocks merge, ADVISORY reports and never blocks --
+     see .konjo/profile.yml's tier: fields and LEDGER.md for this repo's own
+     per-gate tier record). gate_claude_contract fails a bullet that names no
+     enforcing gate at all (or says neither ADVISORY nor names one) -- an
+     unenforced "invariant" is a claim with no consumer. A bullet with no
+     dedicated mechanical gate must still say so explicitly as ADVISORY
+     convention-only, not silently imply coverage it doesn't have. Example:
+     - No unwrap()/expect() outside tests (enforced: repo:clippy -D clippy::unwrap_used -- BLOCKING)
+     - No blocking I/O on async paths (ADVISORY -- no dedicated gate, convention only) -->
 
 ## Repo map
 

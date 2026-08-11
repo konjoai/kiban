@@ -135,9 +135,19 @@ killtest: true
 # no override: every real vectro `.claude/rules/*.md` file measured 0.00. What flips
 # this to blocking: vectro merging the proposed CLAUDE.md conversion. See LEDGER.md's
 # Claude-Contract-Ramp-1.
+# Adoption-Ramp-1 (B4): tier set explicitly rather than left on the schema default --
+# see profiles/squish.yml's identical note.
 claude_contract:
   enabled: true
+  tier: advisory
   advisory: true
+
+# G-POLARITY (K1): declared explicitly now for the same reason as claude_contract above
+# -- previously implicit (profile.get("polarity", {}) already defaulted to enabled,
+# tier: advisory). vectro has not been measured against this gate yet.
+polarity:
+  enabled: true
+  tier: advisory
 
 # Confirmed from konjo-gate.yml G2: tests run via cargo-nextest (Rust) and pytest (Python).
 verify_cmd: "cargo nextest run --workspace && python -m pytest tests/ -q"

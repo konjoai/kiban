@@ -1,4 +1,43 @@
 # profiles/lopi.yml
+# Authored in kiban (Phase 13, "The Authoring Gate"), re-verified field-by-field several
+# times since (Phase A3, Sprint S13R Phases B/D). Adoption-Ramp-1 (this sprint, B4):
+# re-verified again against the real `konjoai/lopi` `.konjo/profile.yml` as it stood after
+# that repo's own Gate-Tiering-1 sprint (Part A) merged, tier annotations added
+# throughout. Prior verification claims of "unedited"/"no field changed" did NOT hold --
+# see the drift table below, the exact class of failure the Phase 14 vectro pin-drift
+# finding (`NEXT_SESSION_PROMPT.md`) already named as a standing risk in this codebase.
+# State plainly: this file did NOT match `lopi/.konjo/profile.yml` before this edit.
+#
+# Drift found and fixed this sprint (Gate-Tiering-1 / Adoption-Ramp-1):
+#   1. `format_lint` here carried `npm-audit`; lopi's real profile deliberately excludes
+#      it (root has no package.json/lockfile -- konjo-gates' generic npm-audit dispatcher
+#      runs from the repo root and fails outright (ENOLOCK) rather than reporting a real
+#      finding; G1b already covers `web/` correctly with the right cwd). Removed here to
+#      match.
+#   2. `claude_contract: {advisory: false}` here claimed BLOCKING; lopi's real profile has
+#      no `claude_contract:` block at all (defaults to advisory). Corrected to match --
+#      this file's own prior claim did not reflect what actually ships in the consuming
+#      repo's own CI.
+#   3. `contract_gates` here was missing `function-length` and `indexing-floor` (added
+#      directly in lopi's own copy, Sprint S13R Phases B/D, since this session had no push
+#      access to kiban to land them upstream first -- exactly the drift risk a profile
+#      authored in kiban and copied, not symlinked, into the consuming repo creates).
+#      Added here to match. `gate-tiering` (this sprint) added too.
+#   4. `mutation: cargo-mutants` here would genuinely dispatch cargo-mutants through
+#      konjo-gates' generic net-new-line-diff mechanism -- lopi's real profile explicitly
+#      sets `mutation: "none — kept repo-native ..."` because that dispatch path is
+#      confirmed broken for cargo-mutants' own timing-carrying log output (every run
+#      "finds" net-new lines regardless of content, confirmed live on PR #184). Corrected
+#      to match; this was a live functional bug, not just a documentation drift.
+#   5. `packs:` existed here with no equivalent field in lopi's real profile (the running
+#      schema, `profiles/_schema.yml`, does not define a `packs:` field at all). Removed
+#      as dead config.
+#   6. `gates:` here had 3 entries (scope-assert, coverage-floor-ratchet, soft-gate-lint);
+#      lopi's real profile has 6 (adds function-length, indexing-floor, gate-tiering).
+#      Synced.
+#
+# Original kiban header follows, unedited:
+#
 # Reconciled against the real lopi repo (Phase 13, "The Authoring Gate"): konjoai/lopi was
 # added to the session read-only and cloned at `b93e68f` (main). Its actual state was read
 # (CLAUDE.md, .konjo/{kiban.ref,arch.toml,coverage-floor.txt,deny.toml,scripts/,hooks/},
@@ -18,62 +57,61 @@ stack:
   - rust
   - typescript
 
-packs:
-  - lang/rust
-  - lang/typescript
-
-# Confirmed from konjo-gate.yml's "static" job: `cargo fmt --all -- --check` and
-# `cargo clippy` (hard: 8 explicit -D flags incl. unwrap_used/expect_used/panic/todo/
-# dbg_macro, matching CLAUDE.md's "no unwrap()/expect() outside tests"). `npm audit` runs
-# in web/ under the separate "web-audit" job.
+# Confirmed from konjo-gate.yml's "static" job (BLOCKING tier, Gate-Tiering-1): `cargo fmt
+# --all -- --check` and `cargo clippy` (hard: 8 explicit -D flags incl. unwrap_used/
+# expect_used/panic/todo/dbg_macro, matching CLAUDE.md's "no unwrap()/expect() outside
+# tests"). `npm audit` deliberately excluded -- see drift note 1 above; it runs correctly
+# under lopi's own G1b job (ADVISORY tier), not through this dispatcher.
 format_lint:
-  - fmt-check
-  - clippy
-  - npm-audit
+  - fmt-check    # tier: blocking
+  - clippy       # tier: blocking
 
 # Reconciliation decision (recorded in full in LEDGER.md, "Lopi-Gate-Reconciliation-1"):
-# `cargo-audit` is genuinely PROMOTED this sprint (added to konjo-gates-py's generic
-# _TOOL_SCOPE/_TOOL_BIN dispatcher -- a real code change, not just a profile declaration,
-# since the mechanism to run it did not exist in kiban before this sprint).
+# `cargo-audit` is genuinely PROMOTED (added to konjo-gates-py's generic
+# _TOOL_SCOPE/_TOOL_BIN dispatcher -- a real code change, not just a profile declaration).
 #
 # Everything else below is KEPT REPO-NATIVE: still enforced by lopi's own
 # `.github/workflows/konjo-gate.yml`, which stays in place unchanged. Declaring these here
-# documents the enforcement kiban is aware of without silently dropping it (per Phase 0's
-# explicit instruction) and without kiban's dispatcher re-running it a second time --
-# exactly the precedent already set by `profiles/squish.yml` (`complexity-radon`,
-# `docs-interrogate-80`, `dry`, `file-size-500`, `coverage-80`) and `profiles/vectro.yml`
-# (`complexity`, `dry`, `file-size-500`, `rustdoc`, `cargo-audit` before this sprint wired
-# it), none of which konjo-gates' repo-native dispatcher can run either. A tool name here
-# that konjo-gates cannot run is not a claim that konjo-gates enforces it -- it is a record
-# that lopi's own CI still does, until a future sprint promotes the detector for real
-# (Non-goal for Phase 0: "improving any gate. This phase connects what exists.").
+# documents the enforcement kiban is aware of without silently dropping it and without
+# kiban's dispatcher re-running it a second time -- exactly the precedent already set by
+# `profiles/squish.yml` and `profiles/vectro.yml`, none of which konjo-gates' repo-native
+# dispatcher can run either. A tool name here that konjo-gates cannot run is not a claim
+# that konjo-gates enforces it -- it is a record that lopi's own CI still does.
+#
+# Tier annotations (Gate-Tiering-1, lopi's own `.konjo/scripts/gate_verdict.sh`): these
+# are lopi CI job tiers, not kiban `tier:` fields on this profile's own `gates:` entries
+# below -- konjo-gates has no dispatcher-level authority over lopi's `static`/`coverage`/
+# `complexity` jobs, it only documents what those jobs already enforce.
 contract_gates:
-  - cargo-audit          # G1: PROMOTED this sprint, real dispatcher support added
-  - cargo-deny           # G1: .konjo/deny.toml, kept repo-native (dispatcher-ready, unwired here on purpose -- see LEDGER)
-  - dead-code             # G1: RUSTFLAGS=-W dead_code, kept repo-native
-  - soft-gate-lint         # G1: .konjo/scripts/soft_gate_lint.py, kept repo-native
-  - scope-assert           # G1: .konjo/scripts/scope_assert.py, kept repo-native (lopi-specific term list)
-  - reachability           # G1: .konjo/scripts/reachability_check.py, kept repo-native, advisory
-  - coverage-80            # G2: cargo llvm-cov nextest --fail-under-lines 80, kept repo-native
-  - coverage-floor-ratchet # G2: .konjo/scripts/coverage_floor_check.py + .konjo/coverage-floor.txt, kept repo-native
-  - complexity             # G4: cognitive_complexity via clippy JSON, threshold 15, kept repo-native
-  - file-size-500          # G4: 500-line hard limit, kept repo-native
-  - dry                    # G4: .konjo/scripts/dry_check.py, threshold 0.85/20 lines, kept repo-native
-  - rustdoc                # G4: RUSTDOCFLAGS=-D missing_docs, kept repo-native
-  - unsafe-budget          # kiban-native, diff-only (already generic; genuinely active here)
+  - cargo-audit            # G1 static: BLOCKING. PROMOTED this sprint, real dispatcher support added
+  - cargo-deny             # G1 static: BLOCKING. .konjo/deny.toml, kept repo-native
+  - dead-code               # G1 static: BLOCKING. RUSTFLAGS=-W dead_code, kept repo-native
+  - soft-gate-lint           # G1 static: BLOCKING. .konjo/scripts/soft_gate_lint.py, kept repo-native
+  - scope-assert             # G1 static: BLOCKING. .konjo/scripts/scope_assert.py, kept repo-native, diff-scoped on PR (Gate-Tiering-1, A4)
+  - reachability             # G1 static: ADVISORY (continue-on-error already, pre-dates this sprint). .konjo/scripts/reachability_check.py, kept repo-native
+  - coverage-80              # G2 coverage: ADVISORY (Gate-Tiering-1, A3 -- demoted alongside its own ratchet). cargo llvm-cov nextest --fail-under-lines 80, kept repo-native
+  - coverage-floor-ratchet   # G2 coverage: ADVISORY (Gate-Tiering-1, A3 -- demoted, promotes back alongside coverage-80). .konjo/scripts/coverage_floor_check.py + .konjo/coverage-floor.txt, kept repo-native
+  - complexity               # G4 complexity: ADVISORY (Gate-Tiering-1, A1 -- whole job demoted). cognitive_complexity via clippy JSON, threshold 15, kept repo-native, diff-scoped on PR
+  - file-size-500            # G4 complexity: ADVISORY (whole job demoted). 500-line hard limit, kept repo-native
+  - dry                      # G4 complexity: ADVISORY (whole job demoted). .konjo/scripts/dry_check.py, threshold 0.85/20 lines, kept repo-native, diff-scoped on PR
+  - rustdoc                  # G4 complexity: ADVISORY (whole job demoted; already continue-on-error pre-sprint too). RUSTDOCFLAGS=-D missing_docs, kept repo-native
+  - function-length          # G4 complexity: ADVISORY (whole job demoted). .konjo/scripts/function_length_check.py + ceiling file, diff-scoped on PR
+  - indexing-floor           # G4 complexity: ADVISORY (whole job demoted). .konjo/scripts/indexing_floor_check.py + ceiling file, diff-scoped on PR
+  - unsafe-budget            # kiban-native, diff-only (already generic; genuinely active here; no lopi-side job tier -- this is a konjo-gates-only check)
 
-# Confirmed from konjo-gate.yml G3: `cargo mutants --in-diff <(git diff)`, survival <= 10%
-# on changed files. Kept repo-native for the percentage-survival reporting step; the
-# underlying tool is the same `cargo-mutants` konjo-gates already runs diff-scoped.
-mutation: cargo-mutants
+# Confirmed from konjo-gate.yml G3 (BLOCKING sub-step: mutation testing is a PR-only job,
+# not in lopi's own BLOCKING/ADVISORY split -- see that repo's LEDGER.md): `cargo mutants
+# --in-diff <(git diff)`, survival <= 10% on changed files. `none` is the field's own
+# documented escape hatch for "kept repo-native, not dispatched through konjo-gates" --
+# see drift note 4 above for why `cargo-mutants` (this file's prior value) was a live bug,
+# not just documentation. G3 already runs the real survival-rate check on lopi's own CI.
+mutation: "none — kept repo-native (G3's survival-rate gate); newonly's line-diff can't scope cargo-mutants' timing-carrying log output"
 
 # kiban-native review lanes. lopi's defect history (per .claude/rules/security.md's
 # sprint-cited lines, see LEDGER.md and Phase 5) is concentrated in exactly these shapes:
 # untrusted repo-supplied commands reaching exec (ownership/error-handling), unbounded
 # subprocess environments (error-handling), webhook signature verification (api-surface),
-# and the orchestrator's concurrent agent pool (concurrency). Order follows the same
-# lang/rust + _base convention as profiles/vectro.yml (no cassettes recorded yet for lopi,
-# so no ordering constraint is broken by picking this now).
+# and the orchestrator's concurrent agent pool (concurrency).
 specialists:
   - ownership-lifetimes
   - error-handling
@@ -81,45 +119,54 @@ specialists:
   - concurrency
   - api-surface
 
-# No perf-prove claim for lopi in this sprint -- Phase 13's non-goals explicitly exclude
-# any performance claim ("a perf claim needs a konjo-prove MERGE verdict"). Left disabled
-# rather than guessing a baseline.
+# No perf-prove claim for lopi -- a perf claim needs a konjo-prove MERGE verdict. Left
+# disabled rather than guessing a baseline.
 prove:
   enabled: false
 
-# G-POLARITY (K1): lopi is adopting this gate for the first time -- ships advisory (WARN,
-# not FAIL) per the standard adoption ramp, so the existing baseline can be cleaned up
-# before flipping to blocking in a follow-up sprint.
+# G-POLARITY (K1): lopi is adopting this gate for the first time -- ships tier: advisory
+# (WARN, not FAIL) per the standard adoption ramp, so the existing baseline can be cleaned
+# up before promoting. `advisory: true` kept alongside `tier:` as the explicit legacy
+# alias -- both resolve to the same thing (resolve_tier checks `tier:` first).
 polarity:
   enabled: true
+  tier: advisory
   advisory: true
 
-# Phase 14, Phase 4: the standing-violation measurement this sprint ran
-# (lib.claude_contract.check_contract against lopi's real CLAUDE.md, cloned at
-# 773cbea/PR #184) found ZERO violations -- Sprint S13R, Phase A already converted
-# lopi's CLAUDE.md to the full section contract with every invariant bullet naming its
-# enforcing gate. Flipped to blocking here rather than left on the org-wide advisory
-# default: there is no existing-content baseline to break, so blocking costs lopi
-# nothing today and catches a real regression (a future edit that drops a section or
-# adds an unenforced "hard rule" bullet) the moment it happens instead of silently.
-# `citation_ratio` needs no override -- every one of lopi's real `.claude/rules/*.md`
-# files measured well under the 0.5 majority-incident-log threshold this sprint
-# (highest: security-sinks.md at 0.25), so the rules-file half of this gate was
-# already clean under the default. See LEDGER.md's Claude-Contract-Ramp-1.
-claude_contract:
-  enabled: true
-  advisory: false
+# claude_contract: deliberately NOT declared here (drift note 2 above) -- lopi's real
+# profile has no claude_contract: block, so this gate runs at its schema default
+# (tier: advisory) for lopi. `gate_claude_contract`'s own measurement (Phase 14) found
+# lopi's CLAUDE.md genuinely clean against the section contract, but "clean today" is not
+# the same claim as "promoted to blocking" -- promoting a gate the consuming repo's own
+# profile never opted into would itself be exactly the kind of drift this file's rewrite
+# is fixing, not a decision to make silently from the kiban side.
 
-# G-CAN-FAIL (K1): lopi already has real, named, passing rejects_test scripts for three of
-# its repo-native checks -- pointing at them here gives G-CAN-FAIL real teeth immediately,
-# with zero new detector code.
+# G-CAN-FAIL (K1): lopi has real, named, passing rejects_test scripts for six of its
+# repo-native checks -- pointing at them here gives G-CAN-FAIL and the new
+# gate_blocking_promotion meta-gate (Adoption-Ramp-1, B2) real teeth immediately, with
+# zero new detector code. None of these are declared `tier: blocking` here (lopi's own CI
+# is the actual enforcement point for each; this profile documents, it doesn't gate a
+# second time) -- gate-tiering itself is exactly the kind of gate that COULD promote once
+# it accrues enough recorded runs (lib/gate_stats.py) with a low false-positive rate.
 gates:
   - name: scope-assert
     rejects_test: ".konjo/scripts/test_scope_assert_killtest.sh"
+    tier: advisory
   - name: coverage-floor-ratchet
     rejects_test: ".konjo/scripts/test_coverage_floor_killtest.sh"
+    tier: advisory
   - name: soft-gate-lint
     rejects_test: ".konjo/scripts/test_soft_gate_lint_killtest.sh"
+    tier: advisory
+  - name: function-length
+    rejects_test: ".konjo/scripts/test_function_length_killtest.sh"
+    tier: advisory
+  - name: indexing-floor
+    rejects_test: ".konjo/scripts/test_indexing_floor_killtest.sh"
+    tier: advisory
+  - name: gate-tiering
+    rejects_test: ".konjo/scripts/test_gate_tiering_killtest.sh"
+    tier: advisory
 
 # Phase 13, Phase 3: lifted verbatim from the `paths:` front-matter already prototyped in
 # lopi's `.claude/rules/security.md` -- one declaration now serves both the CLAUDE.md rules

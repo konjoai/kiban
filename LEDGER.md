@@ -8,6 +8,119 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Adoption-Ramp-1: `tier:` concept, promotion criteria, meta-gate, ramp shipped in templates
+
+Sprint "Gate Tiering and the Adoption Ramp", Part B. Companion to `konjoai/lopi`'s
+`Gate-Tiering-1` (Part A): that sprint gave lopi's own `konjo-gate.yml` a BLOCKING/
+ADVISORY tier split so quality tooling stopped blocking merges on legacy findings and
+tooling bugs. This sprint gives the org-wide framework the same ramp, so the failure
+mode does not have to be independently rediscovered and fixed per-repo across squish,
+vectro, and every future repo.
+
+### B1 — `tier` in the profile schema
+
+`profiles/_schema.yml` gains `gates[].tier`, `polarity.tier`, `claude_contract.tier`:
+`"blocking"` or `"advisory"`, default `"advisory"`. The pre-existing `advisory: bool`
+flags on `polarity`/`claude_contract` are kept working as aliases (`resolve_tier` in
+`packages/konjo-gates-py/src/konjo_gates_py/cli.py`: `tier:` on the gate's own
+sub-block wins first, then a matching `gates:` entry's `tier:`, then the legacy
+`advisory:` bool, then the default). `gate_polarity` and `gate_claude_contract`'s
+previously independent `WARN if advisory else FAIL` hard-codes now both route through
+one shared `_tier_verdict` helper. `defaults.yml` documents the org-wide
+`default_tier: advisory`.
+
+### B2 — the missing half: what a gate costs, not just what it catches
+
+The framework already measured whether a gate catches a defect (`konjo-eval`,
+`specialist_stats`, kill-tests). It never measured what a gate costs. Two new pieces:
+
+- `ledger/pr_telemetry.py` gains `GateRunRecord` (name, verdict, duration_s,
+  overridden, waived) and `PrTelemetryRecord.gate_results` / `add_gate_result()`.
+- `lib/gate_stats.py` (mirrors `lib/specialist_stats.py`'s shape): aggregates
+  `gate_results` across all recorded PR telemetry into per-gate
+  `BLOCKING_READY` / `ADVISORY_ONLY` / `INSUFFICIENT_DATA` tags, driven by a
+  false-positive rate (overridden-or-waived verdicts as a fraction of all non-PASS
+  verdicts) against a stated ceiling (default 5%) over a sample floor (default 20
+  runs).
+- A new `gate_blocking_promotion` meta-gate in `konjo-gates` (wired into `_gate_plan`
+  right after `can_fail`) fails outright if any `gates:` entry declares
+  `tier: blocking` without a passing `rejects_test` — a gate that cannot demonstrate
+  it can fail must not be allowed to block. This is deliberately narrower than
+  `gate_can_fail`'s pre-existing blanket "every declared gate needs a rejects_test"
+  rule: it is the tier-specific half of the two promotion criteria (passing kill-test
+  AND a measured false-positive rate under ceiling), checked as its own claim so it
+  survives independent of whether `gate_can_fail`'s blanket rule ever loosens for
+  advisory-tier entries.
+
+`gate_stats.py` cannot itself verify a kill-test passes (it only has recorded
+telemetry) — the two checks are deliberately split, matching the two-part promotion
+criteria: `gate_blocking_promotion` is the mechanical check, `gate_stats.compute`'s
+`BLOCKING_READY` tag is the measurement check. Promoting a gate requires a human (or a
+future automation) to read both, not either alone.
+
+### B3 — the ramp in templates
+
+- `templates/repo-profile.yml` (kept in sync with `profiles/_template.yml`, a
+  pre-existing duplicate pair): every gate scaffolds `tier: advisory` with a comment
+  stating the promotion criteria.
+- `templates/repo-ci.yml`: gains the `gate:override` break-glass (label +
+  `Konjo-Override:` trailer requirement) as a final step. Not restructured into a
+  multi-job flat-`needs:` aggregator the way lopi's `konjo-gate.yml` is — this
+  template was already a single `gates` job, and `tier:` resolution already lives
+  *inside* the single `konjo-gates` invocation (`resolve_tier`/`_tier_verdict` map
+  `tier: blocking` to FAIL and the driver only treats FAIL/ERROR as blocking), so the
+  BLOCKING/ADVISORY split is free for any repo starting from this template. lopi
+  needed a standalone `gate_verdict.sh` only because its `konjo-gate.yml` predates
+  `tier:` and reconciles eight already-separate CI jobs after the fact.
+- `templates/repo-CLAUDE.md`: the Invariants section comment now requires each bullet
+  to name both its enforcing gate and that gate's tier, not just the gate.
+
+### B4 — backfill, and a drift finding
+
+`profiles/lopi.yml` did **not** match `konjoai/lopi`'s real `.konjo/profile.yml`
+before this sprint — the exact class of failure the Phase 14 vectro pin-drift finding
+(`NEXT_SESSION_PROMPT.md`) already named as a standing risk in this codebase, now
+confirmed live for lopi too. Six concrete drifts found and fixed (full detail in
+`profiles/lopi.yml`'s own header comment):
+
+1. `format_lint` here carried `npm-audit`; lopi's real profile deliberately excludes
+   it (root has no lockfile; the dispatcher would fail outright, ENOLOCK).
+2. `claude_contract: {advisory: false}` here claimed BLOCKING; lopi's real profile has
+   no `claude_contract:` block at all (defaults to advisory) — a real behavioral
+   drift, not just documentation.
+3. `contract_gates` was missing `function-length` and `indexing-floor` (added
+   directly in lopi's own copy, Sprint S13R Phases B/D, for lack of kiban push
+   access at the time).
+4. `mutation: cargo-mutants` here would genuinely dispatch cargo-mutants through
+   konjo-gates' generic newonly-diffing path — confirmed broken for cargo-mutants'
+   timing-carrying log output (every run "finds" net-new lines regardless of
+   content, live on PR #184). Lopi's real profile correctly sets `mutation: "none —
+   ..."`. This was a live functional bug, not a documentation gap.
+5. `packs:` existed here with no equivalent field in the current schema. Dead config,
+   removed.
+6. `gates:` had 3 entries here vs. lopi's real 6 (missing function-length,
+   indexing-floor, gate-tiering).
+
+Rewritten to match, with `tier:` annotations added throughout documenting lopi's own
+per-job BLOCKING/ADVISORY split (`static`/`coverage`'s test-pass step BLOCKING;
+everything else ADVISORY) even though konjo-gates has no dispatcher-level authority
+over those repo-native CI jobs — this profile only documents what lopi's own CI
+enforces, per the pre-existing `contract_gates` convention.
+
+`profiles/squish.yml`, `profiles/vectro.yml` gain explicit `tier: advisory` on
+`polarity`/`claude_contract` (previously implicit via the schema default — same
+values, now visible on read). `profiles/ts_example.yml` / `profiles/mojo_example.yml`
+(seeded, UNVERIFIED examples, no real repo piloted) gain the same, at the same
+UNVERIFIED status as the rest of those files.
+
+### What was NOT done
+
+No gate deleted or weakened. No profile's resolved behavior changed except the three
+real drifts fixed in `profiles/lopi.yml` (items 1, 2, 4 above) — items 3, 5, 6 are
+additive/cleanup, not behavior changes for anything that already ran. `.konjo/kiban.ref`
+in lopi is bumped in a separate follow-up PR, per the brief's own ordering, only after
+this Part B lands and a release is cut.
+
 ## Review-Pipeline-Phase-2b: sections 1, 3, 4 shipped and verified; PF-0b resumes the baseline per-crate
 
 **Sprint P2b (`KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing what P2

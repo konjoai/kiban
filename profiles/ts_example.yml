@@ -33,6 +33,16 @@ prove:
   enabled: false
   baseline: "UNVERIFIED-no-bench"
 
+# Adoption-Ramp-1 (B4): tier set explicitly (UNVERIFIED, same status as every other
+# field in this seeded example -- no real repo to measure a promotion against yet).
+polarity:
+  enabled: true
+  tier: advisory
+
+claude_contract:
+  enabled: true
+  tier: advisory
+
 killtest: true
 
 verify_cmd: "TODO-confirm-against-repo"   # UNVERIFIED: e.g. "npm test"
