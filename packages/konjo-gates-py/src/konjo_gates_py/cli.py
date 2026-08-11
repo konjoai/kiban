@@ -590,10 +590,15 @@ def gate_blocking_promotion(profile: dict) -> GateResult:
             argv = shlex.split(cmd)
             proc = subprocess.run(argv, capture_output=True, text=True)
         except (ValueError, OSError) as exc:
-            failures.append(f"{name}: tier: blocking but rejects_test {cmd!r} could not run ({exc})")
+            failures.append(
+                f"{name}: tier: blocking but rejects_test {cmd!r} could not run ({exc})"
+            )
             continue
         if proc.returncode != 0:
-            failures.append(f"{name}: tier: blocking but rejects_test {cmd!r} did not pass (exit {proc.returncode})")
+            failures.append(
+                f"{name}: tier: blocking but rejects_test {cmd!r} did not pass "
+                f"(exit {proc.returncode})"
+            )
 
     if failures:
         return GateResult(
