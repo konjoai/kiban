@@ -9,6 +9,11 @@
   konjo-doc-staleness trailer --docs F [F ...]
       Print the Konjo-Doc-Verified commit trailer for this set of re-verified docs — the
       fingerprint is oneway.fingerprint(docs), the same scheme every other trailer uses.
+
+  konjo-doc-staleness project-scan --cortex-dir DIR [--json]
+      Check every projected Cortex page under DIR (one *.md per scope, `scope:` front
+      matter) against the live Ledger: a page is stale if its `projected-at` predates the
+      newest event now on record for that page's scope. Exits 1 if any page is stale.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ _KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_KIBAN_ROOT) not in sys.path:
     sys.path.insert(0, str(_KIBAN_ROOT))
 
+from ledger.engine import Ledger  # noqa: E402
 from lib import doc_staleness, oneway  # noqa: E402
 
 
@@ -53,6 +59,34 @@ def cmd_trailer(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_project_scan(args: argparse.Namespace) -> int:
+    cortex_dir = pathlib.Path(args.cortex_dir)
+    ledger = Ledger()
+    newest_by_scope: dict[str, str] = {}
+    for d in ledger._fold():
+        cur = newest_by_scope.get(d.scope)
+        if cur is None or d.date > cur:
+            newest_by_scope[d.scope] = d.date
+
+    results = []
+    for path in sorted(cortex_dir.glob("*.md")):
+        fm, _ = doc_staleness.parse_front_matter(path.read_text(encoding="utf-8"))
+        scope = fm.get("scope") if fm else None
+        newest = newest_by_scope.get(str(scope)) if scope else None
+        results.append(doc_staleness.check_projection(path, newest_event_at=newest))
+
+    if args.json:
+        print(json.dumps([r.__dict__ for r in results], indent=2))
+    else:
+        for r in results:
+            print(f"[{r.verdict}] {r.path} — {r.reason}")
+        n_fail = sum(1 for r in results if r.verdict == doc_staleness.FAIL)
+        n_ok = sum(1 for r in results if r.verdict == doc_staleness.OK)
+        print(f"\n{n_ok} OK, {n_fail} FAIL ({len(results)} pages scanned)")
+
+    return 1 if any(r.verdict == doc_staleness.FAIL for r in results) else 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="konjo-doc-staleness")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -68,6 +102,11 @@ def main(argv: list[str]) -> int:
     p_trailer = sub.add_parser("trailer", help="print the Konjo-Doc-Verified trailer")
     p_trailer.add_argument("--docs", nargs="+", required=True)
     p_trailer.set_defaults(func=cmd_trailer)
+
+    p_project = sub.add_parser("project-scan", help="check projected Cortex pages vs. the Ledger")
+    p_project.add_argument("--cortex-dir", required=True)
+    p_project.add_argument("--json", action="store_true")
+    p_project.set_defaults(func=cmd_project_scan)
 
     args = parser.parse_args(argv)
     return args.func(args)

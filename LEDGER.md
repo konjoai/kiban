@@ -8,6 +8,134 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Skis-Reach-1: `konjo-skis` gets created, `decide` deliberately doesn't join it
+
+**One-way door, conditional on a real kill-test, and it passed.** Sprint K1's
+Phase 3 brief was explicit: `konjo-skis` only gets created if KT-4 (does a
+CLI-free skill variant answer correctly with no local binary) actually
+passes, and the corpus/questions had to be written before Phase 3 began so
+the test could not be quietly rescoped to guarantee a pass. It passed: a
+standalone, stdlib-only retriever run in a subprocess with `PATH` stripped of
+every kiban binary and `HOME` pointed at a directory with no `.konjo`
+answered a real recall question correctly, citing the source page's own
+`projected-at` freshness stamp. Full run against all 30 of Phase 0's
+questions scored 25/30 (83.3%), with the 5 misses analyzed in
+`.konjo/killtests/CortexSkis/KT-4.md` -- a naive keyword-overlap ceiling, not
+a mechanism bug (two real bugs of that kind were found and fixed live while
+building it: a superseded decision can out-rank its active replacement on
+raw token overlap, not just tie with it, when the superseded block's literal
+phrasing happens to overlap the query more).
+
+**`recall` and `longrun` ported; `decide`, despite the lowest CLI-ref count
+after `longrun` in Phase 0's own audit table, deliberately did not.** The
+audit ranked skills by how many lines mention a `konjo-*` binary or
+`$HOME/.konjo` -- a proxy for "how much text needs rewriting," not for
+"whether the skill's core function survives losing the CLI." `recall`'s core
+function is a read; strip the CLI and it becomes "read markdown and reason
+over it instead of running a search command" -- a real, working substitute,
+proven by KT-4. `decide`'s core function is a Ledger *write*
+(`konjo-decision decide`), and this sprint's own stated, deliberately
+unsolved constraint (see `Cortex-Projection-1` below) is that writes stay
+laptop-only -- there is no read-only substitute for logging a new decision.
+Porting `decide` to a CLI-free plane would ship a skill that cannot do the
+one thing it exists to do on any surface it was built for, which is worse
+than not shipping it: a skill that fails loudly by not existing is better
+than one that fails silently by pretending to log something it can't. Full
+reasoning and the promote/exclude table for all 8 skills:
+`konjo-skis/README.md`.
+
+**`konjo-skis` is staged inside `kiban`'s own repo this sprint, not yet a
+separately published location.** No tool available in this session's toolset
+can perform the actual claude.ai account-skill upload -- that is a manual
+step in claude.ai's own settings, same blocker class as the `konjo-cortex`
+repo creation below. `konjo-skis/README.md` also records why it is a
+separate plane rather than a flag on the existing `plugins/konjo/skills/`
+family: two files with two distinct dependency shapes, not one file with an
+`if-cli-available` branch nobody is forced to keep in sync -- the exact
+failure mode `Doc-Integrity-Gate-1` already found and fixed once, the hard
+way, for `konjo-ship`.
+
+## Cortex-Projection-1: the read model that reaches past the M3, and the retrieval tier it does not need
+
+**One-way door: `konjo-cortex` (private, personal account) becomes a second
+place kiban's own decision history is legible, and the projection format
+(`decays: state`, `projected-at`, `source-events`) is now load-bearing for
+`lib/doc_staleness.check_projection`.** The Konjo Ledger's JSONL stream
+(`ledger/schema.md`) was already the right substrate -- append-only,
+event-sourced, supersede chains structural rather than statistical. It
+reached exactly one machine. This sprint adds a derived, read-only markdown
+fold (`lib/cortex.py`) rather than replacing anything: the JSONL stream stays
+canonical, cortex is never written to except by the fold, and no consuming
+repo's gates, profiles, or language packages changed.
+
+**KT-1 (retrieval) was run before any index was built, per its own stop
+rule, and it fired.** The claim under test was "semantic retrieval beats
+`konjo-decision search` on real recall questions" -- the threshold was a
+>= 20-point absolute top-3 hit-rate win for embeddings over the better
+keyword baseline. Real dense embeddings (`fastembed`, `BAAI/bge-small-en-v1.5`,
+not a TF-IDF stand-in), scored against 30 questions over a 30-topic corpus
+transcribed from this file's own real history: keyword search 100.0%, rg
+over the projection 100.0%, embeddings 93.3% -- **6.7 points worse, not 20
+points better.** Cortex stays markdown. `recall`'s portable variant
+(`Skis-Reach-1`) reads the projection directly rather than an index. The
+retrieval tier is deleted from the roadmap, not deferred -- this is recorded
+as a negative result on purpose, per the brief's own instruction, because a
+prior stated up front ("one-line decisions with explicit supersede links are
+close to the worst case for embeddings") predicted exactly this outcome, and
+predicting a negative result and then measuring it anyway is what makes the
+measurement worth trusting.
+
+**No real `~/.konjo/state/ledger/decisions.jsonl` exists anywhere reachable
+from this repo or any container it runs in** -- confirmed at sprint kickoff,
+this is not a claim taken on faith. KT-1's own method calls for 30 questions
+"written before looking at the corpus," which assumes a corpus already
+exists somewhere to look at. Wes chose (asked directly, not decided by the
+agent): build the corpus by transcribing kiban's own real, already-public
+`LEDGER.md` decisions into the Ledger's event schema, rather than fabricating
+synthetic content or leaving KT-1 unattempted.
+`evals/fixtures/ledger/gen_k1_corpus.py`'s module docstring names exactly
+which content is real (every `decision`/`rationale` string) and which is
+synthetic scaffolding (a small number of predecessor events, needed to give
+the corpus a supersede chain or a redact target where `LEDGER.md` records
+only the outcome of a change, not the original entry as its own dated
+record). True blind separation between corpus author and question author was
+not achievable in one session performing both roles -- recorded as a
+limitation in `.konjo/killtests/CortexSkis/KT-1.md`, not hidden, with the
+mitigation used (paraphrased natural questions, realistic rather than
+reverse-engineered keyword baselines) stated plainly.
+
+**KT-2 (projection fidelity) passed exact-match**: a synthetic chain (decide
+A, supersede A->B, supersede B->C, redact unrelated D) folds to show C active
+with the full A->B->C chain and every field preserved, D excluded from
+active but visible in Retired with its reason, and a second fold of the same
+unchanged stream is byte-identical to the first -- not just structurally
+equivalent, `==` on the string. This is deliberate design, not luck:
+`projected-at` is the newest source event's own timestamp, a property of the
+data, never wall-clock time, so nothing about re-running the fold can
+introduce a diff on its own.
+
+**KT-3 (does a Claude Code routine reach a cortex page) is blocked, not
+failed, and not silently skipped.** The `konjo-cortex` repository does not
+exist -- `mcp__github__create_repository` returned 403 "Resource not
+accessible by integration" on every attempt, a permissions gap in the GitHub
+App installation this session runs under (no account-level repo-creation
+scope), not a transient failure a retry fixes. Everything KT-3 needs once
+the repo exists is built and tested: the fold command, `--all-scopes
+--out-dir`, the `project-scan` staleness gate. `NEXT_SESSION_PROMPT.md`
+carries the exact three commands to finish Phase 2 and actually run KT-3.
+Reporting this as blocked rather than quietly declaring Phase 2 complete is
+the same discipline PF-0b's `bench_results/` non-comprehensiveness note and
+Review-Pipeline-Phase-2b's KT-D-still-blocked report already established in
+this file: an incomplete verification is reported as incomplete.
+
+**Known constraint, unchanged on purpose**: writes are still laptop-only.
+`konjo-decision decide` needs the CLI and the local state dir; a decision
+made from the phone cannot be logged from the phone. The brief's own
+non-goals name every obvious fix (a server, moving `decisions.jsonl` off the
+M3) as explicitly out of scope -- fixing it would cost the property that
+makes the projection worth building in the first place, a read model with no
+server behind it.
+
 ## Adoption-Ramp-1: `tier:` concept, promotion criteria, meta-gate, ramp shipped in templates
 
 Sprint "Gate Tiering and the Adoption Ramp", Part B. Companion to `konjoai/lopi`'s

@@ -295,3 +295,51 @@ def test_doc_verified_trailer_roundtrip() -> None:
     msgs = f"docs: re-verify state docs\n\n{trailer}\n"
     assert doc_staleness.find_doc_verified(msgs, fp)
     assert not doc_staleness.find_doc_verified("no trailer here", fp)
+
+
+# ---------------------------------------------------------------------------
+# check_projection -- event-clocked staleness for projected Cortex pages
+# ---------------------------------------------------------------------------
+
+
+def _cortex_page(tmp_path: Path, projected_at: str) -> Path:
+    p = tmp_path / "org.md"
+    p.write_text(
+        f"---\ndecays: state\nscope: org\nprojected-at: {projected_at}\n"
+        "source-events:\n  - abc123\n---\n\n# Cortex\n"
+    )
+    return p
+
+
+def test_projection_fresh_when_projected_at_matches_newest_event(tmp_path: Path) -> None:
+    page = _cortex_page(tmp_path, "2026-07-20T12:00:00Z")
+    check = doc_staleness.check_projection(page, newest_event_at="2026-07-20T12:00:00Z")
+    assert check.verdict == doc_staleness.OK
+
+
+def test_projection_stale_when_newer_event_landed(tmp_path: Path) -> None:
+    page = _cortex_page(tmp_path, "2026-07-20T12:00:00Z")
+    check = doc_staleness.check_projection(page, newest_event_at="2026-07-25T09:00:00Z")
+    assert check.verdict == doc_staleness.FAIL
+    assert "stale projection" in check.reason
+
+
+def test_projection_ok_when_scope_has_no_events_yet(tmp_path: Path) -> None:
+    page = _cortex_page(tmp_path, "2026-07-20T12:00:00Z")
+    check = doc_staleness.check_projection(page, newest_event_at=None)
+    assert check.verdict == doc_staleness.OK
+
+
+def test_projection_missing_stamp_fails(tmp_path: Path) -> None:
+    page = tmp_path / "org.md"
+    page.write_text("---\ndecays: state\nscope: org\n---\n\n# Cortex\n")
+    check = doc_staleness.check_projection(page, newest_event_at="2026-07-20T12:00:00Z")
+    assert check.verdict == doc_staleness.FAIL
+    assert "no projected-at stamp" in check.reason
+
+
+def test_projection_non_state_decays_is_skip(tmp_path: Path) -> None:
+    page = tmp_path / "org.md"
+    page.write_text("---\ndecays: reference\nscope: org\n---\n\n# Cortex\n")
+    check = doc_staleness.check_projection(page, newest_event_at="2026-07-20T12:00:00Z")
+    assert check.verdict == doc_staleness.SKIP

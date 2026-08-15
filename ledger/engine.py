@@ -205,6 +205,10 @@ class Ledger:
                 return d
         return None
 
+    def scopes(self) -> list[str]:
+        """Every distinct scope with at least one decide/supersede event, sorted."""
+        return sorted({d.scope for d in self._fold()})
+
     def search(self, query: str, scope: str | None = None) -> list[Decision]:
         """Substring/keyword search over decision + rationale, active-first.
 
