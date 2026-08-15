@@ -7,7 +7,9 @@ user-invocable: true
 <!-- konjo-skill-size-ok: K1 added two checklist commands (konjo-gates polarity,
 konjo-can-fail) replacing one self-graded line, net +1 line over the prior cap-exact 80.
 Trimming further would cut the reasoning for why those replaced a self-graded line,
-which is the point of the change. Recorded one-way door. -->
+which is the point of the change. Sprint K1 (cortex projection) added one more
+conditional line refreshing the Cortex read model, since a sprint that logs decisions
+but never re-folds them leaves the read model silently stale. Recorded one-way door. -->
 # Konjo Ship
 
 ## Self-update preamble (run first)
@@ -33,6 +35,9 @@ A sprint is not complete until every one of these is true:
 [ ] No doc *this sprint touched* asserts a capability state that contradicts the code
 [ ] konjo-gates polarity — clean, or every finding waived on the record
 [ ] Every quality gate this sprint touched has a test that makes it reject
+[ ] If this sprint logged any decide/supersede/redact: konjo-decision project
+    --all-scopes --out-dir <cortex clone>, commit, push — a Ledger write this sprint
+    made and never re-folded leaves Cortex silently stale
 [ ] git add && git commit -m "type(scope): description" && git push
 ```
 

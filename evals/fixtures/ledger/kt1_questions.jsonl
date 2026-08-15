@@ -1,0 +1,30 @@
+{"n": 1, "question": "Did we ever decide to keep konjo-ship and the other konjo-* skills copied per-repo, or does one shared copy own them now?", "keywords": "per-repo copy", "answer_id": "d468d391308e"}
+{"n": 2, "question": "What trailer do we use to mark that a state doc's staleness check was re-verified this sprint?", "keywords": "Konjo-Doc-Verified", "answer_id": "a321d003d5cc"}
+{"n": 3, "question": "If a review specialist times out or crashes mid-PR, does the merge still go green?", "keywords": "block the merge", "answer_id": "48aa4a0b7344"}
+{"n": 4, "question": "How many times does a failed review specialist get retried before we give up and block the PR?", "keywords": "failed review specialist", "answer_id": "64fe3d77b069"}
+{"n": 5, "question": "Is there an actual org-philosophy doc backing the 'forward never back' phrase we keep citing?", "keywords": "KONJO_FORWARD.md", "answer_id": "20d9f48abc1e"}
+{"n": 6, "question": "Who owns keeping lopi's CI checks running -- kiban's gate framework or lopi itself?", "keywords": "profiles/lopi.yml", "answer_id": "51f8caf2726d"}
+{"n": 7, "question": "Do we have a mechanism for classifying trust-boundary risk (auth, secrets, subprocess exec) at brief time?", "keywords": "konjo-threat", "answer_id": "49e2eb946173"}
+{"n": 8, "question": "Is the new fixture generator a blocking CI gate or just a reporting step?", "keywords": "gen_fixtures", "answer_id": "0746d97b6bef"}
+{"n": 9, "question": "Did lopi's security-rule citations to old sprints actually get turned into enforceable learnings?", "keywords": "through konjo-learn", "answer_id": "a9085f554881"}
+{"n": 10, "question": "For squish and vectro's gate sets, what's the plan for what to promote, keep, or drop?", "keywords": "promote/keep/delete", "answer_id": "5d00b03c048a"}
+{"n": 11, "question": "Is squish and vectro's second-wall CI actually enforcing anything, or just running?", "keywords": "is decorative", "answer_id": "2cbc4a80f002"}
+{"n": 12, "question": "How much of the eight-class defect taxonomy can genfixtures.py classify without a human?", "keywords": "taxonomy classes mechanically", "answer_id": "89ce75192867"}
+{"n": 13, "question": "Did shrinking the context window actually reduce incidental bugs in the lopi trial, or was the result a wash?", "keywords": "measured null", "answer_id": "6c831122e47f"}
+{"n": 14, "question": "Do we have any tooling that takes a task description in and produces a real diff out, for measurement purposes?", "keywords": "task in, diff out", "answer_id": "3042228a2bfe"}
+{"n": 15, "question": "Before building the review-pipeline gate, did we check the plan's assumptions against real telemetry first?", "keywords": "backfill it against real history", "answer_id": "dd7db1848ee0"}
+{"n": 16, "question": "Which half of the Planner/Executor plan-artifact work belongs to kiban versus lopi?", "keywords": "Planner/Executor handoff", "answer_id": "903fc05d2898"}
+{"n": 17, "question": "Of the four review-pipeline Phase 2 sections, which one actually shipped this round and which got pushed to later?", "keywords": "mutation-feedback formatter", "answer_id": "99ecdb6cb61b"}
+{"n": 18, "question": "Were there real bugs in the benchmark runner found while collecting the mutation baseline, and did we fix them or route around them?", "keywords": "lib/bench.py bugs", "answer_id": "c3af4bf9a6e6"}
+{"n": 19, "question": "Does the AST-diff tool report real source line numbers now, or an approximation?", "keywords": "real syn spans", "answer_id": "0c120a137c69"}
+{"n": 20, "question": "Why would the mutation-hunt loop find zero mutants to fix on every round if it isn't scoped correctly?", "keywords": "diff_base_ref", "answer_id": "3f6ab459ba14"}
+{"n": 21, "question": "Does the mutation-hunt skill run automatically on every push to lopi, or does someone have to trigger it?", "keywords": "workflow_dispatch only", "answer_id": "29f48d433a2c"}
+{"n": 22, "question": "Is the task-to-diff measurement harness a throwaway script or something future sprints keep depending on?", "keywords": "task-to-diff harness", "answer_id": "6811a08cb6cf"}
+{"n": 23, "question": "Can a profile mark an individual gate as blocking versus advisory now, separate from the whole polarity/contract flags?", "keywords": "tier field", "answer_id": "9e438baf38c6"}
+{"n": 24, "question": "How do we know when a gate has earned the right to actually block merges instead of just warning?", "keywords": "what a gate costs", "answer_id": "08dd69c5b66d"}
+{"n": 25, "question": "Is the check for 'can this gate ever fail' the same mechanism as the check for 'has this gate earned blocking status', or two separate gates?", "keywords": "gate_blocking_promotion", "answer_id": "2466f9cd4eeb"}
+{"n": 26, "question": "Right now, does the CLAUDE.md contract gate actually block merges for lopi, or is it still just advisory there?", "keywords": "blocking for lopi", "answer_id": "d4a5709925d0"}
+{"n": 27, "question": "Does the sprint-close checklist still ask someone to self-certify that there's no dead code left?", "keywords": "zero dead code", "answer_id": "47e23b2fe749"}
+{"n": 28, "question": "How many independent passes does the live review gate run per PR by default today?", "keywords": "runs=3 instead of runs=1", "answer_id": "4d26cb337b09"}
+{"n": 29, "question": "Was there ever a fallback plan for getting line numbers if the syn span approach didn't pan out, and is it still in play?", "keywords": "line-number approximation", "answer_id": "9552b0a690c4"}
+{"n": 30, "question": "Did we manage to mechanically classify the external-input taxonomy class the same way as the other seven, or did that one stay manual?", "keywords": "raw_index_external_input", "answer_id": "b75046fe0b29"}

@@ -341,6 +341,62 @@ def check_sections(
     return results
 
 
+def check_projection(
+    path: Path, *, newest_event_at: str | None, repo_root: Path | None = None
+) -> DocCheck:
+    """Staleness for a projected Cortex page -- event-clocked, not git-clocked.
+
+    A projected page's `decays: state` front matter carries `projected-at` (the
+    newest source event's own timestamp at fold time, per `lib.cortex.render_scope`)
+    instead of `verified-against`/`verified-date`. The whole-document `state` check
+    above answers "how many commits/days behind HEAD is this doc"; that question is
+    meaningless for a page that lives in a different repo (`konjo-cortex`) than the
+    Ledger it was folded from. The question that *is* meaningful: has a newer event
+    landed in this scope since the page was last folded? `newest_event_at` is the
+    caller's answer to that, computed by the caller from the live Ledger
+    (`Ledger._fold()`'s max date for the scope) -- this function stays Ledger-agnostic
+    so it can be unit-tested without a live stream.
+    """
+    rel = str(path.relative_to(repo_root)) if repo_root and path.is_absolute() else str(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return DocCheck(rel, FAIL, f"unreadable: {exc}")
+
+    fm, _ = parse_front_matter(text)
+    if fm is None:
+        return DocCheck(rel, SKIP, "no decays: front matter; not a projected page")
+    decays_raw = fm.get("decays")
+    if decays_raw != STATE:
+        return DocCheck(rel, SKIP, f"no recognized decays: value ({decays_raw!r})")
+    projected_at = fm.get("projected-at")
+    if not projected_at:
+        return DocCheck(rel, FAIL, "projected page has no projected-at stamp", STATE)
+    if isinstance(projected_at, datetime):
+        # YAML's timestamp resolver turns an ISO-8601 scalar into a datetime object;
+        # normalize back to the Ledger's own `date` string format so the lexical
+        # comparison below compares like with like.
+        projected_at = projected_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    else:
+        projected_at = str(projected_at)
+
+    if newest_event_at is None:
+        return DocCheck(
+            rel, OK, "no events recorded in this scope yet", STATE, verified_against=projected_at
+        )
+
+    # ISO-8601 UTC timestamps (the Ledger's own `date` format) sort lexically.
+    if projected_at < newest_event_at:
+        return DocCheck(
+            rel, FAIL,
+            f"stale projection: projected-at {projected_at!r} predates the newest "
+            f"event in scope ({newest_event_at!r})",
+            STATE, verified_against=projected_at,
+        )
+    return DocCheck(rel, OK, "projection is at least as new as the newest event in scope",
+                     STATE, verified_against=projected_at)
+
+
 def doc_verified_trailer(fp: str) -> str:
     """The commit trailer CI reads: `Konjo-Doc-Verified: <fingerprint>`.
 

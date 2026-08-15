@@ -4,6 +4,108 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-08-15
+
+Sprint K1 ("Cortex Projection and Skis Reach"): two problems, one substrate.
+The org memory (the Konjo Ledger's JSONL stream) reached exactly one machine
+-- the M3 it's written on. Every skill in `plugins/konjo/skills/` is CLI-bound,
+so none of them work on the phone or in a fresh cloud routine. This sprint
+adds a read-only markdown projection of the Ledger (Cortex) and, gated on a
+real kill-test, a small portable skill set (`konjo-skis`) that reads it. See
+`LEDGER.md`'s `Cortex-Projection-1` and `Skis-Reach-1` entries for full
+reasoning; `.konjo/killtests/CortexSkis/KT-1.md` through `KT-4.md` for every
+kill-test's raw output.
+
+**Headline numbers:**
+- KT-1 (retrieval): keyword search 100.0%, rg-over-projection 100.0%,
+  real dense embeddings (fastembed/bge-small) 93.3%, top-3 hit rate over 30
+  real recall questions. Embeddings lost by 6.7 points, not won by 20 --
+  **stop rule applied, no retrieval index was built.**
+- KT-2 (projection fidelity): **PASS**, exact active-set match, full
+  supersede chain visible with no field loss, byte-identical on re-fold.
+- KT-3 (cloud-session reach): **blocked this sprint** -- the `konjo-cortex`
+  repo did not exist yet when this sprint's work was ready to ship (GitHub
+  App integration lacks account-level repo-creation permission, a 403 not a
+  retriable error). See `NEXT_SESSION_PROMPT.md` for the exact three
+  commands that finish Phase 2 once the repo exists.
+- KT-4 (portable skill viability): **PASS**, 25/30 (83.3%) on the KT-1 sweep,
+  100% on the literal no-CLI subprocess proof. 2 of 8 skills ported
+  (`recall`, `longrun`); `decide` was deliberately excluded despite a low
+  CLI-ref count -- its core function is a Ledger *write*, and writes stay
+  laptop-only this sprint (unchanged, stated non-goal).
+
+### Added
+
+- **`lib/cortex.py`**: folds `Ledger._fold()`'s output into one markdown page
+  per scope. Active decisions first, prior supersede-chain members rendered
+  inline with full fields preserved, redacted decisions excluded from active
+  but kept (with their reason) in a Retired section. Idempotent by
+  construction: `projected-at` is the newest source event's own timestamp,
+  never wall-clock time, so re-folding an unchanged stream produces
+  byte-identical markdown -- verified against both the unit fixture
+  (`tests/test_cortex.py`) and the full 30-topic KT-1 corpus.
+- **`konjo-decision project`** subcommand (`bin/konjo-decision`,
+  `ledger/engine.py`'s new `Ledger.scopes()`): `--scope <s> [--out F]` for one
+  page, `--all-scopes --out-dir D` for every scope in the stream.
+- **`lib/doc_staleness.check_projection`** + **`konjo-doc-staleness
+  project-scan --cortex-dir D`**: event-clocked staleness for projected
+  pages, distinct from the existing git-commit-clocked `state` check --
+  meaningless to ask "how many commits behind HEAD" of a page that lives in
+  a different repo than the Ledger it was folded from. A page is stale once
+  a newer event lands in its scope than the timestamp stamped on the page.
+  Caught one real bug while building it: YAML's front-matter parser
+  round-trips an ISO-8601 `projected-at` scalar into a `datetime` object, not
+  a string, silently breaking the lexical date comparison until normalized
+  back to the Ledger's own string format.
+- **`plugins/konjo/skills/konjo-ship/SKILL.md`**: one conditional checklist
+  line -- a sprint that logs any decide/supersede/redact re-folds and pushes
+  Cortex before shipping, or the read model goes silently stale.
+- **`konjo-skis/`** (staged in this repo, not yet a separate published
+  location -- see Non-goals): `recall` and `longrun`, CLI-free variants of
+  two of kiban's eight skills, gated on KT-4 actually passing before this
+  directory was allowed to exist. `recall`'s portable variant reads a Cortex
+  page and reasons over the whole thing rather than keyword-matching a
+  single line -- KT-4 found live that a naive keyword script mis-ranks a
+  superseded decision over its active replacement when the superseded one's
+  literal phrasing happens to overlap the query more; an LLM reading the
+  full small page does not have that failure mode, the same shape of
+  conclusion KT-1 reached from the retrieval side.
+- **`evals/fixtures/ledger/`**: `gen_k1_corpus.py` (deterministic,
+  sha1-id'd), transcribing 30 of kiban's own real `LEDGER.md` decisions into
+  the Ledger's event schema -- no real `~/.konjo/state/ledger/decisions.jsonl`
+  exists anywhere reachable from this repo or any container it runs in, so
+  the corpus is built from kiban's own history rather than fabricated.
+  `kt1_questions.jsonl` (30 questions, written from the corpus's own
+  content since true blind authorship wasn't achievable in one session --
+  recorded as a limitation in `KT-1.md`, not hidden). `run_kt1.py`,
+  `kt4_portable_recall.py`, `run_kt4.py`.
+
+### Changed
+
+- `.gitignore`: `evals/fixtures/ledger/kt1_projected_scope.md` (derived
+  output, regenerated on demand -- committing it made kiban's own
+  `konjo-doc-staleness scan` FAIL it against the generic git-commit-clocked
+  `state` check, which is the wrong check for a projected page; the correct
+  one is `project-scan`, exercised against the fixture corpus directly, not
+  against a copy committed in kiban's own tree).
+
+### Non-goals held, and one blocked
+
+- No embeddings, no vector index, no retrieval server -- KT-1's stop rule
+  fired for real, not hypothetically; the retrieval tier is deleted from the
+  roadmap, not deferred.
+- No gate, critic, or router shipped.
+- Writes still laptop-only. Not fixed this sprint, as scoped -- see
+  `LEDGER.md`.
+- `decide` deliberately not ported to `konjo-skis` -- see `konjo-skis/README.md`.
+- **`konjo-cortex` repo creation, its first push, GitHub connector
+  registration, and KT-3 are blocked pending manual repo creation** -- the
+  GitHub App integration this session runs under returned 403 (no
+  account-level repo-creation permission) on every attempt. Everything that
+  does not require the repo to exist yet (the fold mechanism, the staleness
+  gate, the portable skills, all four kill-tests' underlying mechanisms) is
+  built, tested, and real. See `NEXT_SESSION_PROMPT.md`.
+
 ## [1.15.0] - 2026-08-11
 
 Sprint "Gate Tiering and the Adoption Ramp", Part B (Adoption-Ramp-1) -- companion to
