@@ -104,7 +104,7 @@ def main() -> None:
     q_texts = [q["question"] for q in questions]
     q_vecs = np.array(list(model.embed(q_texts)))
 
-    results = {"search": [], "rg": [], "embedding": []}
+    results: dict[str, list[bool]] = {"search": [], "rg": [], "embedding": []}
     rows = []
     for i, q in enumerate(questions):
         answer = q["answer_id"]
