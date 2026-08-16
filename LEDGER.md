@@ -114,19 +114,35 @@ equivalent, `==` on the string. This is deliberate design, not luck:
 data, never wall-clock time, so nothing about re-running the fold can
 introduce a diff on its own.
 
-**KT-3 (does a Claude Code routine reach a cortex page) is blocked, not
-failed, and not silently skipped.** The `konjo-cortex` repository does not
-exist -- `mcp__github__create_repository` returned 403 "Resource not
-accessible by integration" on every attempt, a permissions gap in the GitHub
-App installation this session runs under (no account-level repo-creation
-scope), not a transient failure a retry fixes. Everything KT-3 needs once
-the repo exists is built and tested: the fold command, `--all-scopes
---out-dir`, the `project-scan` staleness gate. `NEXT_SESSION_PROMPT.md`
-carries the exact three commands to finish Phase 2 and actually run KT-3.
-Reporting this as blocked rather than quietly declaring Phase 2 complete is
-the same discipline PF-0b's `bench_results/` non-comprehensiveness note and
-Review-Pipeline-Phase-2b's KT-D-still-blocked report already established in
-this file: an incomplete verification is reported as incomplete.
+**KT-3 (does a Claude Code routine reach a cortex page) is still blocked, on
+a different and more specific gap than last time -- reported as blocked, not
+guessed at as a pass.** The prior blocker (the `konjo-cortex` repository not
+existing) is fixed: it was created by hand outside the GitHub App's
+repo-creation scope (private, personal account, `wesleyscholl/konjo-cortex`),
+and `repo-kiban.md` (the real `repo:kiban` Cortex page, folded from the K1
+fixture corpus) plus `README.md` are pushed to `main` (`8aef317`). Running
+KT-3 for real then surfaced the actual blocker: a Claude Code routine created
+via `create_trigger`/`create_new_session_on_fire` gets **zero MCP connector
+tools by default** -- confirmed by the tool's own returned warning and by the
+fired session's `allowed_tools` list containing no `mcp__` entries at all --
+and no GitHub connector is registered under this account's claude.ai Settings
+at all (`ListConnectors` confirmed, twice). Since `konjo-cortex` is private
+(confirmed via the GitHub API), the fired session's only other candidate
+route -- unauthenticated `WebFetch` of the raw file -- also 404s. The fired
+session (`session_013TsakpgNVYDBg7VaC3iuSM`) did complete a real turn (real
+token usage, not an instant error), but this reporting session had no tool
+able to retrieve its verbatim transcript to confirm what it actually
+answered -- `ListAgents`, `SendMessage` (by id and by title), and
+`list_sessions` (filtered and unfiltered) all failed to surface it, and
+`WebFetch` against its `claude.ai/code` URL is outside that tool's stated
+authenticated-fetch exceptions. Declaring PASS on the session's green IDLE
+status alone is exactly the failure mode KT-3's own stop rule exists to
+prevent, so this is reported BLOCKED with the transcript left for a human to
+read directly, not guessed at either way. Full writeup, including every
+avenue tried and the two concrete next steps (register a GitHub connector
+and grant it repo access, or accept that "private repo, zero setup" is a
+real tension in the sprint's own design and resolve it directly):
+`.konjo/killtests/CortexSkis/KT-3.md`.
 
 **Known constraint, unchanged on purpose**: writes are still laptop-only.
 `konjo-decision decide` needs the CLI and the local state dir; a decision
