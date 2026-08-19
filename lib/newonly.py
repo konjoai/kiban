@@ -180,7 +180,13 @@ def _findings_at_base(ref: str, scanner: list[str]) -> set[str] | None:
     which would flag every HEAD-side finding as net-new.
     """
     if _worktree_supported():
-        tmp = tempfile.mkdtemp(prefix="konjo-newonly-")
+        # realpath, not the raw mkdtemp() string: a subprocess run with cwd=<path> always
+        # reports its own getcwd() fully resolved, so when the platform temp dir sits
+        # behind a symlink (e.g. macOS's /tmp -> /private/tmp), the scanner's absolute-path
+        # output is rooted at the resolved path while the raw mkdtemp() string still has
+        # the symlink component -- _normalize's prefix strip then silently misses, and
+        # every pre-existing finding on an untouched file looks net-new again.
+        tmp = os.path.realpath(tempfile.mkdtemp(prefix="konjo-newonly-"))
         try:
             if not _git_ok(["worktree", "add", "--quiet", "--detach", tmp, ref]):
                 return None

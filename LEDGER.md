@@ -8,6 +8,46 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Cortex-Ordering-1: pages read by `decided_at`, not append order -- `date` stays the sole clock for `projected-at`
+
+K4's human read (`Real-Data-1` Finding 5) flagged that Cortex pages order by `date`
+(append time), so backdated seed content reads out of chronological order. This closeout
+(v1.19.1) picked the fix: **`lib/cortex.py`'s `render_scope` now orders decisions by
+`decided_at`, falling back to `date`** (the fallback is already resolved one layer down,
+in `ledger/engine.py`'s `_fold()` -- every `Decision` carries a real `decided_at`, never
+empty, so the sort key needs no second fallback of its own).
+
+Two options were on the table, not one:
+
+- **`decided_at` order (chosen).** Reads chronologically as a history -- what a reader
+  actually wants from a decision log. Cost: the page reorders when a backdated event
+  lands, so the fold produces a larger diff than the one appended line.
+- **Keep `date` order, render `decided` prominently.** Diffs stay minimal and
+  append-shaped. Cost: the reader does the sorting by hand.
+
+`decided_at` order is the better read and the worse diff. Cortex pages are read far more
+often than they are diffed (their entire purpose is `recall`-path lookup, not
+change-review), so that trade favors the better read. This is a projection-format
+decision, not a bug fix -- recorded here rather than folded into a changelog line.
+
+**`date` is untouched and must stay untouched.** `_newest_event_at` (which stamps
+`projected-at`) still keys off `.date`, not `.decided_at`. `projected-at` and
+`lib/doc_staleness.check_projection`'s staleness check depend on `date` being monotonic
+with append order (`Real-Data-1` Finding 2 already established why `decided_at` cannot
+carry that job). Ordering the *page body* by `decided_at` while `projected-at` keeps
+clocking off `date` are two independent uses of the same event; conflating them was the
+mistake to avoid here, not a hypothetical one -- it is exactly what "simplify to one
+field" would do.
+
+Idempotency confirmed mechanically, not just by inspection: `tests/test_cortex.py`'s new
+`test_ordering_by_decided_at_stays_idempotent` folds a scope with a backdated and a
+same-day event twice and asserts byte-identical output, alongside
+`test_pages_order_by_decided_at_not_append_order` asserting the backdated one renders
+first. Both pass. The real Ledger (laptop-only, `Real-Data-1` Finding 3) was not
+re-folded from this session -- this container has no access to it -- so the actual
+`org.md`/`repo-*.md` pages in `konjo-cortex` still reflect append order until the next
+session re-runs the fold on the machine that holds the real state.
+
 ## Real-Data-1: P-0 splits into seed and capture, the Ledger folds for real, and KT-1's threshold turns out to be unreachable
 
 **Finding 1: P-0's threshold measured the wrong thing, and meeting it proves
