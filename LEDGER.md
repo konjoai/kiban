@@ -103,19 +103,37 @@ alternative is now quoted. An existing test asserted the old ambiguous form
 (`"Postgres, flat files"` for two separate alternatives) and was updated, not
 weakened -- the assertion had been pinning the bug.
 
-**Finding 6: the published skill's refusal is the useful half of the
-verification.** `recall` and `longrun` are uploaded to claude.ai account Skills.
-Asked a real question on a fresh chat surface, `recall` loaded, found no read
-path, and **refused to answer** -- citing its own `recall.read-path` section and
-naming the correct remediation. It did not report "no record", which would have
-been the damaging failure and is precisely what `recall.redacted-vs-absent`
-exists to prevent. That is a genuine behavioural pass on the hardest thing to get
-right. It is **not** an end-to-end pass: content correctness and the
-`projected-at` citation on real data remain unverified, because a plain chat
-surface carries no GitHub repository integration -- consistent with `KT-3`'s
-finding that every routine is *handed* its repositories. The remaining step is a
-phone read or a configured routine, and it is recorded as open rather than
-rounded up.
+**Finding 6: both halves of the recall contract were verified, and the fix from
+Finding 5 is what made the good half correct.** `recall` and `longrun` are
+uploaded to claude.ai account Skills. Two runs, covering the two failure modes
+that matter. **On a surface that cannot read Cortex** (a plain claude.ai chat,
+which carries no GitHub repository integration -- consistent with `KT-3`'s
+finding that routines are *handed* their repositories), `recall` loaded, found no
+read path, and **refused**, citing its own `recall.read-path` section and naming
+the remediation. It did not report "no record", which would have been the
+damaging failure and is exactly what `recall.redacted-vs-absent` exists to
+prevent. **On a surface that can** (a Claude Code session with private repo
+access, reading the pushed clone), it answered correctly and with a dated basis:
+`428f078209d4`, `decided` 2026-07-27, confidence 8/10, no supersede chain, both
+rejected alternatives, the later Telegram entry's explicit contrast against it,
+and `projected-at` `2026-08-19T15:01:48Z`. Every field checks against the stream.
+The citation is current rather than stale -- it equals the newest `repo:lopi`
+event's own timestamp, and the second fold left it untouched because those
+captures were `repo:kiban` scope, which is the idempotency `lib/cortex.py`'s
+module docstring claims by construction and had never been observed on real
+content.
+
+The detail worth keeping: that run read **both** alternatives as two distinct
+options. Before Finding 5's quoting fix they would have rendered as
+`leave CREATE TABLE IF NOT EXISTS in place forever for a table nothing writes,
+build a real migration system first` -- one comma-joined run-on, from which no
+reader could recover that two separate options were rejected. A defect found by
+reading a page as a human, fixed the same day, and the recall run is precisely
+where it would have cost something. That is the argument for keeping the human
+read as a required phase rather than trusting the gates.
+
+The path remains untested on the phone as a *form factor*; the read path it would
+use is the one this run exercised.
 
 ## Skis-Contract-1: skis contract shipped and gated, KT-3 disposed, three findings recorded, P-0 checked a third time
 

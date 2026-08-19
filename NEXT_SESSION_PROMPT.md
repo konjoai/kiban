@@ -69,8 +69,15 @@ settled.
 4. **`kt7-answer` is deleted.** Verified fully merged, then deleted from the
    local clone. `konjo-cortex` now has `main` only. Nothing left to do here.
 
-5. **`konjo-skis` is published.** `recall` and `longrun` are in claude.ai account
-   Skills under author "You". The upload question is closed.
+5. **`konjo-skis` is published and verified end to end on real data.** `recall`
+   and `longrun` are in claude.ai account Skills under author "You". Both halves
+   of the recall contract were checked: on a surface with no repo access it
+   correctly **refused** (cited its own read-path section, did not report "no
+   record"); on a session with private repo access it answered correctly from
+   the pushed pages -- `428f078209d4`, decided 2026-07-27, confidence 8/10, no
+   chain, both rejected alternatives, and a current `projected-at`
+   (`2026-08-19T15:01:48Z`). **Don't re-run this to "confirm" it.** The only
+   thing untested is the phone as a form factor, using the same read path.
 
 6. **Two pre-existing test failures are not yours and not new.** 3 failures in
    `konjo-newonly` / rust-gate absolute-path handling were present on a clean
@@ -83,19 +90,7 @@ Nothing mechanical blocks it -- the CLI works, the path is real, the fold and
 push are automatic. What is missing is the habit. Log a call when you take one,
 during the work, not in post-flight.
 
-**2. Finish the end-to-end read on a surface that can actually reach Cortex.**
-K4 published the skills and confirmed `recall` behaves correctly when it *can't*
-read (it refused, cited its read-path section, and named the remediation rather
-than reporting "no record"). What is still unverified on real data: content
-correctness and the `projected-at` citation. A plain claude.ai chat has no GitHub
-repository integration, so it cannot do this -- use the phone, or a routine with
-`konjo-cortex` in its Repositories field (`KT-3` proved that path works). One
-question whose answer lives in the newly seeded content, e.g. *"what did we
-decide about lopi's `github_installations` table, and what was rejected?"* --
-the answer should name the `DROP TABLE` call, the retained-dead alternative, and
-a `projected-at` date.
-
-**3. Two recorded readability defects, neither fixed.** Both from K4's human read
+**2. Two recorded readability defects, neither fixed.** Both from K4's human read
 (`Real-Data-1` Finding 5). (a) The two pre-existing `ONEWAY-ACK` events carry
 shell-quoting debris in `rationale` -- a truncated `chore:` fragment -- meaning
 the one-way-door hook interpolates an unescaped commit message into the field.

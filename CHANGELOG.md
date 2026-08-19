@@ -66,17 +66,30 @@ corpus is a better fixture, not real usage. Reported as two numbers, permanently
   cloud tooling; one command from the machine.
 - **`konjo-skis` published: yes.** `recall` and `longrun` both uploaded to
   claude.ai account Skills and listed under author "You".
-- **Phone/fresh-surface verification: INCOMPLETE, and the failure is informative.**
-  The published `recall` skill loaded and fired on a fresh claude.ai chat, then
-  **correctly refused to answer**: it reported no read path, cited its own
-  `recall.read-path` section, and named the right remediation (a routine with
-  `konjo-cortex` in Repositories, or a local clone). It did not collapse "no
-  access" into "no record", which is exactly what the `recall.redacted-vs-absent`
-  contract section exists to prevent. What that run does **not** verify is
-  content correctness or the `projected-at` citation on real data. A plain chat
-  surface carries no GitHub repository integration, consistent with `KT-3`'s
-  finding that routines are *handed* their repositories. Still open, for the
-  phone or a configured routine.
+- **End-to-end verification on real data: PASS**, across two runs that together
+  cover both halves. **Run 1 (fresh claude.ai chat, no repo access): correctly
+  refused.** `recall` loaded, found no read path, cited its own
+  `recall.read-path` section, and named the right remediation -- it did not
+  collapse "no access" into "no record", which is what
+  `recall.redacted-vs-absent` exists to prevent. **Run 2 (Claude Code session
+  with private repo access, reading the pushed clone): correct and dated.**
+  Asked what was decided about lopi's `github_installations` table, it named
+  `428f078209d4`, `decided` 2026-07-27, confidence 8/10, no supersede chain,
+  **both** rejected alternatives as two distinct options, the cross-reference
+  from the later Telegram entry (`6a1031919420`) that contrasts itself against
+  this one, and cited `projected-at` `2026-08-19T15:01:48Z`. Every field checks
+  against the stream, and the citation is **current, not stale**: it equals the
+  newest `repo:lopi` event's own timestamp, unchanged by the second fold because
+  that fold's captures were `repo:kiban` scope -- cortex's documented
+  idempotency-by-construction. This is the first end-to-end run on real content:
+  laptop write, fold, push, separate-session read. The one thing still untested
+  is the phone as a form factor; the path it would use is the same one Run 2
+  exercised.
+- **Reading alternatives correctly in Run 2 is the Phase 2 fix proving itself.**
+  Before the quoting change, `428f078209d4`'s two alternatives rendered as one
+  comma-joined string and a reader could not have seen that two options were
+  rejected. The defect was found by reading a page as a human, and the recall run
+  is where it would have cost something.
 
 **Also this sprint:**
 - `decided_at` joins the event schema as a distinct field. `date` keeps its
