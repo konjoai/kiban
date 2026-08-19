@@ -8,6 +8,168 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Kiban-Adoption-Enforcement-Audit-1: 42 real gate steps classified, not 43, and vectro's 16 are worse than any of them
+
+Cross-repo sprint scope: `lopi`, `vectro`, `squish`, `kohaku`, `squash`. Full brief and
+scan in `wesleyscholl/konjo-cortex`'s sprint doc for this session. Phase 3 was a
+read-only classification of every `continue-on-error: true` occurrence across the five
+repos' CI gate workflows -- verdict DELIBERATE (tiered advisory with a stated reason),
+STALE (meant to be temporary, never revisited), or UNKNOWN (no rationale found anywhere:
+inline comment, workflow header, LEDGER, or CHANGELOG).
+
+**The brief's headline number was off by one, and the reason matters.** "43" came from a
+raw `grep -c 'continue-on-error: true'` per repo, which counts the string wherever it
+appears -- including inside prose comments *describing* the convention, not just actual
+YAML directives. lopi's `konjo-gate.yml` has 2 such comment-only matches, kohaku's has 1.
+The real count of actual step/job directives: lopi 11, squish 10, kohaku 8, squash 11 =
+**42**. squash also carries 2 more real directives outside `konjo-gate.yml`
+(`nightly.yml:85` OSV-Scanner, `deploy.yml:67` deployment health check) that a
+`konjo-gate.yml`-only grep would miss entirely -- squash's true repo-wide total is 13, not
+11. Recorded here rather than silently reported as "43" because the miscount itself is an
+instance of the pattern this whole sprint is about: a number nobody checked against the
+actual mechanism.
+
+vectro was audited too but its 16 continue-on-error lines are **not** counted in the
+42/43 -- the brief's headline figure was scoped to the four repos without a documented
+tiering mechanism at the time, and vectro was a late add. Reported separately below.
+
+### Full classification
+
+| Repo | Workflow | Line | Step | Verdict | Evidence |
+|---|---|---|---|---|---|
+| lopi | konjo-gate.yml | 120 | clippy pedantic (advisory) | DELIBERATE | inline comment 113-119: "ADVISORY BY DESIGN... kept permanently soft" |
+| lopi | konjo-gate.yml | 206 | Reachability check (advisory) | DELIBERATE | inline comment 192-205: "ADVISORY BY DESIGN — Sprint F0" |
+| lopi | konjo-gate.yml | 363 | Coverage gate (80%/95%) | DELIBERATE | comment 341-362 "KNOWN DEBT, verified 2026-08-11 (Gate-Tiering-1)"; lopi LEDGER.md `Gate-Tiering-1` |
+| lopi | konjo-gate.yml | 406 | Coverage floor (never regress) | DELIBERATE | comment 388-405, same Gate-Tiering-1 citation |
+| lopi | konjo-gate.yml | 677 | Documentation gate (rustdoc) | DELIBERATE | comment 657-676 "KNOWN DEBT, verified 2026-07-29 (Sprint S13R Phase B)", named owner + target date |
+| lopi | konjo-gate.yml | 720 | fuzz job | DELIBERATE | comment 701-719 "KNOWN DEBT, verified 2026-07-27", explicit next step to remove |
+| lopi | konjo-gate.yml | 852 | Install anthropic SDK | DELIBERATE | inline comment 846-851: "ADVISORY BY DESIGN: legitimately safe to soft-fail" |
+| lopi | konjo-gate.yml | 863 | Generate diff | DELIBERATE | inline comment 856-862, same framing |
+| lopi | konjo-gate.yml | 876 | Run Konjo Adversarial Review | DELIBERATE | inline comment 870-875, same framing |
+| lopi | konjo-gate.yml | 902 | Post review comment to PR | DELIBERATE | same-line comment: "ADVISORY BY DESIGN: cosmetic UX only" |
+| lopi | konjo-gate.yml | 944 | Fail if BLOCKER verdict | DELIBERATE | comment 927-943 "ADVISORY BY DESIGN — Gate-Tiering-1: demoted from a hard block" |
+| squish | konjo-gate.yml | 29 | ruff lint | UNKNOWN | no rationale anywhere |
+| squish | konjo-gate.yml | 32 | ruff format | UNKNOWN | no rationale anywhere |
+| squish | konjo-gate.yml | 35 | vulture — dead code | UNKNOWN | no rationale anywhere |
+| squish | konjo-gate.yml | 38 | bandit — security | UNKNOWN | no rationale anywhere |
+| squish | konjo-gate.yml | 59 | Run tests with coverage | STALE | CHANGELOG.md v9.34.3: acknowledged broken (report never written), superseded by a new job, never removed |
+| squish | konjo-gate.yml | 68 | Coverage gate | STALE | same CHANGELOG.md citation |
+| squish | konjo-gate.yml | 102 | Run mutation testing | UNKNOWN | nearby comment explains a `timeout` implementation detail only, not the advisory tier |
+| squish | konjo-gate.yml | 126 | Complexity gate | UNKNOWN | no rationale anywhere |
+| squish | konjo-gate.yml | 165 | DRY check | UNKNOWN | no rationale anywhere |
+| squish | konjo-gate.yml | 178 | Documentation gate | UNKNOWN | no rationale anywhere |
+| kohaku | konjo-gate.yml | 43 | cargo audit | UNKNOWN | only generic header framing, not individually named |
+| kohaku | konjo-gate.yml | 46 | cargo deny | UNKNOWN | same |
+| kohaku | konjo-gate.yml | 49 | dead code (Rust) | UNKNOWN | same |
+| kohaku | konjo-gate.yml | 69 | vulture | UNKNOWN | same |
+| kohaku | konjo-gate.yml | 113 | Run mutation testing | DELIBERATE | workflow header 3-8 explicitly names "complexity, mutation" as the debt being cleared, revisit plan stated |
+| kohaku | konjo-gate.yml | 127 | Rust complexity | DELIBERATE | same header citation |
+| kohaku | konjo-gate.yml | 130 | Python complexity | DELIBERATE | same header citation |
+| kohaku | konjo-gate.yml | 147 | Rustdoc | UNKNOWN | header names only complexity/mutation, not this step |
+| squash | konjo-gate.yml | 29 | ruff lint | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 32 | ruff format | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 35 | vulture — dead code | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 38 | bandit — security | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 59 | Run tests with coverage | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 68 | Coverage gate | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 102 | Run mutation testing | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 121 | Complexity gate | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 138 | File size gate | UNKNOWN | no rationale; the one repo of the four where the 500-line gate itself is soft |
+| squash | konjo-gate.yml | 154 | DRY check | UNKNOWN | no rationale anywhere |
+| squash | konjo-gate.yml | 167 | Documentation gate | UNKNOWN | no rationale anywhere |
+| squash | nightly.yml | 85 | OSV-Scanner | UNKNOWN | no inline comment; no CHANGELOG mention |
+| squash | deploy.yml | 67 | Verify deployment health | UNKNOWN | CHANGELOG notes the pipeline shape, not why the health check is non-blocking |
+
+**Counts (the 42/43 scope): DELIBERATE 14 (lopi 11, kohaku 3) · STALE 2 (squish 2) ·
+UNKNOWN 26 (squish 8, kohaku 5, squash 13).**
+
+### vectro, reported separately
+
+All 16 of vectro's `continue-on-error: true` lines in `konjo-gate.yml` (fmt, clippy,
+audit, deny, dead code, ruff lint/format, vulture, Rust+Python coverage, mutation,
+Rust+Python complexity, file size, DRY, rustdoc) are **UNKNOWN** -- vectro has no
+`LEDGER.md`, no inline comments, and no CHANGELOG rationale for any of them. Functionally
+vectro's Wall 2 can only fail on a setup step crashing before a check runs; its CLAUDE.md's
+claim that this gate "blocks the merge" on coverage/complexity/DRY does not hold as
+currently wired. Not part of this sprint's fix scope (vectro is parked, see
+`Kiban-Vectro-Dormancy-1` in the same repo's decision trail), but worth flagging as the
+most permissive gate of the five by a wide margin, for whoever unparks it.
+
+### What this means for Finding 3
+
+Finding 3 (`Skis-Contract-1`) said a gate ships BLOCKING, or ADVISORY with a stated and
+dated reason -- anything else isn't really a gate. By that standard, of the 42 counted
+here, only 14 (33%) are real gates in their advisory form; the other 28, plus vectro's 16,
+are just off. **squish is the launched, publicly distributed project** (`pip install
+squish-ai`) and its lint (`ruff check`), format (`ruff format --check`), and dead-code
+(`vulture`) checks are all three UNKNOWN-tier soft-fails,
+contradicting squish's own CLAUDE.md, which claims Wall 1 "blocks the commit" on exactly
+these three -- true only for a contributor who runs the pre-commit hook and doesn't pass
+`--no-verify`; CI never re-enforces it. **squash is the UNKNOWN-heaviest repo**: all 13 of
+its real directives, with zero rationale anywhere, including a non-blocking post-deploy
+health check (`deploy.yml:67`) that is a genuine silent-failure risk independent of the
+Konjo framework question.
+
+## Kiban-Vectro-Dormancy-1: consumer list after the v1.19.0 adoption pass
+
+Companion to `Kiban-Adoption-Enforcement-Audit-1` -- kiban owns the consumer list, so the
+outcome of this sprint's pin-bump and adoption phases is recorded here, not only in each
+consuming repo.
+
+**Pin status after this sprint:**
+
+| Repo | Before | After | Mechanism |
+|---|---|---|---|
+| lopi | v1.14.0 (5 behind) | v1.19.0 (current) | `git clone --branch`, PR #203 |
+| vectro | v1.1.0 / v1.1.5 (disagreed) | v1.1.5 (reconciled, still 18 behind) | `pip install kiban @ git+...`, PR #113. Deliberately not bumped to current -- vectro has had no commits since 2026-07-11 and is parked; see `CHANGELOG.md`'s `[Unreleased]` note in that repo for the pre-conditions to bump for real |
+| squish | not a consumer | not a consumer | hand-rolled `konjo-gate.yml`, 210 lines |
+| kohaku | not a consumer | not a consumer | hand-rolled `konjo-gate.yml`, 163 lines |
+| squash | not a consumer | not a consumer | hand-rolled `konjo-gate.yml`, 199 lines |
+
+Consumers of kiban: 2 before this sprint, 2 after. This sprint decided on adoption for the
+other three (below); it did not perform any of it, per its own non-goals.
+
+### Adoption decisions (Phase 4) -- decide only, no migration performed
+
+**squish -- migrate, and go first.** It is the launched, publicly distributed project
+(`pip install squish-ai`) -- the repo an outside contributor actually clones -- and per
+`Kiban-Adoption-Enforcement-Audit-1` its
+lint/format/dead-code checks are silently non-blocking in CI right now, which is the
+worst place for that gap to exist. Migrating gets it kiban's BLOCKING/ADVISORY tiering for
+free, replacing an ad hoc "everything continue-on-error, nothing tiered" state with an
+explicit, dated one. Python-only, same language shape kiban's gate packages already
+target -- lowest integration risk of the three. Recommended order position: **first**.
+
+**kohaku -- migrate, second.** Also Python-primary (PyO3 bindings are optional), same
+language fit as squish. kohaku already has a partial in-file tiering convention (the
+"phased arming" header naming complexity/mutation as intentionally-soft) that would
+translate cleanly onto kiban's tiering rather than fighting it. Lower urgency than squish
+-- kohaku is not yet as widely distributed -- so it follows squish rather than running in
+parallel with it, per this sprint's explicit non-goal against batch migration.
+
+**squash -- keep vendored, revisit only if it becomes active.** squash is Python like the
+other two, so language fit is not the objection. The objection is priority: squash's own
+`CLAUDE.md` and `SQUASH_MASTER_PLAN.md` show a compliance-deadline-driven roadmap (EU AI
+Act Article 50, December 2026) that a mid-flight CI framework migration would compete
+with for attention, and per `Kiban-Adoption-Enforcement-Audit-1` squash's 13 soft-fail
+steps are the least documented of any repo audited -- an adoption migration there would be
+solving a smaller problem (which framework) while leaving the bigger one (nobody wrote
+down why any of these are advisory) untouched. Vendored is a legitimate standing choice
+here, not deferred debt: revisit when squash's roadmap has room, not on a fixed date.
+
+**`gen` -- out of scope**, per this sprint's non-goals: no gate workflow, no pin, not
+touched.
+
+**Why not batch all three now:** stated directly in the sprint's highest-risk items --
+three migrations in one sprint guarantees none gets a proper kill-test. One migration is a
+real sprint's worth of work per repo (572 combined lines of near-duplicate YAML to
+retire, but retiring it safely means verifying kiban's per-language gate packages actually
+cover what each vendored workflow covers today, not just deleting the vendored file).
+
+**How to apply:** the next sprint that actually migrates squish should treat this entry's
+recommended order as the starting assumption, not re-litigate it from scratch --
+re-open only if squish's own priorities have shifted since this decision was logged.
+
 ## Cortex-Ordering-1: pages read by `decided_at`, not append order -- `date` stays the sole clock for `projected-at`
 
 K4's human read (`Real-Data-1` Finding 5) flagged that Cortex pages order by `date`
