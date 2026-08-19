@@ -8,6 +8,115 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Real-Data-1: P-0 splits into seed and capture, the Ledger folds for real, and KT-1's threshold turns out to be unreachable
+
+**Finding 1: P-0's threshold measured the wrong thing, and meeting it proves
+almost nothing.** P-0 as written was `>= 10` real events across `>= 2` scopes.
+That is satisfiable in twenty minutes by transcribing old decisions, and the
+result would be indistinguishable from the K1 fixture -- which was itself a
+faithful transcription of this file's real prose. This sprint met the threshold
+roughly twice over (22 seeded events, 4 scopes) and **P-0 is still not closed**,
+because the number was never the point. The split, now permanent:
+
+- **P-0a, seed.** Past decisions entered by hand through `konjo-decision decide`
+  at the real state path, with honest `decided_at` stamps. Legitimate: the
+  content is real, the write path is real, the record is real. It unblocks the
+  pipeline mechanically and produces a materially better fixture than K1's.
+  **Done: 22 events, 4 scopes, 2 supersede chains, 0 entries without an
+  alternative.**
+- **P-0b, capture.** Events written during actual work, at the time the call is
+  taken. This is the only thing that proves the habit, and the only thing that
+  makes the brain worth having. **Not started.** 3 events were captured live
+  during this sprint's own work and are deliberately *excluded* from the P-0b
+  count, because P-0b is defined as `decided_at` after this sprint's close
+  (`2026-08-19T15:16:52Z`). Next sprint counts that, not the total.
+
+Reporting these as one number would make the split decorative, which is the
+failure mode the split exists to prevent. `CHANGELOG.md` [1.19.0] carries both
+numbers separately and says P-0a does not close P-0.
+
+**Finding 2: `decided_at` had to become a new field, not a repurposed one.** The
+sprint's own rules were in tension with the CLI as shipped: entries must go
+through `konjo-decision decide`, and `decided_at` must reflect when the call was
+actually made -- but `decide` stamped `date` with `_now_iso()` and exposed no way
+to set it. The obvious fix (let `--decided-at` write `date`) is wrong. `date` is
+what `lib/cortex.py`'s `projected-at` and `lib/doc_staleness.check_projection`
+clock off, and both depend on it being monotonic with append order. A backdated
+seed writing `date` would drag `projected-at` backwards and let a genuinely new
+event land *behind* the page's stamp, invisible to the staleness gate. So `date`
+keeps its append-time meaning and `decided_at` is a separate, optional field
+defaulting to it. Strict UTC only; a future stamp is rejected outright, since
+nothing can be decided after it was written down. Legacy events without the field
+fall back to `date`, which is how the two pre-existing `ONEWAY-ACK` events still
+read correctly. The gap between the two fields is also what makes seeded and
+captured events mechanically distinguishable rather than a matter of trust.
+
+**Finding 3: the Ledger already existed on this machine, with 2 events, and
+nobody could have known.** Three sprints reported "0 real events" honestly, from
+containers where the file was genuinely absent. On the M3 it has been sitting at
+the real state path since 2026-07-29: two auto-generated `ONEWAY-ACK` writes from
+the one-way-door hook, scope `org`, author `unknown`. They are not usage data,
+and one carries visible shell-quoting debris in its `rationale`
+(`hore: acknowledge one-way door" -m "...`) -- a truncated `chore:`, meaning the
+hook interpolated an unescaped commit-message fragment into the field. Recorded
+as a real defect in the hook's write path, not cleaned up here: mutating history
+to tidy a record would be worse than the debris, and the fold renders both events
+faithfully. They now sit at the top of `org.md` as the least valuable and least
+legible entries on the page.
+
+**Finding 4: KT-1's threshold is arithmetically unreachable, which is why the
+re-run is deferred rather than run.** The re-run has been queued three sprints
+and the blocker was always assumed to be data. With real data in hand the actual
+blocker turns out to be the rule: "embeddings must show `>= 20` points absolute
+improvement over the better keyword baseline", against a baseline K1 measured at
+**100.0%**, requires a retriever scoring 120%. The threshold can only ever be met
+when keyword search sits below 80%, and this content class does not go there --
+every decision carries a unique rare identifier (`github_installations`, `INT3`,
+`TaskSource::Telegram`, `squish-ai`, `fastembed`), which K1's own prior already
+named as close to the best case for keyword search. A deliberately-labelled
+headroom probe (keyword only, no embedding score, no verdict) reproduced 100.0%
+on the real corpus. Two further reasons, either sufficient on its own: n = 20
+active decisions is *smaller* than K1's 30-topic fixture, so the re-run cannot be
+more decisive than the test it re-runs; and pre-registration is impossible in
+this sprint's own phase order, since Phase 2 requires reading the projected pages
+as a human and Phase 3 requires having written the questions before reading them.
+**`Cortex-Projection-1` stands unchanged, on K1's evidence.** What would make a
+re-run decisive is recorded in `.konjo/killtests/CortexSkis/KT-1-RERUN.md`: a
+corpus where decisions share vocabulary (the natural product of P-0b capture,
+where the distinguishing signal becomes semantic rather than a rare token), a
+threshold expressed as error reduction rather than absolute points, and blind
+question authorship by a session that did not write the corpus. Changing the
+threshold is a real decision and is **not** made here.
+
+**Finding 5: the human read found something no test covers, and it was a
+correctness defect.** Phase 2's requirement to read the projected pages as a
+human -- the one check with no automated equivalent -- turned up three things.
+Two are recorded and not fixed: the `ONEWAY-ACK` debris above, and the fact that
+pages order by `date` (append order) rather than `decided_at`, so a seeded
+history reads out of chronological order. The third was fixed: alternatives
+rendered through `", ".join`, so two alternatives that each contained a comma
+("one repo holding both, private" and "one repo holding both, public with
+redacted rationale") rendered as four indistinguishable fragments. The rejected
+options are half the value of a decision record at recall time, which makes that
+a correctness defect in the projection rather than a formatting preference. Each
+alternative is now quoted. An existing test asserted the old ambiguous form
+(`"Postgres, flat files"` for two separate alternatives) and was updated, not
+weakened -- the assertion had been pinning the bug.
+
+**Finding 6: the published skill's refusal is the useful half of the
+verification.** `recall` and `longrun` are uploaded to claude.ai account Skills.
+Asked a real question on a fresh chat surface, `recall` loaded, found no read
+path, and **refused to answer** -- citing its own `recall.read-path` section and
+naming the correct remediation. It did not report "no record", which would have
+been the damaging failure and is precisely what `recall.redacted-vs-absent`
+exists to prevent. That is a genuine behavioural pass on the hardest thing to get
+right. It is **not** an end-to-end pass: content correctness and the
+`projected-at` citation on real data remain unverified, because a plain chat
+surface carries no GitHub repository integration -- consistent with `KT-3`'s
+finding that every routine is *handed* its repositories. The remaining step is a
+phone read or a configured routine, and it is recorded as open rather than
+rounded up.
+
 ## Skis-Contract-1: skis contract shipped and gated, KT-3 disposed, three findings recorded, P-0 checked a third time
 
 **Finding 1: KT-3 closes as INVALID PREMISE, not BLOCKED, not SUPERSEDED.**

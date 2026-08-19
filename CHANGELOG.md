@@ -4,6 +4,94 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-08-19
+
+Sprint K4 ("real data, run on the machine"). The first sprint in this project's
+history to run on the machine that holds the Ledger. Three prior sprints checked
+P-0 and found nothing, because none of them could: `~/.konjo/state/ledger/
+decisions.jsonl` is laptop-only and every prior session ran in a cloud container.
+This one ran on the M3, so P-0 could finally be worked rather than re-checked.
+Full reasoning in `LEDGER.md`'s `Real-Data-1` entry; the KT-1 re-run disposition
+is `.konjo/killtests/CortexSkis/KT-1-RERUN.md`.
+
+**P-0 is NOT closed. P-0a is done; P-0b has not started.** The threshold as
+originally written (`>= 10` real events across `>= 2` scopes) is met several
+times over, and that is precisely why it is no longer the measure. A seeded
+corpus is a better fixture, not real usage. Reported as two numbers, permanently:
+
+**Headline numbers:**
+- **P-0a (seed): 22 events entered by hand, 4 scopes, 2 supersede chains.**
+  Every entry through `konjo-decision decide` at the real state path, one at a
+  time, no batch script, with an honest `decided_at` spanning 2026-03-24 to
+  2026-08-19. Sources are real one-way doors already documented in `lopi`'s
+  LEDGER (multi-tenant deletion, the `github_installations` drop, single-boundary
+  redaction, streaming auth, the macOS TLS default, the Telegram
+  transport/variant split), `squish`'s CHANGELOG (the speculative-decoding
+  revert, the INT3 hard-block, the PyPI rename), `kiban`'s own LEDGER, and the
+  portfolio's standing constraints. **0 entries without at least one alternative
+  considered.** Scopes: `org` (7), `repo:kiban` (9), `repo:lopi` (5),
+  `repo:squish` (3).
+- **P-0b (capture): 3 events, and they do not count toward P-0b.** Logged during
+  this sprint's own work, at the time each call was taken, `decided_at` == append
+  time, no `--decided-at` flag. They are reported as a third bucket rather than
+  folded into either number, because P-0b is defined as events whose `decided_at`
+  falls **after** this sprint's close. **The P-0b count to check next sprint is
+  events with `decided_at > 2026-08-19T15:16:52Z`, currently 0.**
+- **The Ledger already existed, and this is the first time any session could say
+  so.** 2 events at the real state path before this sprint: both auto-generated
+  `ONEWAY-ACK` hook writes from 2026-07-29, scope `org`, author `unknown`, with
+  shell-quoting debris in the `rationale` field. Not usage data. Stream total
+  after this sprint: **27 events**.
+- **First real fold: 4 pages projected and pushed, secret scan clean.**
+  `plugins/konjo/hooks/cortex_fold_push.sh`'s first non-no-op execution ever.
+  `lib/redact.py`'s `scan_paths` over the projected output **before** the push,
+  both times: **0 findings, `has_high` false**, plus an explicit check for
+  hostnames, personal identifiers and absolute local paths (0 hits; one `Bearer`
+  match confirmed as prose, not a credential). `konjo-doc-staleness project-scan`:
+  **4 OK, 0 FAIL.** `org.md`, `repo-lopi.md` and `repo-squish.md` are new;
+  `repo-kiban.md` was overwritten, replacing the K1 fixture projection with real
+  content.
+- **KT-1 re-run: DEFERRED, n = 20 active decisions.** Not run, and not because of
+  time. The `>= 20` point absolute threshold is **arithmetically unreachable**
+  above an 80% keyword baseline, and K1 measured that baseline at 100.0%. A
+  contaminated headroom probe (15 questions, keyword-only, no verdict derived)
+  reproduced 100.0% on the real corpus, leaving 0.0 points of possible
+  improvement against a 20-point bar. Two further reasons: n is smaller than
+  K1's own 30-topic corpus, and pre-registration is impossible in this sprint's
+  phase order (Phase 2 requires reading the projected pages; Phase 3 requires
+  having written the questions before reading them). `Cortex-Projection-1` stands
+  unchanged, on K1's evidence, unre-litigated.
+- **`kt7-answer` deleted: yes.** Verified fully merged (0 commits not in `main`)
+  then `git push origin --delete` from the local clone. Blocked two sprints on
+  cloud tooling; one command from the machine.
+- **`konjo-skis` published: yes.** `recall` and `longrun` both uploaded to
+  claude.ai account Skills and listed under author "You".
+- **Phone/fresh-surface verification: INCOMPLETE, and the failure is informative.**
+  The published `recall` skill loaded and fired on a fresh claude.ai chat, then
+  **correctly refused to answer**: it reported no read path, cited its own
+  `recall.read-path` section, and named the right remediation (a routine with
+  `konjo-cortex` in Repositories, or a local clone). It did not collapse "no
+  access" into "no record", which is exactly what the `recall.redacted-vs-absent`
+  contract section exists to prevent. What that run does **not** verify is
+  content correctness or the `projected-at` citation on real data. A plain chat
+  surface carries no GitHub repository integration, consistent with `KT-3`'s
+  finding that routines are *handed* their repositories. Still open, for the
+  phone or a configured routine.
+
+**Also this sprint:**
+- `decided_at` joins the event schema as a distinct field. `date` keeps its
+  append-time meaning, because `projected-at` and `lib/doc_staleness.
+  check_projection` clock off it and a backdated seed must not drag it backwards.
+  `--decided-at` on `konjo-decision decide` and `supersede`, strict UTC only,
+  future stamps rejected. Legacy events without the field fall back to `date`.
+- Cortex renders `decided` when it differs from `date`, and quotes each
+  alternative. The quoting is a correctness fix found by Phase 2's human read:
+  two alternatives that each contain a comma previously rendered as four
+  fragments, so a reader could not tell what was actually rejected.
+- 3 pre-existing test failures (`konjo-newonly` / rust-gate absolute-path
+  handling) were present on a clean tree at kickoff and are unchanged. Not this
+  sprint's work; recorded so they are not read as regressions. 365 passed.
+
 ## [1.18.0] - 2026-08-19
 
 Sprint K3 ("skis contract, KT-3 disposition, verification hygiene"). K1 built
