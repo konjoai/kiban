@@ -25,20 +25,18 @@ not faked -- read `LEDGER.md`'s entry in full before starting anything below.
    `$KONJO_HOME/cortex`); it's a safe, logged no-op everywhere else,
    including every cloud session. `konjo-ship/SKILL.md`'s checklist now
    calls it instead of naming a raw command.
-3. **KT-3 is still BLOCKED, and re-running the identical mechanism will
-   reproduce the identical result.** No GitHub connector is registered at
-   the claude.ai org level (`ListConnectors`, confirmed multiple times
-   across two sprints), a bare `create_trigger` Routine gets zero `mcp__`
-   tools by default, and a fired session's transcript could not be
-   retrieved by any tool available to the firing session (`ListAgents`,
-   `SendMessage`, `list_sessions`, `WebFetch` all tried, all failed --
-   `.konjo/killtests/CortexSkis/KT-3.md` has the full method). **Do not
-   re-attempt this exact mechanism again without first registering a GitHub
-   connector** (claude.ai Settings -> Connectors, manual, account-level, not
-   automatable from any tool available so far) **or** designing a materially
-   different reachability test (e.g. `create_session` with `source_url`,
-   which really does clone a repo, untested this sprint by explicit choice
-   -- the existing BLOCKED verdict was judged sufficient this cycle).
+3. **KT-3 is still BLOCKED, but not for the reason K1 and K2 both recorded.**
+   The claim that no GitHub connector is registered was **false** -- see
+   `LEDGER.md`'s `Routine-Reach-1` entry and the correction appended to
+   `.konjo/killtests/CortexSkis/KT-3.md`. **GitHub Integration is connected
+   and always was**; `ListConnectors` simply does not enumerate it (filtered
+   on `github` it returns `[]`), so re-running that tool will not tell you
+   otherwise. Do not send anyone to Settings -> Connectors to add it again.
+   The actual blocker: `create_trigger` rejects the `connectors` parameter
+   outright for this org, and without it a fired session's `allowed_tools`
+   has zero `mcp__` entries. **Do not re-attempt the bare-routine mechanism
+   from this tool** -- it cannot carry a connector by construction. The one
+   remaining route is the claude.ai Routines UI, which is browser-only.
 4. **KT-5 ran against the real repo, and the mechanism holds.**
    `konjo-skis/recall`'s procedure, followed by hand against
    `wesleyscholl/konjo-cortex`'s actual pushed `repo-kiban.md`, correctly
@@ -75,12 +73,26 @@ python3 bin/konjo-decision project --all-scopes --out-dir <konjo-cortex clone>
 # then check it committed and pushed, and re-run konjo-doc-staleness project-scan
 ```
 
-**2. Register the GitHub connector, then design a real KT-3 attempt.**
-Manual, account-level (claude.ai Settings -> Connectors), not automatable.
-Once it exists, either retry `create_trigger` with `connectors: ["GitHub"]`,
-or test `create_session`'s `source_url` param (materially different
-mechanism -- a fresh session with the repo already checked out, not a bare
-routine) as a narrower but real reachability proof.
+**2. Finish KT-3 from the claude.ai Routines UI, or accept KT-7 in its place.**
+`create_session` + `source_url` is now tested and passes
+(`.konjo/killtests/CortexSkis/KT-7.md`, 4/4 on questions pre-registered before
+the run), so the "can anything that is not my laptop read a Cortex page"
+question has a real affirmative answer. What KT-7 does *not* answer is KT-3's
+narrower one: whether a routine that must go *find* the repo, rather than being
+handed it, can reach it. Testing that needs a Routine created in the claude.ai
+Routines UI with the GitHub connector attached there, because the MCP
+`create_trigger` path cannot attach one. If that is not worth a browser trip,
+close KT-3 as superseded by KT-7 rather than leaving it open a third sprint.
+
+**Whatever you test, deposit an artifact.** The reason KT-3 could not be graded
+was never the mechanism; it was that no tool can retrieve a fired session's
+transcript, and `list_events` is not available either. KT-7's pattern works:
+have the spawned session commit its answer to a branch, then read that commit
+back through the GitHub API. Pre-register the questions and expected answers in
+the kill-test file *before* spawning anything, and pick questions whose answers
+do not exist inside `kiban` -- the fixture ids and their decision text are in
+`evals/fixtures/ledger/`, so a session with kiban access can answer KT-3's
+original question without reading the Cortex page at all.
 
 **3. Publish `konjo-skis` to claude.ai account skills.** Manual step, no
 tool in any session's toolset performs it. Copy `konjo-skis/recall/` and

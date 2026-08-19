@@ -1,4 +1,4 @@
-# KT-3 — Does a Claude Code routine reach a Cortex page? (BLOCKED, infra gap not fixed)
+# KT-3 — Does a Claude Code routine reach a Cortex page? (BLOCKED; see the 2026-08-19 correction at the end, the stated reason was wrong)
 
 **Verdict: BLOCKED, not PASS, not FAIL.** `konjo-cortex` now exists (private,
 personal account, `wesleyscholl/konjo-cortex`) with `repo-kiban.md` (the real
@@ -114,3 +114,73 @@ print('4d26cb337b09' in cortex.render_scope(Ledger('ledger/decisions.jsonl'), 'r
 "
 # -> True
 ```
+
+---
+
+# Correction, 2026-08-19: method step 1's premise was wrong
+
+**The verdict stays BLOCKED. The stated reason for it was wrong, and the real
+reason is narrower and more actionable.**
+
+## What was wrong
+
+Method step 1 above says a GitHub connector is not registered for this account,
+citing `ListConnectors` run twice. `NEXT_SESSION_PROMPT.md` then carried that
+forward as settled fact across two sprints, and the Sprint K2 handoff built a
+whole browser-side remediation on it ("add the GitHub connector, then tell me").
+
+Wes checked the claude.ai Connectors panel directly on 2026-08-19 and it lists
+**GitHub Integration, type Web, status connected** -- and had been there the
+whole time. It was not added in response to the handoff.
+
+Re-running `ListConnectors` in this session reproduces the false negative
+exactly: the unfiltered call returns Canva, Gmail, Google Calendar, Google
+Drive, Mermaid Chart, Superhuman Docs, Trello, and a filtered call with
+keywords `["github", "git", "code"]` returns `[]`. So the tool does not
+enumerate this connector, and running it a third time would not have caught the
+error. **The mistake was not insufficient checking; it was treating one tool's
+output as ground truth about account state it does not fully see.**
+
+## What the actual blocker is
+
+Passing the connector through is what fails, not the connector's existence.
+Calling `create_trigger` with `connectors: ["GitHub Integration", "Google
+Drive"]` returns:
+
+> `create_trigger: the connectors parameter is not available for this
+> organization. Omit the connectors parameter.`
+
+So the remediation the K2 handoff prescribed (retry `create_trigger` with
+`connectors: ["GitHub"]`) cannot be performed from here at all, connector or no
+connector. Creating the same trigger without the parameter returns the same
+`allowed_tools` list this test recorded originally, with zero `mcp__` entries,
+and a warning that now names the real constraint:
+
+> `Connectors on triggers created via this tool are limited to those the
+> calling session itself holds; this call had none to pass through (no session
+> context, or no passable connector grants). If the routine needs connectors,
+> create it from a session that holds them, or ask the user to create it from
+> the claude.ai routines UI.`
+
+That trigger was deleted without firing. Firing it would have reproduced this
+test's original result exactly, which `NEXT_SESSION_PROMPT.md` point 3 already
+warned against, and the transcript to grade it with is still unretrievable
+(`list_events` is not in this session's toolset either, checked via
+`ToolSearch`).
+
+## Corrected blocker statement
+
+KT-3 is blocked because **a routine created through the `create_trigger` MCP
+tool cannot carry any MCP connector out of this session**, and a bare routine
+therefore has no route to a private repo. The account-level connector is
+present and is not the missing piece. The remaining path is the one the
+warning names: create the routine from the claude.ai Routines UI, where the
+account's connectors are attachable, and have it deposit its answer in a
+place a grading session can read back verbatim (see KT-7 for that pattern).
+
+## Related result
+
+`.konjo/killtests/CortexSkis/KT-7.md` (PASS) tests the other mechanism
+`NEXT_SESSION_PROMPT.md` named, `create_session` with `source_url`, and shows a
+fresh session does reach this same private file when the platform clones it for
+the session. That is a narrower claim than KT-3's and does not close it.

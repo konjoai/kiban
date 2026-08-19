@@ -1,4 +1,4 @@
-# KT-7 — Does a fresh cloud session with `source_url` reach the private Cortex page?
+# KT-7 -- Does a fresh cloud session with `source_url` reach the private Cortex page?
 
 **Status at pre-registration time: NOT YET RUN.** This section was written and
 committed *before* the session was spawned, so the questions and their expected
@@ -102,3 +102,80 @@ is reconstructed, paraphrased, or assumed.
 - It does **not** remove the connector work. `source_url` proves a session
   *with a repo handed to it* can read the file; it says nothing about a
   surface that must go find the repo itself.
+
+---
+
+# Verdict: PASS (appended after the run, 2026-08-19)
+
+A fresh cloud session, handed `wesleyscholl/konjo-cortex` via `create_session`'s
+`source_url` and nothing else, answered all four pre-registered questions
+correctly, and this session read those answers back verbatim from a git commit
+rather than from a status field.
+
+## The artifact
+
+Branch `kt7-answer` on `wesleyscholl/konjo-cortex`, commit
+`a35b6b94c7b2935f255bdf9c0158111edd1d6a61`, authored 2026-08-19T12:44:27Z.
+One file added, `ANSWER-KT7.md`, six lines, zero modifications to any existing
+file (`repo-kiban.md` untouched, as instructed). Retrieved from this session
+with `mcp__github__get_file_contents` against `refs/heads/kt7-answer`:
+
+```
+REACHED_FILE: yes
+HOW_OBTAINED: local checkout (repo already cloned at /home/user/konjo-cortex; read repo-kiban.md directly from the working tree on branch kt7-answer)
+Q1: 2026-08-06T12:00:00Z
+Q2: 33
+Q3: `4d26cb337b09` supersedes `d1f4131159dc` (per the line `- **chain:** d1f4131159dc -> 4d26cb337b09`). Its decision text is: "Default review_diff to runs=3 instead of runs=1."
+Q4: b75046fe0b29, 9552b0a690c4
+```
+
+## Grading against the pre-registered table
+
+| # | Expected | Got | Result |
+|---|----------|-----|--------|
+| Q1 | `2026-08-06T12:00:00Z` | `2026-08-06T12:00:00Z` | correct |
+| Q2 | `33` | `33` | correct |
+| Q3 | `4d26cb337b09`, "Default review_diff to runs=3 instead of runs=1." | same, plus the verbatim `chain:` line it came from | correct |
+| Q4 | `b75046fe0b29`, `9552b0a690c4` | `b75046fe0b29`, `9552b0a690c4` | correct |
+
+4/4. Both halves of "the two things that must both hold" are satisfied: reach
+(a session with no local `~/.konjo` and no pre-existing clone obtained the
+private file's contents) and verifiability (the answer arrived as a commit this
+session read independently, not as a self-reported status).
+
+Q1/Q2/Q4 are the load-bearing ones: their answers exist nowhere in `kiban`, so
+they cannot be produced by prior knowledge of the corpus. Q4 in particular is
+two specific 12-hex ids drawn from a set of 33, returned exactly and with
+nothing extra. The contamination failure mode the pre-registration named
+(Q3 right, the rest wrong) did not occur.
+
+## The mechanism, stated precisely
+
+`source_url` caused the platform to clone the **private** repo into the fresh
+container before the session's first turn; the session then read it off the
+working tree, which is what `HOW_OBTAINED` reports. The credential path is the
+platform's clone step, not a connector and not an in-session tool call. That is
+why this works while KT-3's routine path does not.
+
+## What this does not establish
+
+Unchanged from the pre-registration, and worth restating because the temptation
+to over-read a PASS is the whole reason the limits were written first:
+
+- **KT-3 is still not passed.** A bare routine still gets zero `mcp__` tools.
+  KT-7 hands the session its repo; KT-3 asks whether a session can go find one.
+  Different claims.
+- **The content is still fixture data.** Every id above traces to Sprint K1's
+  corpus. P-0 is untouched: real event count remains 0.
+- **One session, one run.** No claim about flakiness or rate limits.
+
+## Cleanup note
+
+`kt7-answer` is deliberately left in place as the evidence for this verdict, and
+`main` is untouched. It is a scratch branch holding a non-projected file, which
+`README.md`'s "this repo only ever receives newly projected pages" rules out for
+`main` and does not contemplate for branches. Delete it once this verdict is
+accepted; the commit sha above is what the record actually depends on.
+
+Spawned session id, for anyone who wants the full transcript from a browser:
+`session_01BUccjegSdUskYwfBKcTrU4`.
