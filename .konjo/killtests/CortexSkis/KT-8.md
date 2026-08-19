@@ -81,3 +81,68 @@ legitimate divergence gets disabled within two sprints, leaving neither the
 gate nor the two-file discipline (`konjo-skis/README.md`'s own point). Both
 legs must pass exactly as pre-registered above or the manifest does not
 ship this sprint -- reverted, not weakened, if either fails.
+
+---
+
+# Verdict, both legs: PASS (appended after the run, 2026-08-19)
+
+## Leg 1
+
+`python3 bin/konjo-skis-check` against the pre-registered fixture edit
+(the "Only walk the chain... " -> "Never mention a superseded
+predecessor..." regression, `plugins/konjo/skills/recall/SKILL.md` only):
+
+```
+skis-contract: FAIL -- 1 drift(s)
+  [recall] recall.chain-reasoning (content_mismatch): /home/user/kiban/plugins/konjo/skills/recall/SKILL.md and /home/user/kiban/konjo-skis/recall/SKILL.md disagree on must-match section 'recall.chain-reasoning'
+exit: 1
+```
+
+Exact match against the pre-registered expectation: exits 1, names section
+`recall.chain-reasoning` and both file paths. After applying the identical
+edit to `konjo-skis/recall/SKILL.md`:
+
+```
+skis-contract: OK -- 2 pair(s), 6 must-match section(s), 1 declared-divergent section(s)
+exit: 0
+```
+
+Also an exact match. Both files were then reverted to the pre-KT-8 baseline
+(`git checkout --`) -- the regression does not ship, confirmed re-clean
+afterward with the same command.
+
+## Leg 2
+
+`python3 bin/konjo-skis-check` against the pre-registered substantive edit
+inside `recall.read-path` (declared divergent), `plugins/konjo/skills/recall/SKILL.md`
+only, `konjo-skis/recall/SKILL.md` untouched:
+
+```
+skis-contract: OK -- 2 pair(s), 6 must-match section(s), 1 declared-divergent section(s)
+exit: 0
+```
+
+Exact match: gate stays quiet, no drift lines, same summary as the clean
+baseline. This edit is real content (the CLI variant does no chain
+rendering of its own, unlike the Cortex-page variant, which is a true and
+useful fact for a reader of that file) rather than a throwaway regression,
+so it was kept rather than reverted -- Leg 2 does not require reverting,
+only that the gate not object, and it did not.
+
+## Both legs pass. The manifest ships as built in this sprint's earlier commit.
+
+Full suite re-run clean after Leg 2's kept edit: `pytest -q` 358 passed, 3
+skipped; `ruff check` clean on all touched paths; `mypy lib ledger evals
+packages/konjo-gates-py/src/konjo_gates_py` clean, 60 source files
+(`lib/skis_contract.py` included).
+
+## What this does and does not establish
+
+The gate rejects a real correctness regression in a must-match section and
+stays silent on a real, substantive edit in a declared-divergent section --
+the exact two failure modes named in the stop rule (a gate that passes on
+drift; a gate that blocks legitimate divergence). It does not establish
+that the four must-match canonical blocks (`chain-reasoning`,
+`redacted-vs-absent`, `freshness-basis`, `output-shape`) are themselves
+correct guidance -- only that, whatever they say, both variants are now
+mechanically prevented from silently disagreeing with each other on them.
