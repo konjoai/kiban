@@ -75,6 +75,19 @@ def _looks_like_injection(payload: str) -> bool:
     return any(pat.search(payload) for pat in _INJECTION_PATTERNS)
 
 
+def check_payload(line: str) -> None:
+    """Raise SecretRejected / InjectionRejected if a serialized payload is unsafe.
+
+    The single choke point both `append`/`rewrite_atomic` and `lib.event_store`'s
+    per-file writer run every payload through, so the two stores can never drift on
+    what they reject.
+    """
+    if redact.has_high(line):
+        raise SecretRejected("payload contains a HIGH-tier secret; write blocked")
+    if _looks_like_injection(line):
+        raise InjectionRejected("payload looks like instruction injection; write blocked")
+
+
 def append(path: str | os.PathLike[str], obj: dict[str, Any]) -> Path:
     """Atomically append one JSON object as a line. Scans before writing.
 
@@ -84,11 +97,7 @@ def append(path: str | os.PathLike[str], obj: dict[str, Any]) -> Path:
     local filesystems.
     """
     line = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
-
-    if redact.has_high(line):
-        raise SecretRejected("payload contains a HIGH-tier secret; write blocked")
-    if _looks_like_injection(line):
-        raise InjectionRejected("payload looks like instruction injection; write blocked")
+    check_payload(line)
 
     target = _resolve(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -135,10 +144,7 @@ def rewrite_atomic(path: str | os.PathLike[str], objs: list[dict[str, Any]]) -> 
     """
     for obj in objs:
         line = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
-        if redact.has_high(line):
-            raise SecretRejected("rewrite payload contains a HIGH-tier secret")
-        if _looks_like_injection(line):
-            raise InjectionRejected("rewrite payload looks like instruction injection")
+        check_payload(line)
 
     target = _resolve(path)
     target.parent.mkdir(parents=True, exist_ok=True)

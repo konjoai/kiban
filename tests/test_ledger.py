@@ -13,7 +13,7 @@ from lib import jsonl_store
 @pytest.fixture()
 def ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Ledger:
     monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
-    return Ledger("ledger/decisions.jsonl")
+    return Ledger("ledger/events")
 
 
 def test_decide_then_search_returns_active(ledger: Ledger) -> None:
@@ -123,13 +123,14 @@ def test_legacy_events_without_decided_at_fall_back_to_date(
     ledger: Ledger, tmp_path: Path
 ) -> None:
     """The two ONEWAY-ACK events already on the real machine predate this field."""
-    line = (
+    event = (
         '{"event":"decide","id":"f921e490f4d1","scope":"org","decision":"ONEWAY-ACK",'
         '"rationale":"r","alternatives_considered":[],"confidence":6,'
-        '"date":"2026-07-29T16:48:16Z","author":"unknown"}\n'
+        '"date":"2026-07-29T16:48:16Z","author":"unknown"}'
     )
-    (tmp_path / "ledger").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "ledger" / "decisions.jsonl").write_text(line, encoding="utf-8")
+    events_dir = tmp_path / "ledger" / "events"
+    events_dir.mkdir(parents=True, exist_ok=True)
+    (events_dir / "f921e490f4d1.json").write_text(event, encoding="utf-8")
     d = ledger.get("f921e490f4d1")
     assert d is not None
     assert d.decided_at == "2026-07-29T16:48:16Z"

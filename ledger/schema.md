@@ -1,13 +1,28 @@
 # Konjo Ledger event schema
 
-The Ledger is append-only and event-sourced. Each line in `decisions.jsonl` is one
-event. The current state is folded from the stream; nothing is mutated in place.
+The Ledger is append-only and event-sourced. Each event is one file. The current
+state is folded from the stream; nothing is mutated in place.
 
 ## Storage
 
-- File: `~/.konjo/state/ledger/decisions.jsonl` (state dir is `KONJO_STATE_DIR`-overridable).
-- One JSON object per line, written through `lib/jsonl_store` (atomic append,
-  injection-rejected, redact-scanned).
+- Directory: `$KONJO_CORTEX_DIR/ledger/events/` (defaults to `~/.konjo/cortex/ledger/events`;
+  `KONJO_CORTEX_DIR` names the local `konjo-cortex` clone). One file per event, named
+  `<id>.json`, written through `lib/event_store` (atomic write-once, injection-rejected,
+  redact-scanned). Superseded by `Ledger-Laptop-Only-1` in `LEDGER.md` -- Sprint K5 moved
+  the Ledger's canonical home from a laptop-only `~/.konjo/state/ledger/decisions.jsonl`
+  into the shared `konjo-cortex` clone, so any surface with Cortex checked out (laptop,
+  cloud session, phone routine) can write and every surface can read.
+- A shared append-only JSONL file conflicts at the last line on every concurrent write --
+  the one place a merge tool cannot resolve safely. Separate files never conflict: two
+  surfaces adding two events add two files.
+- A directory listing carries no chronological order, so the fold (`ledger/engine.py`)
+  sorts events by `decided_at` (falling back to `date`, then `id`) before folding, rather
+  than relying on file position -- see `Ledger-Events-Per-File-1` in `LEDGER.md` for the
+  stated ceiling this trades away (directory listing doesn't scale the way a single file
+  read scales, at very large event counts) and the concurrent-write kill-test (KT-10).
+- Tests use an explicit relative path (`Ledger("ledger/events")`), resolved under
+  `KONJO_STATE_DIR` like any other `lib/event_store`-backed store -- only the production
+  default resolves under `KONJO_CORTEX_DIR` instead.
 
 ## Scoping
 

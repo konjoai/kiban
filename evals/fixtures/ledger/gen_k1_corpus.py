@@ -22,6 +22,10 @@ an empty state dir reproduces byte-identical output -- required for KT-2's idemp
 claim to mean anything applied to a realistic-sized corpus, not just the unit-test
 fixture in `tests/test_cortex.py`.
 
+Sprint K5 moved the store from one appended JSONL file to one file per event
+(`ledger/events/<id>.json`) -- this generator writes through `lib.event_store` now,
+same as any other writer, so the fixture stays representative of real storage.
+
 Usage:
     KONJO_STATE_DIR=/path/to/fixture/state python3 evals/fixtures/ledger/gen_k1_corpus.py
 """
@@ -36,11 +40,11 @@ _KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 if str(_KIBAN_ROOT) not in sys.path:
     sys.path.insert(0, str(_KIBAN_ROOT))
 
-from lib import jsonl_store  # noqa: E402
+from lib import event_store  # noqa: E402
 
 SCOPE = "repo:kiban"
 AUTHOR = "wes"
-LEDGER_PATH = "ledger/decisions.jsonl"
+LEDGER_PATH = "ledger/events"
 
 
 def _id(text: str) -> str:
@@ -288,7 +292,7 @@ REDACTS: list[dict] = [
 def main() -> None:
     for date, decision, rationale, alts, conf in PRISTINE:
         did = _id(decision)
-        jsonl_store.append(LEDGER_PATH, {
+        event_store.write_event(LEDGER_PATH, did, {
             "event": "decide", "id": did, "scope": SCOPE,
             "decision": decision, "rationale": rationale,
             "alternatives_considered": alts, "confidence": conf,
@@ -298,13 +302,13 @@ def main() -> None:
     for c in CHAINS:
         a_id = _id(c["decision_a"])
         b_id = _id(c["decision_b"])
-        jsonl_store.append(LEDGER_PATH, {
+        event_store.write_event(LEDGER_PATH, a_id, {
             "event": "decide", "id": a_id, "scope": SCOPE,
             "decision": c["decision_a"], "rationale": c["rationale_a"],
             "alternatives_considered": [], "confidence": 5,
             "date": f"{c['date_a']}T12:00:00Z", "author": AUTHOR,
         })
-        jsonl_store.append(LEDGER_PATH, {
+        event_store.write_event(LEDGER_PATH, b_id, {
             "event": "supersede", "id": b_id, "supersedes": a_id, "scope": SCOPE,
             "decision": c["decision_b"], "rationale": c["rationale_b"],
             "alternatives_considered": c["alts_b"], "confidence": c["conf_b"],
@@ -313,14 +317,15 @@ def main() -> None:
 
     for r in REDACTS:
         a_id = _id(r["decision_a"])
-        jsonl_store.append(LEDGER_PATH, {
+        event_store.write_event(LEDGER_PATH, a_id, {
             "event": "decide", "id": a_id, "scope": SCOPE,
             "decision": r["decision_a"], "rationale": r["rationale_a"],
             "alternatives_considered": [], "confidence": 5,
             "date": f"{r['date_a']}T12:00:00Z", "author": AUTHOR,
         })
-        jsonl_store.append(LEDGER_PATH, {
-            "event": "redact", "id": _id(r["decision_a"] + ":redact"),
+        redact_id = _id(r["decision_a"] + ":redact")
+        event_store.write_event(LEDGER_PATH, redact_id, {
+            "event": "redact", "id": redact_id,
             "redacts": a_id, "reason": r["reason_b"],
             "date": f"{r['date_b']}T12:00:00Z", "author": AUTHOR,
         })

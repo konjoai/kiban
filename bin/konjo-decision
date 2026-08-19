@@ -31,7 +31,8 @@ if str(_KIBAN_ROOT) not in sys.path:
     sys.path.insert(0, str(_KIBAN_ROOT))
 
 from ledger.engine import Decision, Ledger  # noqa: E402
-from lib import cortex, jsonl_store  # noqa: E402
+from ledger.engine import cortex_dir as ledger_cortex_dir  # noqa: E402
+from lib import cortex, cortex_sync, jsonl_store  # noqa: E402
 
 
 def _print_decision(d: Decision) -> None:
@@ -114,6 +115,7 @@ def main(argv: list[str]) -> int:
                 decided_at=args.decided_at,
             )
             print(f"logged decision {did}")
+            cortex_sync.sync(ledger, ledger_cortex_dir())
             return 0
 
         if args.cmd == "supersede":
@@ -127,11 +129,13 @@ def main(argv: list[str]) -> int:
                 decided_at=args.decided_at,
             )
             print(f"superseded {args.target_id} -> {new_id}")
+            cortex_sync.sync(ledger, ledger_cortex_dir())
             return 0
 
         if args.cmd == "redact":
             ledger.redact_decision(args.target_id, args.reason, author=args.author)
             print(f"redacted {args.target_id}")
+            cortex_sync.sync(ledger, ledger_cortex_dir())
             return 0
 
         if args.cmd == "search":
