@@ -11,34 +11,69 @@ read model, not the live Ledger. This is the `konjo-skis` variant of kiban's
 a `konjo-*` binary and a real `~/.konjo/state`, use kiban's own `recall` skill
 instead -- it searches the live stream, which this cannot.
 
+This file and `plugins/konjo/skills/recall/SKILL.md` are a declared pair
+(`konjo-skis/CONTRACT.yml`, enforced by `bin/konjo-skis-check`). Sections
+marked `skis-contract:*` below must stay in sync with their counterpart
+there -- edit both, or the gate fails the build.
+
+## How to read the source
+
+<!-- skis-contract:recall.read-path -->
+Read the Cortex page for the relevant scope (`org`, or `repo:<name>` for a
+specific consuming repo) from the `konjo-cortex` repo -- one markdown file
+per scope, e.g. `org.md`, `repo-lopi.md`. Reachable from any surface holding
+a GitHub repository integration with read access to `konjo-cortex` (a
+private repo): a routine's own Repositories configuration, a session's
+`source_url`, or a local clone. Not a claude.ai connector -- see
+`LEDGER.md`'s `Skis-Contract-1` entry (Finding 1) if that distinction is
+unfamiliar.
+<!-- /skis-contract:recall.read-path -->
+
+Read the whole page, not just the first match. It is a few KB, well inside
+context -- reasoning over the full page beats keyword-matching a single
+line, especially across a supersede chain (`KT-1`, `KT-4`: a naive keyword
+script gets this wrong roughly 1 time in 6; reading the page and reasoning
+about which entry is current does not).
+
 ## How to answer
 
-1. Read the Cortex page for the relevant scope (`org`, or `repo:<name>` for a
-   specific consuming repo) from the `konjo-cortex` repo, via the GitHub
-   connector or a local clone -- one markdown file per scope, e.g. `org.md`,
-   `repo-lopi.md`.
-2. Read the whole page, not just the first match. It is a few KB, well inside
-   context -- reasoning over the full page beats keyword-matching a single
-   line, especially across a supersede chain (`KT-1`, `KT-4`: a naive keyword
-   script gets this wrong roughly 1 time in 6; reading the page and reasoning
-   about which entry is current does not).
-3. Find the **Active decisions** section for the topic. If a decision has a
-   `chain:` line, the entry shown is the current one -- name it as current, and
-   mention the chain only if the question is about history ("what did we used
-   to do") rather than the present state.
-4. If nothing in Active matches, check **Retired** before answering "no
-   record" -- a redacted decision is still real history, just not the current
-   call.
+<!-- skis-contract:recall.chain-reasoning -->
+A decision with a supersede chain has one active entry and the rest
+superseded. Name the active entry as the current answer. Only walk the
+chain or mention a superseded predecessor when the question is explicitly
+about history ("what did we used to do", "why did this change") rather than
+the present state.
+<!-- /skis-contract:recall.chain-reasoning -->
 
-## Every answer states its own freshness
+<!-- skis-contract:recall.redacted-vs-absent -->
+"No record" and "redacted/superseded" are different answers and must not be
+collapsed into one. Before concluding nothing was decided, check retired
+and superseded entries, not just the active set -- a redacted decision is
+still real history, just not the current call. Only say "no record" once
+both active and retired/superseded have been checked and neither has a
+match.
+<!-- /skis-contract:recall.redacted-vs-absent -->
 
-Cite the page's `projected-at` front-matter stamp in your answer, e.g. "as of
-the last Cortex refresh (2026-08-06), the active call is...". **Never answer
-from a Cortex page without stating that date.** A page can be stale between
-refreshes (`lib/doc_staleness.py`'s `check_projection` gates this in CI, but a
-gate that ran last week does not guarantee freshness today) -- a plausible
-answer with no visible age is worse than a correct one, and worse still than
-an answer that admits it might be behind.
+<!-- skis-contract:recall.freshness-basis -->
+State the basis for how current your answer is before giving it. Reading a
+Cortex projection: cite the page's `projected-at` front-matter stamp (e.g.
+"as of the last Cortex refresh, 2026-08-06"). Reading the live Ledger
+directly: say the answer reflects the stream as of now. Never answer
+without naming one of the two.
+<!-- /skis-contract:recall.freshness-basis -->
+
+<!-- skis-contract:recall.output-shape -->
+Every answer names: the current call (or "no record" per the
+redacted-vs-absent rule above), the freshness basis it was read under, and
+whether a supersede chain exists for the topic. State these plainly rather
+than requiring the reader to infer them from the citation alone.
+<!-- /skis-contract:recall.output-shape -->
+
+A page can be stale between refreshes (`lib/doc_staleness.py`'s
+`check_projection` gates this in CI, but a gate that ran last week does not
+guarantee freshness today) -- a plausible answer with no visible age is
+worse than a correct one, and worse still than an answer that admits it
+might be behind.
 
 ## When to use
 

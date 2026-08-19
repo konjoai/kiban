@@ -42,6 +42,18 @@ jobs:
       - name: Tests (pytest)
         run: pytest -q
 
+      # Skis-Contract-1 (Sprint K3): keeps plugins/konjo/skills/<name> and its
+      # konjo-skis/<name> portable variant from degrading into each other on the content
+      # konjo-skis/CONTRACT.yml declares must match (chain reasoning, freshness citation,
+      # redacted-vs-absent, output shape) while leaving declared-divergent content (the
+      # read path itself -- CLI shell-out vs Cortex-page read) free to differ on purpose.
+      # BLOCKING with no continue-on-error, per Finding 3's new default: a new gate ships
+      # blocking or with a stated, dated reason for shipping advisory instead -- this one
+      # has neither, and KT-8 (.konjo/killtests/CortexSkis/KT-8.md) demonstrates it
+      # actually rejects real drift before shipping, not just in theory.
+      - name: Skis contract (konjo-skis-check)
+        run: python3 bin/konjo-skis-check
+
       # Phase 13: report-only, never blocks the build. A generation-quality regression
       # is signal for the next sprint, not a merge blocker -- the measurement is noisy
       # by nature (see .konjo/killtests/P13/KT-13.1.md) and a noisy blocking gate gets

@@ -1,0 +1,76 @@
+# Skis contract manifest -- Sprint K3, Phase 1.
+#
+# Declares, per paired skill (a plugins/konjo/skills/<name>/SKILL.md and its
+# konjo-skis/<name>/SKILL.md portable variant), which content must be identical
+# across both files and which is allowed to diverge on purpose. A section is
+# identified by an id and delimited in both files by matching
+# `<!-- skis-contract:<id> -->` / `<!-- /skis-contract:<id> -->` HTML-comment
+# markers. `lib/skis_contract.py` (via `bin/konjo-skis-check`) enforces this --
+# wired BLOCKING into `.github/workflows/ci.yml`, no `continue-on-error`, per
+# `LEDGER.md`'s `Skis-Contract-1` Finding 3 (a new gate ships BLOCKING or with
+# a stated, dated reason for shipping advisory instead -- this one has neither).
+#
+# must_match: both files' marked content, whitespace-normalized, must be
+#   identical. Drift is a FAIL naming the section id and both file paths.
+#   (KT-8 Leg 1: .konjo/killtests/CortexSkis/KT-8.md)
+# divergent: both files must still carry the marker (tracked, not merely
+#   absent) and the entry needs a `why:` reason; content is never compared.
+#   (KT-8 Leg 2)
+#
+# A section that exists in only one file -- plugin-only CLI infrastructure
+# (the self-update preamble, learnings search, "what the gate checks"), or
+# skis-only fallback notes ("what this cannot do") -- is simply not declared
+# here. That is outside the contract's scope, not a tracked divergence: the
+# contract only covers content that exists in both variants by design.
+
+pairs:
+  recall:
+    plugin: plugins/konjo/skills/recall/SKILL.md
+    skis: konjo-skis/recall/SKILL.md
+    must_match:
+      - id: recall.chain-reasoning
+        why: >
+          A decision's supersede-chain handling is a correctness property of
+          the Ledger's data model, not of how a session reads it -- the
+          reasoning must be identical regardless of read path.
+      - id: recall.redacted-vs-absent
+        why: >
+          "No record" and "redacted" are different findings regardless of
+          source; collapsing them is a correctness bug, the same class
+          Doc-Integrity-Gate-1 exists to catch before it ships in only one
+          variant.
+      - id: recall.freshness-basis
+        why: >
+          Every answer must name how current it is. The basis differs by
+          read path (a projected-at stamp vs "as of now"), so the shared
+          clause states both, phrased to stay true and unchanged for either.
+      - id: recall.output-shape
+        why: >
+          What an answer must state (current call, freshness basis, chain
+          presence) is a property of the answer, not of the mechanism that
+          produced it.
+    divergent:
+      - id: recall.read-path
+        why: >
+          Genuinely different procedures (Skis-Reach-1, konjo-skis/README.md):
+          the plugin shells out to `konjo-decision search` against the live
+          Ledger stream; the skis variant reads a Cortex markdown projection
+          via a GitHub repository integration. Not unifiable, and not meant
+          to be -- this is the one place the two variants are supposed to
+          differ.
+  longrun:
+    plugin: plugins/konjo/skills/longrun/SKILL.md
+    skis: konjo-skis/longrun/SKILL.md
+    must_match:
+      - id: longrun.contract
+        why: >
+          The four-point resume contract is the entire point of the skill; a
+          fix to one point (e.g. relaxing idempotency) that never reaches the
+          other variant is exactly the drift this gate exists to catch.
+      - id: longrun.helper-code
+        why: >
+          The konjo_longrun helper usage is a code sample copied by hand into
+          scripts; the two variants must offer the identical snippet, or a
+          copied script silently forks depending which SKILL.md its author
+          happened to read.
+    divergent: []

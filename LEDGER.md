@@ -8,6 +8,137 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Skis-Contract-1: skis contract shipped and gated, KT-3 disposed, three findings recorded, P-0 checked a third time
+
+**Finding 1: KT-3 closes as INVALID PREMISE, not BLOCKED, not SUPERSEDED.**
+`Routine-Reach-1` (below) was half right. It correctly established the GitHub
+integration was connected the whole time and `ListConnectors` does not
+enumerate it. It called that integration a "connector" and kept asking
+whether a routine could be handed one -- and that single misclassification is
+what kept KT-3 open across two sprints and sent a third session hunting for a
+UI control that does not exist for this purpose. Cloud sessions get GitHub
+access through an account-level repository integration (GitHub App
+installation or a personal access token), after which a session can reach any
+repository the connecting account can see. It surfaces in a routine's
+**Repositories** field, configured at creation time. It is never a
+selectable entry in a connectors list, and there is no discovery step to test
+because a routine is always handed its repositories by configuration, not
+sent to go find them. Four observations that looked like separate blockers
+are explained by this one fact: `ListConnectors` filtered on `github` returns
+`[]` (a repository integration is not a connector, so it was never going to
+appear there); the routine form's connector search returns nothing for
+GitHub (same reason); `create_trigger`'s `connectors` parameter is rejected
+outright by this org (irrelevant to a repository-integration grant, which
+does not route through that parameter); and `create_session` with
+`source_url` works anyway (it uses the repository integration directly, the
+only path that was ever real). KT-3's question -- "can a routine that must go
+find a repo, rather than being handed one, reach it" -- does not correspond
+to anything the product does. Every routine is handed its repositories.
+There is no "go find it" mode to test, so there is nothing left to be
+BLOCKED on and nothing for KT-7 to have superseded; the question itself
+does not apply.
+
+A live routine, configured with `wesleyscholl/konjo-cortex` in Repositories
+and no connectors, read the real private page and reported 33 decisions, the
+latest active id `2466f9cd4eeb`, the active gate-tiering decision
+`9e438baf38c6`, and `projected-at` `2026-08-06T12:00:00Z` -- a value the fold
+generates and that appears nowhere in `kiban`, which rules out the
+contamination path `KT-7` named. **Recorded with an honest asterisk: the
+questions for this run were not pre-registered in a committed file before it
+ran**, unlike `KT-7`'s method. It is recorded as the resolution of KT-3's
+premise, not retroactively described as a scored kill-test pass -- the
+distinction Finding 3's own review-survived-it lesson exists to enforce.
+Full writeup and the taxonomy correction: `.konjo/killtests/CortexSkis/KT-3.md`.
+
+**Finding 2: supersede-chain rendering is confirmed against the real
+projected page, not just a synthetic fixture.** `KT-2` proved the fold
+renders chains against a fixture; nobody had checked the real
+`repo-kiban.md` until this sprint. Three chains are present, each carrying an
+explicit `chain:` field: `d1f4131159dc -> 4d26cb337b09` (`review_diff`
+default runs 1 to 3), `723cacf5d751 -> 47e23b2fe749` (a self-graded checklist
+line replaced by two concrete commands -- the same shape Finding 3 below
+names), and `6c42cab1a2d0 -> d4a5709925d0` (`gate_claude_contract` advisory
+to blocking for lopi). This matters for a reason narrower than "chains
+work": the gate-tiering decision `9e438baf38c6` reports no predecessor, and a
+bare "None" cannot on its own distinguish an absent relationship from an
+absent renderer -- the same absence-of-evidence shape Finding 1 and
+`Routine-Reach-1` both hit. Finding three real chains elsewhere on the same
+page is the positive control that makes that "None" trustworthy: the
+renderer demonstrably works, so the gate-tiering entry's lack of a chain is a
+real property of the data, not a rendering gap. Three chains across 33
+decisions, none longer than two links -- shallow and infrequent, unremarkable
+at fixture scale. Re-check the depth and frequency once the corpus is real;
+a jump there would say something about decision quality, not about the
+fold.
+
+**Finding 3: gates ship unenforcing, and it is a pattern, not three
+incidents.** `mutation-hunt` sat advisory for a release cycle on
+`continue-on-error: true`. `gate_claude_contract` shipped advisory
+everywhere and was only later flipped blocking for lopi (the
+`6c42cab1a2d0 -> d4a5709925d0` chain above). A self-graded "zero dead code"
+checklist line was replaced with two concrete, checkable commands (the
+`723cacf5d751 -> 47e23b2fe749` chain above). Three different repos, three
+different sprints, the identical shape: a gate introduced in a form that
+cannot reject anything. **New default, effective this sprint: a new gate
+ships BLOCKING. Shipping one advisory instead requires a stated reason and a
+date to revisit, the same discipline `Adoption-Ramp-1`'s `tier:` ramp already
+expects of a gate being promoted, applied here to a gate at birth.** This is
+not filed as a documentation note -- it is why Phase 1's skis-contract
+checker (`.konjo/killtests/CortexSkis/KT-8.md`) ships wired BLOCKING into CI
+with no `continue-on-error`, and why `KT-8` exists at all: a gate that has
+never been demonstrated to actually fail on real drift is exactly the shape
+this finding is about, whatever tier it claims.
+
+
+**The skis contract shipped and is gated, not just declared.**
+`konjo-skis/CONTRACT.yml` + `lib/skis_contract.py` + `bin/konjo-skis-check`,
+wired BLOCKING into `.github/workflows/ci.yml`, per Finding 3's new default.
+`KT-8` (`.konjo/killtests/CortexSkis/KT-8.md`) demonstrates both required
+failure modes before the gate shipped: Leg 1 shows a real correctness
+regression in a must-match section (`recall.chain-reasoning`) gets rejected,
+naming the section and both file paths; Leg 2 shows a real, substantive edit
+inside a declared-divergent section (`recall.read-path`) leaves the gate
+silent. Both legs PASS. `recall`'s two `SKILL.md` files now carry four
+must-match canonical blocks verbatim (chain reasoning, freshness citation,
+redacted-vs-absent, output shape) and one declared-divergent block (the read
+mechanism itself); `longrun`'s two files share the four-point resume
+contract and the helper code sample verbatim, with nothing declared
+divergent -- the two variants were already substantively aligned there.
+
+**Cortex branch policy extended, in `konjo-cortex/README.md` not here** (the
+policy governs that repo, not this one): `main` still receives only
+projected pages; branches may now hold verification artifacts; an artifact
+branch is deleted once its verdict is accepted. Extends the original
+`main`-only rule, which was silent on branches -- the exact silence that let
+`kt7-answer` become an open question rather than an obvious call. Logged
+there rather than left implicit: `main` currently carries `ANSWER-KT7.md`
+(merged by Wes directly, not reversed here without asking), and `kt7-answer`
+itself is fully merged and safe to delete but could not be deleted from this
+session -- no GitHub MCP tool exposes branch deletion, and a direct
+`git push origin --delete` returned `403`. Needs a token with that scope or
+the GitHub UI.
+
+**`konjo-skis` location and visibility confirmed, not left as an unexamined
+default** (`konjo-skis/README.md`, full reasoning there): stays in `kiban`
+(Phase 1's consistency gate can't cross a repo boundary without new
+machinery); public on purpose (procedures public, data private -- a skill
+contains no facts); org, not personal (nothing pushes it toward a personal
+account the way `konjo-cortex`'s data was). The one real exposure-scan
+finding, `wesleyscholl/konjo-cortex` named in a public README, is logged as
+a decision (a name grants no access) rather than an oversight. `lib/redact.py`'s
+`scan_paths` run directly over `konjo-skis/` and `plugins/konjo/skills/`:
+12 files, 0 findings.
+
+**P-0, checked a third consecutive sprint, still unmet -- and this time not
+even the fixture is present.** `find ~ -iname decisions.jsonl` and a direct
+check of `~/.konjo/state/ledger/decisions.jsonl` both come back empty: no
+`~/.konjo` directory exists anywhere in this container at all, not even the
+K1 fixture K1 and K2 both found sitting at the real state path. Real event
+count: 0. Real scope count: 0. Threshold (>= 10 events, >= 2 scopes) not
+met, third check running, same finding both prior sprints made independently.
+No events fabricated to clear it -- unchanged instruction, restated because
+the pressure to do so is explicitly named as highest this sprint of the
+three.
 ## Routine-Reach-1: the connector was never missing, and the trigger path cannot carry it anyway
 
 **A premise two sprints treated as fact was false, and finding that out changed

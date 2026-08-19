@@ -4,6 +4,65 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-08-19
+
+Sprint K3 ("skis contract, KT-3 disposition, verification hygiene"). K1 built
+the fold, K2 automated it, the post-K2 continuation proved reachability and
+corrected a false premise. This sprint puts a mechanism under `konjo-skis`
+(a declared contract with a BLOCKING checker, not a documentation note),
+disposes of KT-3 with a taxonomy correction rather than leaving it open a
+third sprint, and turns the false-premise lesson from `Routine-Reach-1` into
+two standing kill-test template requirements. See `LEDGER.md`'s
+`Skis-Contract-1` entry for full reasoning, and
+`.konjo/killtests/CortexSkis/KT-3.md` and `KT-8.md` for this sprint's raw
+kill-test output.
+
+**Headline numbers:**
+- P-0 (real Ledger data check): re-checked a third consecutive sprint, still
+  not assumed. **0 real events, 0 scopes -- and this time not even the K1
+  fixture is present at the real state path.** `~/.konjo` does not exist at
+  all in this container. Threshold (>=10 events, >=2 scopes) not met; every
+  finding this sprint that reads real content still reads the K1 fixture
+  corpus.
+- KT-3 (cloud-session reach): closes **INVALID PREMISE**, not BLOCKED, not
+  SUPERSEDED. The question ("can a routine that must go find a repo, rather
+  than being handed one, reach it") has no referent in the product -- every
+  routine is handed its repositories through an account-level GitHub
+  repository integration, never a claude.ai connector. A live routine
+  configured that way read the real private page correctly (33 decisions,
+  `projected-at` matching the fold's own output, present nowhere in
+  `kiban`), recorded with an honest asterisk: not pre-registered, so not
+  described as a scored PASS.
+- KT-8 (skis-contract drift gate, new this sprint): **PASS, both legs**. Leg
+  1: a real correctness regression in a must-match section
+  (`recall.chain-reasoning`) is rejected, naming the section and both file
+  paths, and re-clears once synced. Leg 2: a real, substantive edit inside a
+  declared-divergent section (`recall.read-path`) leaves the gate silent.
+  Both exactly as pre-registered before either ran.
+- Skis contract coverage: 2 paired skills (`recall`, `longrun`), **6
+  must-match sections, 1 declared-divergent section** across both pairs.
+  `longrun`'s two variants needed no declared divergence -- already
+  substantively aligned before this sprint touched them.
+- Gates shipping unenforcing: named as a **pattern, not incidents**, across
+  3 identified historical instances (`mutation-hunt`, `gate_claude_contract`,
+  a self-graded checklist line each later fixed) -- not a full portfolio
+  audit of every gate's tier, a review of the instances this sprint's brief
+  named. New default: a gate ships BLOCKING, or advisory with a stated,
+  dated reason. The one new gate this sprint (`konjo-skis-check`) ships
+  BLOCKING, with `KT-8` as the demonstration it actually rejects real drift
+  rather than shipping unenforcing as the fourth instance of the pattern.
+- Exposure scan (`konjo-skis/`, `plugins/konjo/skills/`): **1 finding, 0
+  secrets.** `wesleyscholl/konjo-cortex` named in a public README, logged as
+  a decision (a repo name grants no access) rather than an oversight.
+  `lib/redact.py`'s `scan_paths` (the mechanism behind `konjo-secrets` and
+  CI's `gate_secrets`) over both trees: 12 files, 0 findings. No internal
+  hostnames, private paths beyond the one logged, or personal
+  names/nicknames found.
+- Publishing `konjo-skis` to claude.ai account skills: still a manual step,
+  not attempted this sprint -- KT-5 (K2) already confirmed `recall` answers
+  correctly against the real pushed repo, so it remains a pure upload
+  question, not a does-it-work one.
+
 ## [1.17.0] - 2026-08-19
 
 Sprint K2 ("close the loop"): K1 built the fold mechanism and proved it on a
