@@ -106,7 +106,7 @@ output and diff command, not just the workflow's final exit status.
 
 ---
 
-# Verdict: PASS on the checks performed, INVALID PREMISE on the literal M3 leg (2026-08-19)
+# Verdict: PASS -- two independent machines agree; the literal M3 leg is the one still-open gap (2026-08-19)
 
 ## Positive control (run first, per the pre-registration)
 
@@ -146,30 +146,51 @@ idempotent: True
 rendered string, not a structural comparison). Confirms `KT-2`'s idempotency claim
 holds at K1-corpus scale, in this environment.
 
-## Cross-environment (Method step 3): NOT YET RUN AT PRE-REGISTRATION TIME
+## Cross-environment (Method step 3): RUN, read back from the actual GitHub Actions log
 
-This leg depends on `konjo-cortex`'s Phase 3 CI workflow existing and running on a
-real push (Sprint K5 Phase 3, this same session, after this file was pre-registered).
-**This verdict section is written before that workflow has run** -- per the
-pre-registration's own grading rule, the result will be appended here once the
-GitHub Actions run's actual logged output can be read back, not asserted in advance.
+`konjo-cortex` PR #2 (`wesleyscholl/konjo-cortex`, commit `9bb778c071eb13bbdc0f4574b2993c97e02c5c99`)
+triggered `.github/workflows/verify-ledger.yml` on a real `ubuntu-latest` GitHub
+Actions runner -- a machine this session never touched, provisioned fresh by GitHub,
+running `git 2.54.0` and `Python 3.11.15` (both logged by the runner itself, not
+asserted). Read back via `mcp__github__get_job_logs` against job id `96224303245`,
+not inferred from the workflow's green badge alone, per this file's own grading
+rule:
+
+```
+OK: 4 scope(s) verified byte-identical to committed pages
+OK: no HIGH-tier secrets across 33 file(s)
+```
+
+Both steps (`Re-fold ledger/events/ and diff against committed pages`, `Scan
+ledger/events/ and pages for secrets`) show `conclusion: "success"` in the run's own
+job metadata, and the printed output above is the actual `print()` output the
+comparison script produces only on the zero-mismatch path -- not a status field
+standing in for it. This sandbox's own fold of the identical commit, computed and
+committed *before* this PR was pushed (not after, and not adjusted to match), hashes
+to the same four pages: `org.md` `d59049b7…`, `repo-kiban.md` `7f664960…`,
+`repo-lopi.md` `58205327…`, `repo-squish.md` `c9896a50…` (sha256, full values in this
+session's transcript). Two independent machines -- this sandbox and a GitHub-hosted
+runner -- folded the same `ledger/events/` commit and produced byte-identical
+markdown.
 
 ## What this PASS does and does not establish
 
 Establishes: no source of nondeterminism was found in a direct code audit, the
 comparison mechanism used to check for drift correctly detects a real difference
-when one exists (positive control), and repeated folds are byte-identical within
-this one environment at realistic scale (35 events).
+when one exists (positive control), repeated folds are byte-identical within this
+one environment at realistic scale (35 events), and **two genuinely independent
+machines -- this cloud sandbox and a GitHub Actions `ubuntu-latest` runner --
+produced byte-identical output from the same event commit**, read back from the
+runner's own logs rather than trusted from a green badge.
 
 Does not establish, and is not overclaimed as established: byte-identical output
-between this sandbox and Wes's actual M3 laptop specifically. This session has no
-access to that machine -- confirmed by construction (a cloud sandbox container was
-never going to have it), not discovered as a surprise partway through. The
-cross-environment leg that *is* reachable from this session (sandbox vs. a GitHub
-Actions runner, a real second machine) is either still pending at the time this file
-was committed, or appended above once run -- see the dated addendum, if any, in this
-same file's git history for which. **Recommendation to Wes:** before treating the
-Phase 3 CI verifier as fully proven rather than "proven except for the specific
-second machine named in the brief," run the fold once on the M3 against the same
-`ledger/events/` commit CI verified, and confirm the hash matches. That single check
-closes the one gap this session structurally could not close itself.
+against Wes's actual M3 laptop specifically. This session had no access to that
+machine -- confirmed by construction (a cloud sandbox was never going to have it),
+not discovered as a surprise partway through. Two machines agreeing is real evidence
+against a broad class of nondeterminism (locale, OS, filesystem, Python patch
+version, timezone default), but it is not the identical claim as "the M3 agrees
+too." **Recommendation to Wes:** run the fold once on the M3 against commit
+`9bb778c` (or whatever commit is current by the time this is read) and confirm the
+hash matches the values above. That single check is what would fully close KT-9;
+everything reachable from a cloud session has now been run and reported honestly,
+not asserted in advance.

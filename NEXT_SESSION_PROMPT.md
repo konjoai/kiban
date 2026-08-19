@@ -8,15 +8,16 @@ Full reasoning: `LEDGER.md`'s `Ledger-Laptop-Only-1` and `Ledger-Events-Per-File
 
 **What a session in this repo cannot advance, and should not try to:**
 
-1. **KT-9's literal M3 leg.** This session's own run (code audit, positive control,
-   same-environment repeatability, and a sandbox-vs-GitHub-Actions-runner
-   cross-check once `konjo-cortex`'s Phase 3 CI workflow exists) is in
-   `.konjo/killtests/LedgerEvents/KT-9.md`, PASS on everything it could reach. The
-   one thing no cloud session can do is fold on the actual M3 and diff against what
-   CI computed for the same commit. If you're reading this from a session that
-   *does* have M3 access: run the fold there against the commit `konjo-cortex`'s CI
-   last verified, confirm the hash matches, and append that to KT-9's verdict. If
-   you're a cloud session: don't attempt this, say so, move on.
+1. **KT-9's literal M3 leg.** `.konjo/killtests/LedgerEvents/KT-9.md` is PASS: code
+   audit, positive control, same-environment repeatability, and a real
+   cross-machine check -- this sandbox and a GitHub Actions runner independently
+   folded the same `konjo-cortex` commit (`9bb778c`) to byte-identical markdown,
+   confirmed by reading the runner's own job log. The one thing no cloud session
+   can do is fold on the actual M3 and diff against those same hashes. If you're
+   reading this from a session that *does* have M3 access: run the fold there
+   against that commit (or whatever's current), confirm the hash matches, and
+   append that to KT-9's verdict. If you're a cloud session: don't attempt this,
+   say so, move on.
 2. **KT-11: the phone write path.** `.konjo/killtests/LedgerEvents/KT-11.md` is
    BLOCKED, not attempted -- structurally the phone write path is the same code as
    the laptop/cloud path (no invocation-surface branch in

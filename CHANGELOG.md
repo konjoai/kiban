@@ -57,10 +57,14 @@ routine -- can write, and every surface can read. Full reasoning:
 - **Added: `.konjo/killtests/LedgerEvents/KT-9.md`, `KT-10.md`, `KT-11.md`.** KT-10
   (concurrent writes) ran for real against a disposable local git sandbox: PASS,
   zero event-file conflicts in both legs, one expected page conflict when both
-  writers also refold. KT-9 (fold determinism across machines) PASS on every check
-  this session could run (code audit, positive control, same-environment
-  repeatability) with the literal M3 leg named as an explicit gap, not silently
-  assumed. KT-11 (the phone write path) is BLOCKED, not attempted -- this session
+  writers also refold. KT-9 (fold determinism across machines) PASS: code audit,
+  positive control, same-environment repeatability, and a real cross-machine
+  check -- this sandbox's fold of `konjo-cortex` commit `9bb778c` and a GitHub
+  Actions `ubuntu-latest` runner's independent re-fold of the same commit
+  (`.github/workflows/verify-ledger.yml`, Phase 3) produced byte-identical
+  markdown, read back from the runner's own job log, not trusted from a green
+  badge. The literal M3 leg is the one gap left, named explicitly, not silently
+  assumed closed. KT-11 (the phone write path) is BLOCKED, not attempted -- this session
   has no device-control path to a real phone -- scoped honestly per the brief's own
   stop rule to "laptop-and-cloud writes verified, phone leg outstanding," with the
   concrete steps to close it left for Wes.
