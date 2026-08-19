@@ -8,7 +8,7 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
-## Skis-Contract-1: Finding 1, 2, 3 -- KT-3's taxonomy correction, chain rendering confirmed live, and gates-ship-unenforcing named as a pattern
+## Skis-Contract-1: skis contract shipped and gated, KT-3 disposed, three findings recorded, P-0 checked a third time
 
 **Finding 1: KT-3 closes as INVALID PREMISE, not BLOCKED, not SUPERSEDED.**
 `Routine-Reach-1` (below) was half right. It correctly established the GitHub
@@ -89,6 +89,56 @@ with no `continue-on-error`, and why `KT-8` exists at all: a gate that has
 never been demonstrated to actually fail on real drift is exactly the shape
 this finding is about, whatever tier it claims.
 
+
+**The skis contract shipped and is gated, not just declared.**
+`konjo-skis/CONTRACT.yml` + `lib/skis_contract.py` + `bin/konjo-skis-check`,
+wired BLOCKING into `.github/workflows/ci.yml`, per Finding 3's new default.
+`KT-8` (`.konjo/killtests/CortexSkis/KT-8.md`) demonstrates both required
+failure modes before the gate shipped: Leg 1 shows a real correctness
+regression in a must-match section (`recall.chain-reasoning`) gets rejected,
+naming the section and both file paths; Leg 2 shows a real, substantive edit
+inside a declared-divergent section (`recall.read-path`) leaves the gate
+silent. Both legs PASS. `recall`'s two `SKILL.md` files now carry four
+must-match canonical blocks verbatim (chain reasoning, freshness citation,
+redacted-vs-absent, output shape) and one declared-divergent block (the read
+mechanism itself); `longrun`'s two files share the four-point resume
+contract and the helper code sample verbatim, with nothing declared
+divergent -- the two variants were already substantively aligned there.
+
+**Cortex branch policy extended, in `konjo-cortex/README.md` not here** (the
+policy governs that repo, not this one): `main` still receives only
+projected pages; branches may now hold verification artifacts; an artifact
+branch is deleted once its verdict is accepted. Extends the original
+`main`-only rule, which was silent on branches -- the exact silence that let
+`kt7-answer` become an open question rather than an obvious call. Logged
+there rather than left implicit: `main` currently carries `ANSWER-KT7.md`
+(merged by Wes directly, not reversed here without asking), and `kt7-answer`
+itself is fully merged and safe to delete but could not be deleted from this
+session -- no GitHub MCP tool exposes branch deletion, and a direct
+`git push origin --delete` returned `403`. Needs a token with that scope or
+the GitHub UI.
+
+**`konjo-skis` location and visibility confirmed, not left as an unexamined
+default** (`konjo-skis/README.md`, full reasoning there): stays in `kiban`
+(Phase 1's consistency gate can't cross a repo boundary without new
+machinery); public on purpose (procedures public, data private -- a skill
+contains no facts); org, not personal (nothing pushes it toward a personal
+account the way `konjo-cortex`'s data was). The one real exposure-scan
+finding, `wesleyscholl/konjo-cortex` named in a public README, is logged as
+a decision (a name grants no access) rather than an oversight. `lib/redact.py`'s
+`scan_paths` run directly over `konjo-skis/` and `plugins/konjo/skills/`:
+12 files, 0 findings.
+
+**P-0, checked a third consecutive sprint, still unmet -- and this time not
+even the fixture is present.** `find ~ -iname decisions.jsonl` and a direct
+check of `~/.konjo/state/ledger/decisions.jsonl` both come back empty: no
+`~/.konjo` directory exists anywhere in this container at all, not even the
+K1 fixture K1 and K2 both found sitting at the real state path. Real event
+count: 0. Real scope count: 0. Threshold (>= 10 events, >= 2 scopes) not
+met, third check running, same finding both prior sprints made independently.
+No events fabricated to clear it -- unchanged instruction, restated because
+the pressure to do so is explicitly named as highest this sprint of the
+three.
 ## Routine-Reach-1: the connector was never missing, and the trigger path cannot carry it anyway
 
 **A premise two sprints treated as fact was false, and finding that out changed

@@ -64,6 +64,49 @@ through the connector plane Canva/Gmail/Drive/Trello live on. See
 `source_url`) and `KT-3.md` (the taxonomy correction in full, closed
 INVALID PREMISE).
 
+## Location and visibility (Sprint K3)
+
+`konjo-skis` is public (`konjoai/kiban` is public) and this is the first
+sprint treating it as a shipping artifact rather than a staging directory,
+so the location and visibility calls get logged here rather than left as
+an unexamined default:
+
+- **Stays in `kiban`, not a separate repo.** `recall`'s two variants share
+  Phase 1's consistency requirement (`konjo-skis/CONTRACT.yml`,
+  `bin/konjo-skis-check`), and a gate cannot enforce across a repo boundary
+  without new machinery this sprint isn't building. Splitting `konjo-skis`
+  out would either lose that enforcement or require duplicating it.
+- **Public, on purpose.** Procedures are public; data is private. A skill
+  file contains no facts about any repo's actual decisions -- only how to
+  read a Cortex page once you're holding one. The private data
+  (`wesleyscholl/konjo-cortex`'s content) and the public procedure for
+  reading it are different things, and only the second lives here.
+- **Org (`konjoai`), not personal.** Nothing pushes `konjo-skis` toward a
+  personal account the way `konjo-cortex` was pushed there (`Cortex-Projection-1`'s
+  private-repo choice was about data; this is procedure).
+- **Split-out triggers, any one sufficient to revisit this:** a
+  non-code-work skill lands here that stretches `kiban`'s own scope; an
+  external consumer wants `konjo-skis` without `kiban`'s gates and language
+  packages; or `konjo-skis` needs a release cadence that breaks
+  one-sprint-one-`VERSION`.
+
+**`konjo-skis/README.md` naming `wesleyscholl/konjo-cortex`, a private repo,
+in this public file: logged as a decision, not an oversight.** A repo name
+alone grants no access -- reaching it still requires the GitHub repository
+integration `Finding 1` (`LEDGER.md`'s `Skis-Contract-1` entry) describes,
+which is account-scoped and not something knowing the name confers. Kept
+for the same reason any of this file names it: a reader following this
+skill needs to know which repo to point their own integration at.
+
+**Exposure scan, this sprint:** `konjo-skis/` and `plugins/konjo/skills/`
+scanned for internal hostnames, private-repo paths beyond the one named
+above, and org-internal vocabulary (personal names/emails, the `M3`
+laptop nickname used in `LEDGER.md`'s own prose) -- none found.
+`lib/redact.py`'s `scan_paths` (the same secret-scanning mechanism behind
+`konjo-secrets` and CI's `gate_secrets`) run directly over both trees'
+files (not diff-based, since there's no diff to scan against for a
+point-in-time sweep): 12 files, 0 findings.
+
 ## Publishing
 
 These are staged here, in `kiban`, not yet uploaded as claude.ai account
