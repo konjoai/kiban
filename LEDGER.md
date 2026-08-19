@@ -8,6 +8,57 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Routine-Reach-1: the connector was never missing, and the trigger path cannot carry it anyway
+
+**A premise two sprints treated as fact was false, and finding that out changed
+what the remaining work is.** KT-3 recorded, and `NEXT_SESSION_PROMPT.md` then
+carried forward twice, that no GitHub connector was registered for this
+claude.ai account. The evidence was `ListConnectors`, run twice in K1 and cited
+again in K2. Wes opened the Connectors panel on 2026-08-19: **GitHub
+Integration, connected, and already there** -- not added in response to the K2
+handoff that asked for it.
+
+`ListConnectors` reproduces the false negative on demand: unfiltered it returns
+seven connectors with no GitHub entry, and filtered on `["github", "git",
+"code"]` it returns an empty list. So a third or fourth run would not have
+caught it. The lesson is not "check more times"; it is that one tool's output
+was treated as ground truth about account state that tool does not fully
+enumerate, and a browser-side remediation was designed and handed to a human on
+that basis. The handoff asked Wes to do something that was already done.
+
+**The real blocker is one layer in.** `create_trigger` with `connectors:
+[...]` fails with *"the connectors parameter is not available for this
+organization"*, so K2's prescribed fix (retry with `connectors: ["GitHub"]`)
+was never performable from here regardless. Without the parameter, the fired
+session's `allowed_tools` is byte-identical to the list KT-3 recorded, zero
+`mcp__` entries, and the warning names the constraint: connectors on triggers
+made through this tool are limited to those the calling session itself holds,
+and this session holds none passable. The stated remedy is the claude.ai
+Routines UI, which is genuinely browser-only, or a calling session that holds
+the grants. KT-3 stays BLOCKED with a corrected, narrower reason recorded in
+its own file; the trigger built to test it was deleted unfired, because firing
+it would have reproduced the known result and still been ungradeable.
+
+**The other mechanism K2 named does work, and is now tested.** `KT-7` (PASS)
+spawned a fresh session with `create_session`'s `source_url` pointed at the
+private `konjo-cortex` and nothing else, and it answered four questions
+pre-registered *before the run* with 4/4 correct. Three of those four have
+answers that appear nowhere in `kiban`, so prior knowledge of the fixture
+corpus cannot produce them.
+
+**The verification pattern is the part worth keeping.** KT-3's stop rule broke
+down because no tool could retrieve a fired session's transcript, and that is
+still true: `list_events` is not in this session's toolset either. KT-7 routes
+around it instead of re-hitting it -- the spawned session **commits its answer
+to a branch**, and the grading session reads that commit back through the
+GitHub API. A commit is verbatim, timestamped, and attributable in a way a
+session status field is not. Any future reachability test should deposit an
+artifact rather than rely on being asked what it found.
+
+**Still unchanged:** P-0. Every id in that PASS traces to Sprint K1's fixture
+corpus. Real event count is still 0, and KT-7 proves a transport, not a
+content.
+
 ## Sprint-K2-Close-The-Loop: real data still doesn't exist, the routine-reach mechanism does, the automation does not yet
 
 Sprint K2 ("close the loop"). K1 built the fold mechanism and proved it on a
