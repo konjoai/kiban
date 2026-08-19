@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
 from lib import doc_staleness, oneway
 
 TODAY = date(2026, 7, 24)
+_KIBAN_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -343,3 +347,93 @@ def test_projection_non_state_decays_is_skip(tmp_path: Path) -> None:
     page.write_text("---\ndecays: reference\nscope: org\n---\n\n# Cortex\n")
     check = doc_staleness.check_projection(page, newest_event_at="2026-07-20T12:00:00Z")
     assert check.verdict == doc_staleness.SKIP
+
+
+# ---------------------------------------------------------------------------
+# KT-6 -- pipeline-level: the real CLI chain (not check_projection() directly)
+# fails closed on a fold that never re-ran, and clears once it does
+# ---------------------------------------------------------------------------
+
+
+def _run_cli(script: str, args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(_KIBAN_ROOT / "bin" / script), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def _decide(scope: str, text: str, env: dict[str, str]) -> None:
+    r = _run_cli(
+        "konjo-decision",
+        [
+            "decide", "--scope", scope, "--decision", text,
+            "--rationale", "kt6 fixture", "--author", "kt6",
+        ],
+        env,
+    )
+    assert r.returncode == 0, r.stderr
+
+
+def _project(cortex_dir: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return _run_cli(
+        "konjo-decision", ["project", "--all-scopes", "--out-dir", str(cortex_dir)], env
+    )
+
+
+def test_kt6_project_scan_fails_closed_when_fold_never_reran(tmp_path: Path) -> None:
+    """This is the exact failure mode konjo-ship's checklist line (and the
+    `cortex_fold_push.sh` hook that now runs it) exists to catch: a Ledger write this
+    sprint made and never re-folded leaves Cortex silently stale. Real subprocess calls
+    to the actual CLIs, not `doc_staleness.check_projection()` called directly -- this is
+    what `test_projection_stale_when_newer_event_landed` above already covers at the
+    unit level; this proves the full `konjo-decision` -> `konjo-doc-staleness` pipeline
+    fails closed end to end.
+    """
+    state_dir = tmp_path / "state"
+    cortex_dir = tmp_path / "cortex"
+    state_dir.mkdir()
+    cortex_dir.mkdir()
+    env = {**os.environ, "KONJO_STATE_DIR": str(state_dir)}
+
+    _decide("repo:kt6", "First decision", env)
+
+    project1 = _project(cortex_dir, env)
+    assert project1.returncode == 0, project1.stderr
+    assert (cortex_dir / "repo-kt6.md").exists()
+
+    scan1 = _run_cli("konjo-doc-staleness", ["project-scan", "--cortex-dir", str(cortex_dir)], env)
+    assert scan1.returncode == 0, scan1.stdout + scan1.stderr
+
+    # The Ledger's own event date has 1-second resolution (ledger/engine.py) -- sleep
+    # past it so the second decision is provably newer than what got folded above,
+    # not a same-second race.
+    time.sleep(1.1)
+    _decide("repo:kt6", "Second decision, deliberately never folded", env)
+
+    # No re-run of `project` here -- this is the gap KT-6 exists to prove the gate catches.
+    scan2 = _run_cli("konjo-doc-staleness", ["project-scan", "--cortex-dir", str(cortex_dir)], env)
+    assert scan2.returncode == 1, scan2.stdout + scan2.stderr
+    assert "FAIL" in scan2.stdout
+
+
+def test_kt6_project_scan_passes_after_refold(tmp_path: Path) -> None:
+    """Companion to the fail-closed test above: re-running `project` after the second
+    write clears the same FAIL, proving the gate tracks real fold state rather than
+    being permanently red once a page has ever gone stale.
+    """
+    state_dir = tmp_path / "state"
+    cortex_dir = tmp_path / "cortex"
+    state_dir.mkdir()
+    cortex_dir.mkdir()
+    env = {**os.environ, "KONJO_STATE_DIR": str(state_dir)}
+
+    _decide("repo:kt6b", "First decision", env)
+    _decide("repo:kt6b", "Second decision, will be folded", env)
+
+    project = _project(cortex_dir, env)
+    assert project.returncode == 0, project.stderr
+
+    scan = _run_cli("konjo-doc-staleness", ["project-scan", "--cortex-dir", str(cortex_dir)], env)
+    assert scan.returncode == 0, scan.stdout + scan.stderr

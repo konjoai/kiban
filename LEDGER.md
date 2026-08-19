@@ -8,6 +8,55 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Sprint-K2-Close-The-Loop: real data still doesn't exist, the routine-reach mechanism does, the automation does not yet
+
+Sprint K2 ("close the loop"). K1 built the fold mechanism and proved it on a
+transcribed fixture; this sprint's job was to put real Ledger data through
+it, finish KT-3 (the one kill-test K1 never actually ran), and remove the
+human from the fold-and-push path. One of those three happened. The other
+two stayed honestly blocked rather than faked, per the sprint's own explicit
+stop rules.
+
+### P-0: no real Ledger stream exists this sprint either -- checked, not assumed
+
+Checked at kickoff, not carried forward from K1's finding: `find / -iname
+decisions.jsonl` from this session's container turned up
+`/root/.konjo/state/ledger/decisions.jsonl` -- 35 events, 30 `decide` in
+scope `repo:kiban`, matching K1's fixture corpus byte-for-byte (same ids,
+same decision text, same date range). This is **not real usage data**; it's
+the K1 fixture, evidently loaded into the real default state path by an
+earlier session's "first smoke push" test of the real CLI mechanics
+(`NEXT_SESSION_PROMPT.md`'s own item 1 from the prior handoff). "The M3" the
+schema and prior handoffs refer to is Wes's laptop, not this cloud
+container, and it is not reachable from here -- confirmed, the same finding
+K1 made, not assumed unchanged.
+
+**Real event count: 0. Scope count: 0. Threshold (>= 10 events, >= 2 scopes)
+not met.** Per the brief's own stop rule: Phase 2 (real projection) is
+blocked, Phases 1/3/4 ran against the existing fixture-derived Cortex page
+(the same `repo-kiban.md` K1 pushed) where they needed content at all, and
+no fixture events were generated to clear the threshold. `CHANGELOG.md`
+[1.17.0] states plainly that the projection has still never carried real
+data. P-0 is first in `NEXT_SESSION_PROMPT.md` again.
+
+### Sign-Distribution: triaged, closed unmerged -- Wes's call, not a default
+
+`claude/sign-distribution-channel-heg41d` (real supply-chain work: verify a
+release tag's ssh signature before `self_update.sh` applies it, established
+signing from a genuinely-nothing-signed baseline, 8 releases stale but
+merges clean except two trivial CHANGELOG/LEDGER section-ordering
+conflicts) was reviewed in full this sprint per the brief's instruction not
+to leave it sitting. Asked directly rather than merged by default, because
+its new `release.yml` step hard-fails the release-cut job if
+`RELEASE_SIGNING_KEY` isn't provisioned as a GitHub Actions secret --
+exactly the job this sprint's own VERSION bump would trigger, and secret
+existence isn't something this session can check. **Wes: not provisioning
+the signing key yet, explicitly deferring signing adoption.** The branch is
+closed unmerged this sprint, not deleted -- it remains real, reviewed,
+mergeable work for whenever signing adoption is actually wanted; re-running
+the same merge-conflict check before merging is cheap, re-doing the design
+work is not.
+
 ## Skis-Reach-1: `konjo-skis` gets created, `decide` deliberately doesn't join it
 
 **One-way door, conditional on a real kill-test, and it passed.** Sprint K1's
