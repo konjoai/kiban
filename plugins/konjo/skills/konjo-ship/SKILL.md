@@ -9,7 +9,11 @@ konjo-can-fail) replacing one self-graded line, net +1 line over the prior cap-e
 Trimming further would cut the reasoning for why those replaced a self-graded line,
 which is the point of the change. Sprint K1 (cortex projection) added one more
 conditional line refreshing the Cortex read model, since a sprint that logs decisions
-but never re-folds them leaves the read model silently stale. Recorded one-way door. -->
+but never re-folds them leaves the read model silently stale. Sprint K2 replaced that
+line's raw `konjo-decision project` command with a call to
+`plugins/konjo/hooks/cortex_fold_push.sh` (KT-6), which does the same fold-and-push
+plus the no-op-when-no-real-Ledger check inline, rather than leaving that check as
+prose a human has to remember. Recorded one-way door. -->
 # Konjo Ship
 
 ## Self-update preamble (run first)
@@ -35,9 +39,11 @@ A sprint is not complete until every one of these is true:
 [ ] No doc *this sprint touched* asserts a capability state that contradicts the code
 [ ] konjo-gates polarity — clean, or every finding waived on the record
 [ ] Every quality gate this sprint touched has a test that makes it reject
-[ ] If this sprint logged any decide/supersede/redact: konjo-decision project
-    --all-scopes --out-dir <cortex clone>, commit, push — a Ledger write this sprint
-    made and never re-folded leaves Cortex silently stale
+[ ] If this sprint logged any decide/supersede/redact: bash
+    "$HOME/.konjo/kiban/plugins/konjo/hooks/cortex_fold_push.sh" — re-folds the live
+    Ledger into Cortex and pushes it. A no-op (see the hook itself) anywhere without
+    a real Ledger and a local konjo-cortex clone, e.g. every cloud session — a Ledger
+    write this sprint made and never re-folded leaves Cortex silently stale
 [ ] git add && git commit -m "type(scope): description" && git push
 ```
 

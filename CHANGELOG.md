@@ -4,6 +4,85 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-08-19
+
+Sprint K2 ("close the loop"): K1 built the fold mechanism and proved it on a
+transcribed fixture; this sprint's job was to put real Ledger data through
+it, finish KT-3, and remove the human from the fold-and-push path. One of
+those three happened. The other two stayed honestly blocked rather than
+faked, per the sprint's own explicit stop rules -- see `LEDGER.md`'s
+`Sprint-K2-Close-The-Loop` entry for full reasoning, and
+`.konjo/killtests/CortexSkis/KT-5.md` and
+`.konjo/killtests/CortexProjection/KT-6.md` for this sprint's raw kill-test
+output.
+
+**Headline numbers:**
+- P-0 (real Ledger data check): re-checked, not assumed. **0 real events, 0
+  scopes this sprint either** -- same K1 fixture corpus, still loaded at the
+  real state path, still not real usage data. Threshold (>=10 events, >=2
+  scopes) not met; Phase 2 (real projection) stays blocked.
+- KT-3 (cloud-session reach): **still BLOCKED**, cited from this same
+  overall working session's earlier run (`.konjo/killtests/CortexSkis/KT-3.md`,
+  merged to `main` before this sprint's own branch restarted) -- no GitHub
+  connector registered, a bare Routine gets zero `mcp__` tools, the fired
+  session's transcript was unretrievable by any available tool. Not re-run:
+  the blocker is infrastructure-level and unchanged.
+- KT-5 (portable skill, real repo): **PASS, fixture-scoped**. `konjo-skis/recall`'s
+  own procedure, followed against the real, already-pushed
+  `wesleyscholl/konjo-cortex` repo (not a local fixture path), correctly
+  surfaces a supersede chain's current entry with its predecessor and
+  correctly distinguishes a redacted item from "no record," both with
+  freshness citation. Closes the gap KT-4 (K1) left open: KT-4 validated the
+  reasoning-over-markdown mechanism against a local fixture file; KT-5
+  validates it against the actual repo `konjo-skis/README.md` names as the
+  real target.
+- KT-6 (staleness gate, pipeline-level): **PASS**. Real subprocess calls to
+  `bin/konjo-decision` and `bin/konjo-doc-staleness` (not the unit-level
+  `check_projection()` function directly) prove the gate exits non-zero when
+  a Ledger write happens and the fold never re-runs, and clears once it
+  does.
+
+### Added
+
+- **`plugins/konjo/hooks/cortex_fold_push.sh`**: automates the fold-and-push
+  `konjo-ship`'s checklist used to require by hand. Mirrors
+  `preamble_update.sh`'s contract -- never blocks or errors a session, swallows
+  its own failures. A safe, logged no-op anywhere without both a real
+  `~/.konjo/state/ledger/decisions.jsonl` and a local `konjo-cortex` clone
+  configured via `KONJO_CORTEX_DIR` -- i.e. every cloud session, per this
+  sprint's own P-0 finding that the Ledger is laptop-only.
+- **`tests/test_doc_staleness.py`**: two pipeline-level tests (KT-6) running
+  the real `konjo-decision`/`konjo-doc-staleness` CLIs as subprocesses
+  against a scratch `KONJO_STATE_DIR`, distinct from the pre-existing
+  unit-level `test_projection_stale_when_newer_event_landed`.
+- **`.konjo/killtests/CortexSkis/KT-5.md`**, **`.konjo/killtests/CortexProjection/KT-6.md`**:
+  this sprint's kill-test reports, raw commands and output included.
+
+### Changed
+
+- **`plugins/konjo/skills/konjo-ship/SKILL.md`**: the fold-and-push
+  checklist line no longer names a raw `konjo-decision project` command --
+  it now calls `cortex_fold_push.sh`, which does the same fold-and-push plus
+  the no-op-when-no-real-Ledger check inline instead of leaving that check
+  as prose a human has to remember.
+
+### Non-goals held, and two still blocked
+
+- No fabricated events to clear P-0 -- the explicit #1 risk this sprint's
+  own brief named. 0 real events is reported as 0, not padded.
+- No embeddings, no vector index, no retrieval server, no personal/work
+  scope split, no rewriting kiban's gates, profiles, or language packages --
+  all unchanged from K1.
+- `claude/sign-distribution-channel-heg41d` (real, reviewed, mergeable
+  supply-chain work) triaged and closed unmerged this sprint, not merged by
+  default -- signing adoption is explicitly not wanted yet.
+- **Phase 2 (real Ledger projection) still blocked** -- needs a session
+  running on the machine that actually holds `~/.konjo/state/ledger/decisions.jsonl`,
+  which no cloud container this project has run in yet does.
+- **Publishing `konjo-skis` to claude.ai account skills still blocked** --
+  no tool in any session's toolset performs that upload; still a manual
+  step.
+
 ## [1.16.0] - 2026-08-15
 
 Sprint K1 ("Cortex Projection and Skis Reach"): two problems, one substrate.
