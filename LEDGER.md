@@ -8,6 +8,87 @@ a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
 `~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
 record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
 
+## Skis-Contract-1: Finding 1, 2, 3 -- KT-3's taxonomy correction, chain rendering confirmed live, and gates-ship-unenforcing named as a pattern
+
+**Finding 1: KT-3 closes as INVALID PREMISE, not BLOCKED, not SUPERSEDED.**
+`Routine-Reach-1` (below) was half right. It correctly established the GitHub
+integration was connected the whole time and `ListConnectors` does not
+enumerate it. It called that integration a "connector" and kept asking
+whether a routine could be handed one -- and that single misclassification is
+what kept KT-3 open across two sprints and sent a third session hunting for a
+UI control that does not exist for this purpose. Cloud sessions get GitHub
+access through an account-level repository integration (GitHub App
+installation or a personal access token), after which a session can reach any
+repository the connecting account can see. It surfaces in a routine's
+**Repositories** field, configured at creation time. It is never a
+selectable entry in a connectors list, and there is no discovery step to test
+because a routine is always handed its repositories by configuration, not
+sent to go find them. Four observations that looked like separate blockers
+are explained by this one fact: `ListConnectors` filtered on `github` returns
+`[]` (a repository integration is not a connector, so it was never going to
+appear there); the routine form's connector search returns nothing for
+GitHub (same reason); `create_trigger`'s `connectors` parameter is rejected
+outright by this org (irrelevant to a repository-integration grant, which
+does not route through that parameter); and `create_session` with
+`source_url` works anyway (it uses the repository integration directly, the
+only path that was ever real). KT-3's question -- "can a routine that must go
+find a repo, rather than being handed one, reach it" -- does not correspond
+to anything the product does. Every routine is handed its repositories.
+There is no "go find it" mode to test, so there is nothing left to be
+BLOCKED on and nothing for KT-7 to have superseded; the question itself
+does not apply.
+
+A live routine, configured with `wesleyscholl/konjo-cortex` in Repositories
+and no connectors, read the real private page and reported 33 decisions, the
+latest active id `2466f9cd4eeb`, the active gate-tiering decision
+`9e438baf38c6`, and `projected-at` `2026-08-06T12:00:00Z` -- a value the fold
+generates and that appears nowhere in `kiban`, which rules out the
+contamination path `KT-7` named. **Recorded with an honest asterisk: the
+questions for this run were not pre-registered in a committed file before it
+ran**, unlike `KT-7`'s method. It is recorded as the resolution of KT-3's
+premise, not retroactively described as a scored kill-test pass -- the
+distinction Finding 3's own review-survived-it lesson exists to enforce.
+Full writeup and the taxonomy correction: `.konjo/killtests/CortexSkis/KT-3.md`.
+
+**Finding 2: supersede-chain rendering is confirmed against the real
+projected page, not just a synthetic fixture.** `KT-2` proved the fold
+renders chains against a fixture; nobody had checked the real
+`repo-kiban.md` until this sprint. Three chains are present, each carrying an
+explicit `chain:` field: `d1f4131159dc -> 4d26cb337b09` (`review_diff`
+default runs 1 to 3), `723cacf5d751 -> 47e23b2fe749` (a self-graded checklist
+line replaced by two concrete commands -- the same shape Finding 3 below
+names), and `6c42cab1a2d0 -> d4a5709925d0` (`gate_claude_contract` advisory
+to blocking for lopi). This matters for a reason narrower than "chains
+work": the gate-tiering decision `9e438baf38c6` reports no predecessor, and a
+bare "None" cannot on its own distinguish an absent relationship from an
+absent renderer -- the same absence-of-evidence shape Finding 1 and
+`Routine-Reach-1` both hit. Finding three real chains elsewhere on the same
+page is the positive control that makes that "None" trustworthy: the
+renderer demonstrably works, so the gate-tiering entry's lack of a chain is a
+real property of the data, not a rendering gap. Three chains across 33
+decisions, none longer than two links -- shallow and infrequent, unremarkable
+at fixture scale. Re-check the depth and frequency once the corpus is real;
+a jump there would say something about decision quality, not about the
+fold.
+
+**Finding 3: gates ship unenforcing, and it is a pattern, not three
+incidents.** `mutation-hunt` sat advisory for a release cycle on
+`continue-on-error: true`. `gate_claude_contract` shipped advisory
+everywhere and was only later flipped blocking for lopi (the
+`6c42cab1a2d0 -> d4a5709925d0` chain above). A self-graded "zero dead code"
+checklist line was replaced with two concrete, checkable commands (the
+`723cacf5d751 -> 47e23b2fe749` chain above). Three different repos, three
+different sprints, the identical shape: a gate introduced in a form that
+cannot reject anything. **New default, effective this sprint: a new gate
+ships BLOCKING. Shipping one advisory instead requires a stated reason and a
+date to revisit, the same discipline `Adoption-Ramp-1`'s `tier:` ramp already
+expects of a gate being promoted, applied here to a gate at birth.** This is
+not filed as a documentation note -- it is why Phase 1's skis-contract
+checker (`.konjo/killtests/CortexSkis/KT-8.md`) ships wired BLOCKING into CI
+with no `continue-on-error`, and why `KT-8` exists at all: a gate that has
+never been demonstrated to actually fail on real drift is exactly the shape
+this finding is about, whatever tier it claims.
+
 ## Routine-Reach-1: the connector was never missing, and the trigger path cannot carry it anyway
 
 **A premise two sprints treated as fact was false, and finding that out changed

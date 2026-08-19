@@ -13,8 +13,14 @@ otherwise; if `gate_longrun` (kiban's CI gate) applies to the repo you're
 working in, that gate itself still needs kiban's CLI to run -- this skill only
 teaches the pattern the gate checks for.
 
+This file and `plugins/konjo/skills/longrun/SKILL.md` are a declared pair
+(`konjo-skis/CONTRACT.yml`, enforced by `bin/konjo-skis-check`). Sections
+marked `skis-contract:*` below must stay in sync with their counterpart
+there -- edit both, or the gate fails the build.
+
 ## The contract
 
+<!-- skis-contract:longrun.contract -->
 1. Accept `--resume` (resume from the latest checkpoint) and `--fresh` (ignore
    checkpoints and start clean). Exactly one is the script's default; the
    other is explicit.
@@ -24,9 +30,11 @@ teaches the pattern the gate checks for.
    them.
 4. Be idempotent at the unit level: re-running a unit overwrites, not
    duplicates, its result.
+<!-- /skis-contract:longrun.contract -->
 
 ## Adopt the helper, if the target repo has kiban installed
 
+<!-- skis-contract:longrun.helper-code -->
 ```python
 import argparse
 from lib.packs.longrun import konjo_longrun
@@ -42,6 +50,7 @@ for unit in units:
         continue
     ckpt.mark(key, run_unit(unit))
 ```
+<!-- /skis-contract:longrun.helper-code -->
 
 If the target repo does not have `kiban` importable (a phone-authored script,
 a repo that has never adopted kiban), implement the same four-point contract

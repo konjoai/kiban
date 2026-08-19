@@ -51,12 +51,18 @@ recall/embedding tradeoff had.
 
 Every skill here reads a Cortex page -- the projected markdown read model
 folded from the Konjo Ledger event stream (`ledger/schema.md`,
-`lib/cortex.py`). Reachable via the GitHub connector once `konjo-cortex` (a
-private repo) exists and this account's claude.ai GitHub connector has read
-access to it. See `NEXT_SESSION_PROMPT.md` for the exact create/push commands
--- repo creation was blocked in-session by the GitHub App integration's
-permissions (403, no account-level repo-creation scope) and is a manual
-follow-up.
+`lib/cortex.py`). Reachable once `konjo-cortex` (a private repo,
+`wesleyscholl/konjo-cortex`) exists and whatever surface is running the
+skill has a GitHub repository integration granting read access to it. **Not
+a claude.ai connector** -- `LEDGER.md`'s `Skis-Contract-1` entry (Finding 1)
+corrects an earlier sprint's misuse of that term: cloud sessions reach a
+private repo through an account-level GitHub App installation or personal
+access token, configured directly against the session or routine (a
+routine's own Repositories field, or `create_session`'s `source_url`), never
+through the connector plane Canva/Gmail/Drive/Trello live on. See
+`.konjo/killtests/CortexSkis/KT-7.md` (reachability proven via
+`source_url`) and `KT-3.md` (the taxonomy correction in full, closed
+INVALID PREMISE).
 
 ## Publishing
 

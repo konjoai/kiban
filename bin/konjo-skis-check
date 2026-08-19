@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""konjo-skis-check: enforce konjo-skis/CONTRACT.yml against the paired SKILL.md files.
+
+  konjo-skis-check [--manifest PATH] [--repo PATH]
+      Check every declared pair in the manifest (default: konjo-skis/CONTRACT.yml,
+      resolved relative to --repo, default: the kiban checkout this script lives in).
+      Prints one summary line, plus one line per drift, and exits 1 if any drift
+      survives. Wired BLOCKING into .github/workflows/ci.yml -- see LEDGER.md's
+      Skis-Contract-1 entry (Finding 3) for why a new gate here ships blocking by
+      default rather than advisory.
+"""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from lib.skis_contract import check_contract  # noqa: E402
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--manifest", default=None, help="path to CONTRACT.yml")
+    p.add_argument("--repo", default=str(_KIBAN_ROOT), help="repo root")
+    args = p.parse_args(argv)
+
+    repo_root = pathlib.Path(args.repo).resolve()
+    manifest_path = (
+        pathlib.Path(args.manifest).resolve()
+        if args.manifest
+        else repo_root / "konjo-skis" / "CONTRACT.yml"
+    )
+
+    result = check_contract(manifest_path, repo_root)
+    print(result.summary())
+    return 0 if result.ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

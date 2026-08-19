@@ -10,6 +10,11 @@ the operational floor for benchmarks, ablations, training loops, and eval matric
 gold-plating. The `gate_longrun` CI gate enforces it on changes to long-run scripts; this
 skill is how you satisfy it.
 
+This file and `konjo-skis/longrun/SKILL.md` are a declared pair
+(`konjo-skis/CONTRACT.yml`, enforced by `bin/konjo-skis-check`). Sections
+marked `skis-contract:*` below must stay in sync with their counterpart
+there -- edit both, or the gate fails the build.
+
 ## Self-update preamble (run first)
 
 ```bash
@@ -18,15 +23,21 @@ bash "$HOME/.konjo/kiban/plugins/konjo/hooks/preamble_update.sh"
 
 ## The contract
 
-1. Accept `--resume` (resume from the latest checkpoint) and `--fresh` (ignore checkpoints
-   and start clean). Exactly one is the script's default; the other is explicit.
-2. Write a checkpoint after each unit of work (one config, one seed, one matrix cell), not
-   only at the end.
-3. On resume, read the progress file, compute the completed units, and skip them.
-4. Be idempotent at the unit level: re-running a unit overwrites, not duplicates, its result.
+<!-- skis-contract:longrun.contract -->
+1. Accept `--resume` (resume from the latest checkpoint) and `--fresh` (ignore
+   checkpoints and start clean). Exactly one is the script's default; the
+   other is explicit.
+2. Write a checkpoint after each unit of work (one config, one seed, one
+   matrix cell), not only at the end.
+3. On resume, read the progress file, compute the completed units, and skip
+   them.
+4. Be idempotent at the unit level: re-running a unit overwrites, not
+   duplicates, its result.
+<!-- /skis-contract:longrun.contract -->
 
 ## Adopt the helper (about five lines)
 
+<!-- skis-contract:longrun.helper-code -->
 ```python
 import argparse
 from lib.packs.longrun import konjo_longrun
@@ -42,6 +53,7 @@ for unit in units:
         continue
     ckpt.mark(key, run_unit(unit))
 ```
+<!-- /skis-contract:longrun.helper-code -->
 
 The progress file is one JSONL on the `jsonl_store` substrate: atomic appends, redact-scanned,
 and tolerant on read (one corrupt line never bricks the resume). Pass an absolute
