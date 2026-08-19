@@ -69,7 +69,9 @@ def test_kt2_chain_and_redact_fidelity(ledger: Ledger) -> None:
 
     # No field loss: rationale/alternatives/confidence preserved for every link.
     assert "Zero-ops, single file" in active_section
-    assert "Postgres, flat files" in active_section
+    # Each alternative is quoted, so "Postgres" and "flat files" stay two options
+    # rather than collapsing into one comma-joined string.
+    assert '"Postgres", "flat files"' in active_section
     assert "6/10" in active_section
     assert "Concurrent readers were blocking on the default journal mode" in active_section
     assert "7/10" in active_section
@@ -103,3 +105,25 @@ def test_empty_scope_renders_without_erroring(ledger: Ledger) -> None:
 def test_scope_slug() -> None:
     assert cortex.scope_slug("org") == "org"
     assert cortex.scope_slug("repo:lopi") == "repo-lopi"
+
+
+def test_alternatives_stay_distinguishable_when_one_contains_a_comma(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real seeded alternatives contain commas; the join must not blur the boundary."""
+    monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
+    led = Ledger("ledger/decisions.jsonl")
+    led.decide(
+        "Decision content stays private",
+        "cortex is private, skis is public",
+        scope="org",
+        alternatives_considered=[
+            "one repo holding both, private",
+            "one repo holding both, public with redacted rationale",
+        ],
+    )
+    page = cortex.render_scope(led, "org")
+    assert (
+        '- **alternatives considered:** "one repo holding both, private", '
+        '"one repo holding both, public with redacted rationale"' in page
+    )

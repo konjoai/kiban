@@ -58,6 +58,12 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("--alt", action="append", default=[], dest="alternatives")
     d.add_argument("--confidence", type=int, default=5)
     d.add_argument("--author", default="unknown")
+    d.add_argument(
+        "--decided-at",
+        dest="decided_at",
+        default=None,
+        help="when the call was actually made, UTC YYYY-MM-DDTHH:MM:SSZ (default: now)",
+    )
 
     s = sub.add_parser("supersede", help="replace a decision by id")
     s.add_argument("target_id")
@@ -66,6 +72,12 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument("--alt", action="append", default=[], dest="alternatives")
     s.add_argument("--confidence", type=int, default=5)
     s.add_argument("--author", default="unknown")
+    s.add_argument(
+        "--decided-at",
+        dest="decided_at",
+        default=None,
+        help="when the call was actually made, UTC YYYY-MM-DDTHH:MM:SSZ (default: now)",
+    )
 
     r = sub.add_parser("redact", help="retire a decision by id")
     r.add_argument("target_id")
@@ -99,6 +111,7 @@ def main(argv: list[str]) -> int:
                 alternatives_considered=args.alternatives,
                 confidence=args.confidence,
                 author=args.author,
+                decided_at=args.decided_at,
             )
             print(f"logged decision {did}")
             return 0
@@ -111,6 +124,7 @@ def main(argv: list[str]) -> int:
                 alternatives_considered=args.alternatives,
                 confidence=args.confidence,
                 author=args.author,
+                decided_at=args.decided_at,
             )
             print(f"superseded {args.target_id} -> {new_id}")
             return 0

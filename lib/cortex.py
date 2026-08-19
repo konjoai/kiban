@@ -34,7 +34,14 @@ def _redact_reasons(ledger: Ledger) -> dict[str, str]:
 
 
 def _fmt_alts(alts: list[str]) -> str:
-    return ", ".join(alts) if alts else "none"
+    """Quote each alternative so a comma inside one cannot read as a separator.
+
+    Plain ", ".join loses the boundary: two alternatives that each contain a comma
+    render as four fragments, and the reader cannot tell which was actually
+    rejected. The rejected options are half the value of a decision record at
+    recall time, so this is a correctness problem, not a formatting preference.
+    """
+    return ", ".join(f'"{a}"' for a in alts) if alts else "none"
 
 
 def _render_member(d: Decision, *, heading_note: str = "") -> list[str]:
@@ -44,6 +51,10 @@ def _render_member(d: Decision, *, heading_note: str = "") -> list[str]:
     lines.append(f"- **alternatives considered:** {_fmt_alts(d.alternatives_considered)}")
     lines.append(f"- **confidence:** {d.confidence}/10")
     lines.append(f"- **date:** {d.date}")
+    if d.decided_at and d.decided_at != d.date:
+        # A seeded past decision: recorded now, decided long before. Both are facts
+        # worth reading, and only showing the append time would misdate the call.
+        lines.append(f"- **decided:** {d.decided_at}")
     lines.append(f"- **author:** {d.author}")
     return lines
 
