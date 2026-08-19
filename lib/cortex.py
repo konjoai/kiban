@@ -83,7 +83,14 @@ def render_scope(ledger: Ledger, scope: str) -> str:
     """Fold `scope` into a single markdown page. Deterministic and idempotent."""
     fold = [d for d in ledger._fold() if d.scope == scope]
     all_decisions = {d.id: d for d in fold}
-    ordered_ids = sorted(all_decisions, key=lambda i: (all_decisions[i].date, i))
+    # Reading order: decided_at (when the call was actually made), falling back to date
+    # for anything that never set it. `_fold()` already resolves that fallback (Decision
+    # .decided_at defaults to .date), so this reads chronologically without a second
+    # fallback here. `date` still breaks ties and stays the sole input to `projected-at`
+    # below -- staleness must keep clocking off append order, not decision order.
+    ordered_ids = sorted(
+        all_decisions, key=lambda i: (all_decisions[i].decided_at, all_decisions[i].date, i)
+    )
     active = [all_decisions[i] for i in ordered_ids if all_decisions[i].active]
     retired = [all_decisions[i] for i in ordered_ids if all_decisions[i].redacted]
     redact_reasons = _redact_reasons(ledger)

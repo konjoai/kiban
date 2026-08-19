@@ -51,12 +51,19 @@ def confirm_one_way(
     author: str = "unknown",
     ledger: object | None = None,
     token: str = CONFIRM_TOKEN,
+    justification: str | None = None,
 ) -> Acknowledgement:
     """Confirm an irreversible change. Refuses a vague reply; logs the acknowledgement.
 
     Raises ConfirmAborted on any reply that is not the exact token, or on an empty
     justification. On success, writes a Ledger ack (provenance) and returns the commit
     trailer CI checks for.
+
+    `justification`, when given, is used verbatim instead of prompting via `input_fn`.
+    It exists so a caller (e.g. a hook reading a commit message from a file) can pass
+    the raw text directly -- no shell re-quoting, no line-based `input()` truncation --
+    which is what a shell-interpolated stdin pipe cannot guarantee for text containing
+    quotes, newlines, or commas.
     """
     fp = oneway.fingerprint(changed_files)
     output_fn("ONE-WAY DOOR. This change is hard or costly to reverse.")
@@ -67,8 +74,11 @@ def confirm_one_way(
 
     _require_token(input_fn, output_fn, token)
 
-    output_fn("State in one line why this is intended (required):")
-    justification = input_fn("why> ").strip()
+    if justification is None:
+        output_fn("State in one line why this is intended (required):")
+        justification = input_fn("why> ").strip()
+    else:
+        justification = justification.strip()
     if not justification:
         raise ConfirmAborted("a justification is required; aborting, nothing done")
 

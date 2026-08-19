@@ -37,6 +37,35 @@ def test_one_way_confirm_succeeds_and_logs(tmp_path: Path, monkeypatch: pytest.M
     assert any(ack.fingerprint in d.decision for d in found)
 
 
+def test_justification_file_round_trips_quotes_newlines_and_comma(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A commit message with shell metacharacters must reach `rationale` untouched.
+
+    This is the fix for the debris found in the two pre-existing ONEWAY-ACK events
+    (`LEDGER.md`'s `Real-Data-1` Finding 3): the hook's write path relied on a shell
+    pipe to carry the justification, which cannot preserve quotes/newlines/commas.
+    `justification` bypasses that pipe entirely -- no shell re-parses this text.
+    """
+    monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
+    ledger = Ledger("ledger/decisions.jsonl")
+    commit_message = 'chore: acknowledge one-way door "release"\n\nbumps VERSION, tags, publishes'
+    cls = oneway.classify(["VERSION"], "-0.3.0\n+0.4.0\n")
+    ack = confirm.confirm_one_way(
+        cls, ["VERSION"],
+        input_fn=_scripted(["CONFIRM"]),
+        output_fn=lambda _m: None,
+        author="wes",
+        ledger=ledger,
+        justification=commit_message,
+    )
+    assert ack.justification == commit_message
+    found = ledger.search("ONEWAY-ACK")
+    matches = [d for d in found if ack.fingerprint in d.decision]
+    assert len(matches) == 1
+    assert matches[0].rationale == commit_message
+
+
 def test_vague_reply_is_refused() -> None:
     cls = oneway.classify(["VERSION"], "+0.4.0\n")
     with pytest.raises(confirm.ConfirmAborted):

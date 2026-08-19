@@ -107,6 +107,46 @@ def test_scope_slug() -> None:
     assert cortex.scope_slug("repo:lopi") == "repo-lopi"
 
 
+def test_pages_order_by_decided_at_not_append_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A backdated seed must read before a same-day event appended first.
+
+    `LEDGER.md`'s Item-2 ordering decision: reading order is `decided_at`, falling
+    back to `date`. Append order (`date`) still exists per event but no longer
+    governs page order -- only `projected-at` (checked separately) clocks off it.
+    """
+    monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
+    led = Ledger("ledger/decisions.jsonl")
+    # Appended first, but decided later.
+    later = led.decide(
+        "Adopt structured logging", "reduce grep-driven debugging", scope="org",
+        decided_at="2026-06-01T00:00:00Z",
+    )
+    # Appended second, but decided earlier -- must render first.
+    earlier = led.decide(
+        "Pin CI to ubuntu-22.04", "24.04 broke a transitive dep", scope="org",
+        decided_at="2026-01-01T00:00:00Z",
+    )
+    page = cortex.render_scope(led, "org")
+    active_section = page.split("## Active decisions")[1].split("## Retired")[0]
+    assert active_section.index(earlier) < active_section.index(later)
+
+
+def test_ordering_by_decided_at_stays_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
+    led = Ledger("ledger/decisions.jsonl")
+    led.decide("Adopt structured logging", "reduce grep-driven debugging", scope="org",
+                decided_at="2026-06-01T00:00:00Z")
+    led.decide("Pin CI to ubuntu-22.04", "24.04 broke a transitive dep", scope="org",
+                decided_at="2026-01-01T00:00:00Z")
+    first = cortex.render_scope(led, "org")
+    second = cortex.render_scope(led, "org")
+    assert first == second
+
+
 def test_alternatives_stay_distinguishable_when_one_contains_a_comma(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
