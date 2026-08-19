@@ -5,10 +5,17 @@
       Emit {"door": "one-way"|"two-way", "reasons": [...], "confidence": 0-10}. Exit 0.
 
   konjo-oneway confirm --files F [F ...] [--diff PATH] [--author NAME]
+                        [--justification-file PATH]
       If the change is one-way, run the interactive confirm: state what is irreversible,
       require an exact typed token plus a justification, log the acknowledgement to the
       Ledger, and print the commit trailer CI checks for. Exit 0 on confirm, 2 on abort,
       0 (no-op) if the change is two-way.
+
+      --justification-file reads the justification from a file (e.g. .git/COMMIT_EDITMSG)
+      instead of prompting for it. The file is read verbatim -- no shell re-quoting -- so a
+      commit message containing quotes, newlines, or commas round-trips into the Ledger's
+      `rationale` field intact. Use this for hook/automation call sites instead of piping a
+      shell-constructed message through stdin.
 """
 
 from __future__ import annotations
@@ -42,6 +49,11 @@ def main(argv: list[str]) -> int:
         p.add_argument("--diff", default=None, help="path to a diff, or - for stdin")
         if name == "confirm":
             p.add_argument("--author", default="unknown")
+            p.add_argument(
+                "--justification-file",
+                default=None,
+                help="read the justification verbatim from this file instead of prompting",
+            )
     args = parser.parse_args(argv)
 
     diff_text = _read_diff(args.diff)
@@ -57,9 +69,14 @@ def main(argv: list[str]) -> int:
     if not cls.is_one_way:
         print("konjo-oneway: two-way door, no confirmation needed")
         return 0
+    justification = None
+    if args.justification_file:
+        justification = pathlib.Path(args.justification_file).read_text(encoding="utf-8")
     try:
         from ledger.engine import Ledger
-        ack = confirm.confirm_one_way(cls, args.files, author=args.author, ledger=Ledger())
+        ack = confirm.confirm_one_way(
+            cls, args.files, author=args.author, ledger=Ledger(), justification=justification
+        )
     except confirm.ConfirmAborted as exc:
         print(f"konjo-oneway: {exc}", file=sys.stderr)
         return 2

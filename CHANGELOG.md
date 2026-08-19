@@ -4,6 +4,57 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1] - 2026-08-19
+
+Closeout, not a sprint. Three small defects plus a dormancy note -- no kill-tests, no
+phased build, no pre-registration; each item was small and certain enough that
+pre-flight process would have been ceremony. kiban is feature-complete for this line of
+work as of v1.19.0; this release is maintenance only. Full reasoning for the ordering
+call in `LEDGER.md`'s `Cortex-Ordering-1`.
+
+- **Fixed: the one-way-door hook's write path could corrupt `rationale`.** The two
+  pre-existing `ONEWAY-ACK` events (`Real-Data-1` Finding 3) carry shell-quoting debris
+  because the confirm flow had no way to receive a justification except a line-based
+  interactive prompt, which any automated caller can only feed through a shell-quoted
+  pipe -- unsafe for text containing quotes, newlines, or commas. `lib/confirm.py`'s
+  `confirm_one_way` now accepts a `justification` argument that bypasses the prompt
+  entirely; `bin/konjo-oneway confirm` exposes it as `--justification-file PATH`, read
+  verbatim with no shell re-parsing. The two existing malformed events are untouched --
+  mutating history was explicitly out of scope. New regression test:
+  `test_justification_file_round_trips_quotes_newlines_and_comma`.
+- **Decided: Cortex pages order by `decided_at`, falling back to `date`.** Was append
+  order (`date`), which reads backdated seed content out of chronological order
+  (`Real-Data-1` Finding 5). `date` is untouched as the sole input to `projected-at` --
+  the fold stays idempotent by construction, confirmed by
+  `test_ordering_by_decided_at_stays_idempotent`. `Cortex-Ordering-1` in `LEDGER.md`.
+- **Fixed: two pre-existing test failures, root-caused instead of accepted.** K4 recorded
+  3 failures in `konjo-newonly` / rust-gate absolute-path handling as pre-existing and not
+  its own. Root cause: `lib/newonly.py`'s base-ref worktree path came from raw
+  `tempfile.mkdtemp()`, but a subprocess run with `cwd=<that path>` always reports its own
+  `getcwd()` fully resolved -- so when the platform temp dir sits behind a symlink (macOS's
+  `/tmp` -> `/private/tmp` is the common case), a scanner's absolute-path output (`cargo
+  fmt --check`, `cargo clippy`, `cargo deny check`) is rooted at the resolved path while
+  the stored root still carries the symlink component, and `_normalize`'s prefix strip
+  silently misses -- every pre-existing finding on an untouched file looks net-new again.
+  Fixed by resolving the worktree path with `os.path.realpath()` immediately after
+  creation. New regression test reproduces the exact failure with a real symlinked
+  `TMPDIR` (confirmed to fail without the fix, pass with it):
+  `test_absolute_path_finding_survives_a_symlinked_tmp_dir`. This is the shared engine
+  behind every `repo:*` gate (`gate_repo_native` calls `newonly.net_new` directly), so the
+  one fix covers both the CLI and every rust-gate caller.
+- `NEXT_SESSION_PROMPT.md` replaced with a dormancy note: kiban is feature-complete for
+  this line of work; the only open item is P-0b (events with `decided_at >
+  2026-08-19T15:16:52Z`), which is a habit no session can advance on its own; the trigger
+  to reopen kiban is P-0b reaching 15 events across at least 2 scopes. Until then, bug
+  fixes only -- no new gates, skills, or contract sections.
+
+**Numbers:** 376 of 376 tests passing on this checkout (0 skipped -- the 3 tests gated on
+the `konjo-ast-diff` binary ran once it was built locally; CI still skips them, as before,
+since `ci.yml` does not build Rust binaries). Fold idempotency after the ordering change
+confirmed by unit test, not by re-running the real Ledger: this container has no access
+to the laptop-only state path (`Real-Data-1` Finding 3), so the actual `konjo-cortex`
+pages are re-ordered the next time the fold runs on the machine that holds it.
+
 ## [1.19.0] - 2026-08-19
 
 Sprint K4 ("real data, run on the machine"). The first sprint in this project's

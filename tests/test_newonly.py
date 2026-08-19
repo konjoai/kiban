@@ -137,6 +137,38 @@ def test_absolute_path_finding_on_untouched_file_is_not_net_new(tmp_path: Path) 
     assert "no net-new findings" in result.stdout
 
 
+def test_absolute_path_finding_survives_a_symlinked_tmp_dir(tmp_path: Path) -> None:
+    """Regression test: the base-ref worktree lives under `tempfile.mkdtemp()`, and a
+    subprocess run with `cwd=<that path>` always reports its OWN `getcwd()` fully
+    resolved -- so when the platform temp dir sits behind a symlink (macOS's `/tmp` ->
+    `/private/tmp` is the common case), the scanner's absolute-path output is rooted at
+    the resolved path while the raw `mkdtemp()` string still carries the symlink
+    component. `_normalize`'s prefix strip then silently misses and every pre-existing
+    finding on an untouched file looks net-new again -- this is what actually failed on
+    a real machine while passing in a container where `/tmp` is not a symlink."""
+    repo, base = _make_abspath_repo(tmp_path)
+    scanner = [sys.executable, "-c",
+              "import pathlib,os,sys;"
+              "p=pathlib.Path('untouched.rs');"
+              "sys.stdout.write(f'Diff in {os.getcwd()}/{p}:12:\\n') if p.exists() else None"]
+    (repo / "README.md").write_text("unrelated doc change\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "unrelated change; untouched.rs's finding is pre-existing")
+
+    real_tmp_root = tmp_path / "real-tmp-root"
+    real_tmp_root.mkdir()
+    symlinked_tmpdir = tmp_path / "tmp-symlink"
+    symlinked_tmpdir.symlink_to(real_tmp_root)
+
+    env = {**os.environ, "TMPDIR": str(symlinked_tmpdir)}
+    result = subprocess.run(
+        [sys.executable, str(BIN), "--base", base, "--", *scanner],
+        cwd=str(repo), capture_output=True, text=True, env=env,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no net-new findings" in result.stdout
+
+
 def test_shared_cargo_target_dir_does_not_leak_state_across_scans(tmp_path: Path) -> None:
     """Regression test: cargo-based tools (clippy, cargo-mutants) build the crate, so
     they read $CARGO_TARGET_DIR. CI commonly sets it globally to share a build cache
