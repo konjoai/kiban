@@ -41,7 +41,8 @@ konjo-decision search "<keywords>" --all      # include superseded and redacted
 ```
 
 Search is substring/keyword over the decision text and rationale, run
-directly against the live `~/.konjo/state/ledger/decisions.jsonl` stream --
+directly against the live Ledger event stream (`$KONJO_CORTEX_DIR/ledger/events/`,
+one file per event since Sprint K5 -- see `ledger/schema.md`) --
 no projection step, no staleness window, and no supersede-chain rendering of its own -- the CLI prints raw matches, chain reasoning happens in the reader's head, not in the tool.
 <!-- /skis-contract:recall.read-path -->
 

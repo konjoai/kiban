@@ -20,7 +20,7 @@ def _scripted(replies: list[str]):
 
 def test_one_way_confirm_succeeds_and_logs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
-    ledger = Ledger("ledger/decisions.jsonl")
+    ledger = Ledger("ledger/events")
     cls = oneway.classify(["VERSION"], "-0.3.0\n+0.4.0\n")
     ack = confirm.confirm_one_way(
         cls, ["VERSION"],
@@ -48,7 +48,7 @@ def test_justification_file_round_trips_quotes_newlines_and_comma(
     `justification` bypasses that pipe entirely -- no shell re-parses this text.
     """
     monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
-    ledger = Ledger("ledger/decisions.jsonl")
+    ledger = Ledger("ledger/events")
     commit_message = 'chore: acknowledge one-way door "release"\n\nbumps VERSION, tags, publishes'
     cls = oneway.classify(["VERSION"], "-0.3.0\n+0.4.0\n")
     ack = confirm.confirm_one_way(

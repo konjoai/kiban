@@ -46,7 +46,10 @@ pass "confirm refuses a vague reply"
 OUT="$(printf 'CONFIRM\ncutting the release\n' | env KONJO_STATE_DIR="$STATE" HOME="$FAKE_HOME" \
      python "$ONEWAY" confirm --files VERSION --diff "$WORK/v.diff" --author test 2>&1)"
 echo "$OUT" | grep -q "acknowledged" || fail "valid confirm should acknowledge: $OUT"
-grep -q "ONEWAY-ACK" "$STATE/ledger/decisions.jsonl" || fail "confirm should log to the Ledger"
+# Sprint K5: the Ledger's default home is $KONJO_CORTEX_DIR (here, unset, so it falls
+# back to $HOME/.konjo/cortex -- $FAKE_HOME above), not $KONJO_STATE_DIR anymore.
+grep -rq "ONEWAY-ACK" "$FAKE_HOME/.konjo/cortex/ledger/events/" \
+  || fail "confirm should log to the Ledger"
 pass "confirm logs acknowledgement to the Ledger on a valid typed token"
 
 # ---- c. CI gate: unacknowledged fails, acknowledged passes -------------------

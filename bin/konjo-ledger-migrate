@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""konjo-ledger-migrate: one-time move from a single decisions.jsonl to per-file events.
+
+Sprint K5 Phase 1. Reads a legacy append-only Ledger JSONL file and writes one file
+per event (`<id>.json`) into a target `ledger/events/` directory, via
+`lib/event_store.write_event` -- the same atomic, injection-rejected, redact-scanned
+writer any surface uses going forward. Every event id is preserved exactly: the
+filename is the event's own `id` field, untouched. Kill-test files and Cortex pages
+already cite these ids; renumbering would silently break the audit trail.
+
+Idempotent: an event already present at the destination is skipped, not
+re-written -- safe to re-run against a partially-migrated directory (e.g. after
+fixing a rejected event by hand) without duplicating anything.
+
+A HIGH secret or injection-shaped event is not silently dropped: it is reported and
+counted as skipped, and the script exits non-zero so a partial migration is never
+mistaken for a clean one. Root-caused, not swallowed -- see `ledger/schema.md`'s
+own redact-scan discipline.
+
+Usage:
+    konjo-ledger-migrate --in ~/.konjo/state/ledger/decisions.jsonl --out-dir ./cortex/ledger/events
+    konjo-ledger-migrate --in ./decisions.jsonl --out-dir ./ledger/events --dry-run
+"""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sys
+
+_KIBAN_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_KIBAN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_KIBAN_ROOT))
+
+from lib import event_store, jsonl_store  # noqa: E402
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="konjo-ledger-migrate",
+        description="Migrate a legacy decisions.jsonl into one-file-per-event ledger/events/",
+    )
+    p.add_argument("--in", dest="in_path", required=True, help="path to the legacy JSONL file")
+    p.add_argument("--out-dir", dest="out_dir", required=True, help="destination events directory")
+    p.add_argument(
+        "--dry-run", action="store_true",
+        help="report what would happen without writing anything",
+    )
+    return p
+
+
+def main(argv: list[str]) -> int:
+    args = _build_parser().parse_args(argv)
+    in_path = pathlib.Path(args.in_path)
+    out_dir = pathlib.Path(args.out_dir)
+
+    if not in_path.exists():
+        print(f"error: {in_path} does not exist", file=sys.stderr)
+        return 2
+
+    events = jsonl_store.read(str(in_path.resolve()))
+    if not events:
+        print(f"no events found in {in_path}")
+        return 0
+
+    migrated = 0
+    already_present = 0
+    skipped: list[tuple[str, str]] = []
+
+    for ev in events:
+        event_id = ev.get("id")
+        if not event_id:
+            skipped.append(("<missing id>", f"event has no 'id' field: {ev!r}"))
+            continue
+
+        dest = out_dir / f"{event_id}.json"
+        if dest.exists():
+            already_present += 1
+            continue
+
+        if args.dry_run:
+            migrated += 1
+            continue
+
+        try:
+            event_store.write_event(str(out_dir.resolve()), event_id, ev)
+            migrated += 1
+        except event_store.EventExists:
+            already_present += 1
+        except jsonl_store.SecretRejected as exc:
+            skipped.append((event_id, f"blocked, HIGH secret: {exc}"))
+        except jsonl_store.InjectionRejected as exc:
+            skipped.append((event_id, f"blocked, injection-shaped: {exc}"))
+
+    verb = "would migrate" if args.dry_run else "migrated"
+    print(
+        f"{verb} {migrated}, already present {already_present}, "
+        f"skipped {len(skipped)}, total read {len(events)}"
+    )
+    for event_id, reason in skipped:
+        print(f"  SKIPPED {event_id}: {reason}", file=sys.stderr)
+
+    return 1 if skipped else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

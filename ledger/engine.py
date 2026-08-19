@@ -1,4 +1,4 @@
-"""Event-sourced decision ledger on top of the jsonl store.
+"""Event-sourced decision ledger on top of the per-file event store.
 
 The Ledger is append-only. Nothing is ever mutated. The current picture is computed by
 folding the event stream:
@@ -21,21 +21,54 @@ made, and defaults to `date`. They diverge only for a seeded past decision: real
 content and a real write, entered long after the fact. That gap is what makes
 "decisions captured as work happens" countable separately from "decisions transcribed
 from memory" -- see `CHANGELOG.md` [1.19.0]'s P-0a/P-0b split.
+
+Storage (Sprint K5): one file per event under `ledger/events/`, not one appended
+JSONL file. A shared append-only file conflicts at the last line on every concurrent
+write; separate files never conflict. See `ledger/schema.md` for the on-disk layout
+and `lib/event_store.py` for the writer/reader. Because a directory listing carries
+no chronological order, this module -- not the store -- is where ordering becomes
+explicit: `_fold()` sorts events by `decided_at` (falling back to `date`, then `id`)
+before folding, and resolves supersede chains by walking `supersedes` parent
+pointers directly rather than relying on processing order, so a chain renders in
+full even if a correction is logged with a `decided_at` earlier than its target's.
+
+The Ledger's canonical home also moved: previously `~/.konjo/state/ledger/`
+(laptop-only, per the superseded `Ledger-Laptop-Only-1` decision), now
+`$KONJO_CORTEX_DIR/ledger/events` -- inside the shared `konjo-cortex` clone, so any
+surface with Cortex checked out (laptop, cloud session, phone routine) can write and
+every surface can read. `default_events_dir()` resolves that; pass an explicit
+`path` (as the tests do, relative and `KONJO_STATE_DIR`-scoped) to override it.
 """
 
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from lib import jsonl_store
+from lib import event_store
 
-LEDGER_FILE = "ledger/decisions.jsonl"
+LEDGER_EVENTS_DIRNAME = "ledger/events"
 
 EventType = Literal["decide", "supersede", "redact"]
+
+
+def cortex_dir() -> Path:
+    """The local `konjo-cortex` clone root, from `KONJO_CORTEX_DIR` or its default.
+
+    Defaulting to `~/.konjo/cortex` -- the same default
+    `plugins/konjo/hooks/cortex_fold_push.sh` has always used.
+    """
+    override = os.environ.get("KONJO_CORTEX_DIR")
+    return Path(override) if override else Path.home() / ".konjo" / "cortex"
+
+
+def default_events_dir() -> Path:
+    """Where the Ledger lives absent an explicit path: inside the local Cortex clone."""
+    return cortex_dir() / "ledger" / "events"
 
 
 def _now_iso() -> str:
@@ -44,6 +77,12 @@ def _now_iso() -> str:
 
 def _new_id() -> str:
     return uuid.uuid4().hex[:12]
+
+
+def _event_sort_key(ev: dict[str, Any]) -> tuple[str, str, str]:
+    """`decided_at`, falling back to `date`, tie-broken by `id` for stability."""
+    decided = ev.get("decided_at") or ev.get("date", "")
+    return (decided, ev.get("date", ""), ev.get("id", ""))
 
 
 def _validate_decided_at(value: str) -> str:
@@ -84,8 +123,8 @@ class Decision:
 
 
 class Ledger:
-    def __init__(self, path: str | Path = LEDGER_FILE) -> None:
-        self.path = str(path)
+    def __init__(self, path: str | Path | None = None) -> None:
+        self.path = str(path) if path is not None else str(default_events_dir())
 
     # ----- write paths -------------------------------------------------------
 
@@ -118,7 +157,7 @@ class Ledger:
             "decided_at": _validate_decided_at(decided_at) if decided_at else recorded,
             "author": author,
         }
-        jsonl_store.append(self.path, event)
+        event_store.write_event(self.path, did, event)
         return did
 
     def supersede(
@@ -153,7 +192,7 @@ class Ledger:
             "decided_at": _validate_decided_at(decided_at) if decided_at else recorded,
             "author": author,
         }
-        jsonl_store.append(self.path, event)
+        event_store.write_event(self.path, new_id, event)
         return new_id
 
     def redact_decision(self, target_id: str, reason: str, *, author: str = "unknown") -> None:
@@ -161,20 +200,26 @@ class Ledger:
         existing = {d.id for d in self._fold()}
         if target_id not in existing:
             raise KeyError(f"cannot redact unknown decision id {target_id!r}")
+        redact_id = _new_id()
         event = {
             "event": "redact",
-            "id": _new_id(),
+            "id": redact_id,
             "redacts": target_id,
             "reason": reason,
             "date": _now_iso(),
             "author": author,
         }
-        jsonl_store.append(self.path, event)
+        event_store.write_event(self.path, redact_id, event)
 
     # ----- read paths --------------------------------------------------------
 
     def _events(self) -> list[dict[str, Any]]:
-        return jsonl_store.read(self.path)
+        """All events, sorted by `decided_at` (falling back to `date`, then `id`).
+
+        A directory listing has no chronological order, so this sort is where the
+        stream's temporal order actually comes from -- see the module docstring.
+        """
+        return sorted(event_store.read_events(self.path), key=_event_sort_key)
 
     def _raw_decide(self, target_id: str) -> dict[str, Any] | None:
         for ev in self._events():
@@ -183,12 +228,21 @@ class Ledger:
         return None
 
     def _fold(self) -> list[Decision]:
-        """Fold the event stream into the current set of decisions."""
+        """Fold the event stream into the current set of decisions.
+
+        `active`/`superseded_by`/`redacted` are plain dict/set membership over the
+        whole stream, so they never depend on processing order. `chain` is the one
+        thing that used to depend on ancestors being processed before descendants
+        (fine when order was literal file-append order, no longer guaranteed once
+        ordering comes from a sort key instead) -- resolved here by walking
+        `supersedes` parent pointers directly, which is correct regardless of the
+        order events were folded in.
+        """
         decisions: dict[str, Decision] = {}
         order: list[str] = []
         superseded_by: dict[str, str] = {}
         redacted: set[str] = set()
-        chains: dict[str, list[str]] = {}
+        supersedes_of: dict[str, str] = {}
 
         for ev in self._events():
             etype = ev.get("event")
@@ -210,11 +264,20 @@ class Ledger:
                     target = ev.get("supersedes")
                     if target:
                         superseded_by[target] = did
-                        chains[did] = chains.get(target, []) + [target]
+                        supersedes_of[did] = target
             elif etype == "redact":
                 target = ev.get("redacts")
                 if target:
                     redacted.add(target)
+
+        def chain_for(did: str) -> list[str]:
+            chain: list[str] = []
+            cur = supersedes_of.get(did)
+            while cur is not None:
+                chain.append(cur)
+                cur = supersedes_of.get(cur)
+            chain.reverse()
+            return chain
 
         result: list[Decision] = []
         for did in order:
@@ -222,7 +285,7 @@ class Ledger:
             d.superseded_by = superseded_by.get(did)
             d.redacted = did in redacted
             d.active = d.superseded_by is None and not d.redacted
-            d.chain = chains.get(did, [])
+            d.chain = chain_for(did)
             result.append(d)
         return result
 

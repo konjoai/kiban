@@ -4,6 +4,78 @@ All notable changes to kiban are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-08-19
+
+Sprint K5: the Ledger moves into `konjo-cortex`. Consuming repos clone kiban in CI,
+which gives a runner kiban's code, never its data -- the Ledger only ever existed on
+one machine, so CI could never usefully fold it, a phone could never write to it, and
+a cloud session was always read-only. This sprint reverses that: the Ledger's
+canonical home moves from `~/.konjo/state/ledger/decisions.jsonl` (laptop-only) into
+`$KONJO_CORTEX_DIR/ledger/events/`, one file per event instead of one appended JSONL
+file, so any surface with `konjo-cortex` checked out -- laptop, cloud session, phone
+routine -- can write, and every surface can read. Full reasoning:
+`LEDGER.md`'s `Ledger-Laptop-Only-1` (supersedes the prior constraint) and
+`Ledger-Events-Per-File-1` (the storage format itself).
+
+- **Added: `lib/event_store.py`, a per-file sibling to `lib/jsonl_store.py`.** Atomic
+  write-once (write-tmp-then-`os.link`, which raises rather than silently overwriting
+  an existing id), same injection/secret rejection as the JSONL store (factored out
+  into `jsonl_store.check_payload` so both stores share one gate). Tolerant read:
+  one corrupt event file is skipped with a warning, not fatal, same contract as
+  `jsonl_store.read`. New tests: `tests/test_event_store.py`.
+- **Changed: `ledger/engine.py`'s `Ledger` now reads/writes `ledger/events/*.json`
+  through `lib/event_store`, not a single JSONL file.** Default location resolves
+  under `$KONJO_CORTEX_DIR` (`Ledger.cortex_dir()`/`default_events_dir()`), not
+  `KONJO_STATE_DIR` -- tests pass an explicit relative path to keep the old
+  state-dir-scoped behavior for isolation. `_fold()` now sorts events by
+  `decided_at` (falling back to `date`, then `id`) since a directory listing carries
+  no order of its own, and resolves supersede chains by walking `supersedes` parent
+  pointers directly instead of relying on processing order -- a directory listing's
+  order can't be assumed to put an ancestor before its descendant the way literal
+  file-append order always did.
+- **Added: `bin/konjo-ledger-migrate`, one-time `decisions.jsonl` -> `ledger/events/`
+  migration.** Preserves every id exactly (filename is the event's own `id`),
+  idempotent (an id already on disk is skipped), non-silent on a rejected event
+  (reported and counted, nonzero exit, never dropped quietly).
+- **Changed: `konjo-decision decide`/`supersede`/`redact` now fold, commit, and push
+  into `$KONJO_CORTEX_DIR` inline, at write time** (`lib/cortex_sync.py`), on every
+  surface -- not only wherever a Claude Code session-end hook happens to fire. Fold
+  and commit-and-push are kept as separate steps: a push failure never fails the
+  write, matching the contract `plugins/konjo/hooks/cortex_fold_push.sh` already
+  had. That hook still exists as a safety-net sweep (a failed inline push left
+  local, a page edited outside the CLI), updated for the new events-dir layout.
+- **Migrated: the 27 real Ledger events already folded into `konjo-cortex`'s
+  committed pages** (`org.md`, `repo-kiban.md`, `repo-lopi.md`, `repo-squish.md`) --
+  reconstructed from those pages rather than from the real
+  `~/.konjo/state/ledger/decisions.jsonl`, which is laptop-only and unreachable from
+  the session that ran this sprint. Verified content-lossless: every field
+  (decision, rationale, alternatives, confidence, date, decided_at, author, chain)
+  matches exactly; the only diff against the previously-committed pages is
+  ordering, because those pages predated `[1.19.1]`'s `Cortex-Ordering-1` fix and
+  still reflected append order -- re-folding with the current `decided_at`-ordered
+  code is what `Cortex-Ordering-1` itself flagged as the next required step.
+- **Added: `.konjo/killtests/LedgerEvents/KT-9.md`, `KT-10.md`, `KT-11.md`.** KT-10
+  (concurrent writes) ran for real against a disposable local git sandbox: PASS,
+  zero event-file conflicts in both legs, one expected page conflict when both
+  writers also refold. KT-9 (fold determinism across machines) PASS on every check
+  this session could run (code audit, positive control, same-environment
+  repeatability) with the literal M3 leg named as an explicit gap, not silently
+  assumed. KT-11 (the phone write path) is BLOCKED, not attempted -- this session
+  has no device-control path to a real phone -- scoped honestly per the brief's own
+  stop rule to "laptop-and-cloud writes verified, phone leg outstanding," with the
+  concrete steps to close it left for Wes.
+- **Decided: no changes to `learnings.jsonl` or `pr_telemetry.jsonl`.** Both remain
+  on `lib/jsonl_store`'s single-file format -- this sprint's scope was the decision
+  Ledger specifically (`ledger/schema.md`'s first stream), not every sibling stream
+  on the same substrate.
+
+**Numbers:** 382 of 382 tests passing on this checkout (3 skipped, unrelated to this
+sprint), `ruff check .` and `mypy lib ledger evals
+packages/konjo-gates-py/src/konjo_gates_py` clean, `konjo-skis-check` OK. 27 events
+migrated (reconstructed), fold byte-identical to itself across two runs and
+idempotent per `test_ordering_by_decided_at_stays_idempotent`'s existing coverage.
+KT-10: 0 event-file conflicts / 1 expected page conflict, both legs.
+
 ## [1.19.1] - 2026-08-19
 
 Closeout, not a sprint. Three small defects plus a dormancy note -- no kill-tests, no

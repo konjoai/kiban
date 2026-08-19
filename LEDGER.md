@@ -5,8 +5,94 @@ silently re-litigate in a later sprint. One entry per sprint, newest first. Not 
 changelog (that's `CHANGELOG.md`) — this is *why*, not *what*. (kiban's runtime
 decision Ledger — `ledger/engine.py`, `bin/konjo-decision` — records the durable calls
 a *consuming* repo makes during a session, scoped `org`/`repo:<name>`, in
-`~/.konjo/state/ledger/decisions.jsonl`; this file is kiban's own project-level
-record of its architecture, the way `lopi`'s `LEDGER.md` records lopi's.)
+`$KONJO_CORTEX_DIR/ledger/events/` since Sprint K5 (`Ledger-Laptop-Only-1` below); this
+file is kiban's own project-level record of its architecture, the way `lopi`'s
+`LEDGER.md` records lopi's.)
+
+## Ledger-Laptop-Only-1: the laptop-only constraint is reversed -- the Ledger moves into `konjo-cortex`
+
+**Supersedes the "writes are still laptop-only" constraint recorded in
+`Cortex-Projection-1` below, and the non-goal it cited ("a server, moving
+`decisions.jsonl` off the M3... explicitly out of scope").** That constraint was a
+real, deliberate trade at the time: `Cortex-Projection-1`'s whole design was a
+read-only projection *precisely so* the write path never had to change -- a single
+JSONL file appended by one CLI on one machine bought conflict-freedom for free, because
+nothing else ever wrote to it. Sprint K5 states plainly what changed: consuming repos
+clone kiban in CI, which gives a runner kiban's *code*, never its *data* --
+`cortex_fold_push.sh` reads a path that exists on exactly one machine, so CI can never
+usefully fold, and the fold's own determinism (`KT-2`) means folding an unchanged
+ledger produces a zero diff forever. That is a structural dead end this sprint's brief
+names directly: **the ledger itself has to live somewhere CI, the phone, and a cloud
+session can all reach.** `konjo-cortex` is that somewhere -- already the shared,
+git-backed destination every surface projects into.
+
+**Why not the alternatives.** A dedicated write API/server was rejected for the same
+reason `Cortex-Projection-1` rejected it the first time: it reintroduces exactly the
+operational surface (hosting, auth, uptime) the whole Ledger design has avoided since
+day one, for a problem git already solves. A separate repo just for the ledger (not
+`konjo-cortex`) was rejected as pointless indirection -- Cortex is already the thing
+every surface clones to read decisions; splitting the write target from the read
+target buys nothing and adds a second clone to keep in sync. Confidence: high on the
+direction (moving into Cortex), medium on `KONJO_CORTEX_DIR` as the sole knob for
+locating it -- see `Ledger-Events-Per-File-1` below for what a second writer target
+would need re-verified before it could be trusted (`KT-9`).
+
+**What this buys back, and how.** The constraint bought conflict-freedom by having
+only one writer, ever. Phase 1 buys the same property back a different way: not by
+restricting who writes, but by giving every write its own file
+(`Ledger-Events-Per-File-1` below), so two surfaces writing concurrently add two files
+instead of contending for one. The trade is no longer "only the laptop may write" --
+it is "every writer gets its own filename."
+
+## Ledger-Events-Per-File-1: one file per event, not one appended JSONL file
+
+**One-way door: the Ledger's on-disk format changes from a single appended
+`decisions.jsonl` to `ledger/events/<id>.json`, one file per event, written and read
+through `lib/event_store.py`.** A shared append-only file conflicts at the last line on
+every concurrent write -- exactly the one place a merge tool cannot resolve safely, and
+exactly the failure mode `Ledger-Laptop-Only-1`'s multi-surface write goal would hit
+immediately. Separate files never conflict: two surfaces adding two events add two
+files (`KT-10`).
+
+Alternatives considered: **keep the single JSONL file and accept merge conflicts as a
+cost of multi-surface writing** -- rejected, because the one place a conflict can land
+(the last line, where two independent appends both want to be) is exactly the place a
+three-way merge cannot resolve without a human, defeating the "write from anywhere"
+goal for anyone who isn't watching for it. **A real database (SQLite, etc.)** --
+rejected as the wrong tool for a git-backed, human-diffable, append-only log; it would
+also reintroduce a single-writer-lock problem structurally similar to the one being
+solved. Confidence: high -- the per-file design is the direct, minimal fix for the
+stated conflict, not a speculative one.
+
+**Consequences accepted deliberately, not discovered later:**
+
+- **Directory listing replaces line reading.** Trivial at the event counts this store
+  is used at (dozens to low hundreds); not solved for the case where it stops being
+  trivial (tens of thousands of events). Named here as a known ceiling, not solved --
+  per the sprint brief's own non-goal, this is out of scope for K5.
+- **`lib/jsonl_store`'s atomic-append and injection-rejection guarantees did not carry
+  over for free.** A per-file writer has a different failure mode than a shared
+  O_APPEND file (racing on the same *id* rather than the same *line*).
+  `lib/event_store.write_event` re-establishes both: write-tmp-then-`os.link` (atomic,
+  create-only -- `os.link` raises rather than silently overwriting an existing id) for
+  atomicity, and the same `jsonl_store.check_payload` gate (factored out so both stores
+  can never drift on what they reject) for injection/secret rejection.
+- **Ordering is no longer implied by file position.** `decided_at` (falling back to
+  `date`, then `id`) becomes the fold's actual sort key, not merely a display-order
+  nicety -- which also meant `ledger/engine.py::_fold()`'s chain-building could no
+  longer assume an ancestor is processed before its descendant (true for granted when
+  order was literal append order; not guaranteed once order comes from a sort key on a
+  field a caller can backdate). Fixed by resolving supersede chains via `supersedes`
+  parent pointers directly rather than processing order -- correct regardless of sort
+  order, a strictly more robust fix than the one this sprint was asked for, not scope
+  creep: the fragility it closes was introduced by this same change.
+
+**Migration**: `bin/konjo-ledger-migrate` reads a legacy `decisions.jsonl` and writes
+one `lib/event_store`-backed file per event, preserving every id exactly (the filename
+*is* the event's own `id`) -- every kill-test file and Cortex page that cites an id
+depends on that. Idempotent (an id already on disk is skipped, not re-written) and
+non-silent on rejection (a HIGH secret or injection-shaped legacy event is reported and
+counted, exit code reflects it, never dropped quietly).
 
 ## Kiban-Adoption-Enforcement-Audit-1: 42 real gate steps classified, not 43, and vectro's 16 are worse than any of them
 

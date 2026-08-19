@@ -84,7 +84,7 @@ def retriever_embedding(blocks: list[tuple[str, str]], question: str, k: int = 3
 
 
 def main() -> None:
-    ledger = Ledger("ledger/decisions.jsonl")
+    ledger = Ledger("ledger/events")
     questions = load_questions()
 
     all_decisions = {d.id: d for d in ledger._fold() if d.scope == SCOPE}

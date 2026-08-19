@@ -13,7 +13,7 @@ from lib import cortex
 @pytest.fixture()
 def ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Ledger:
     monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
-    return Ledger("ledger/decisions.jsonl")
+    return Ledger("ledger/events")
 
 
 def test_kt2_chain_and_redact_fidelity(ledger: Ledger) -> None:
@@ -117,7 +117,7 @@ def test_pages_order_by_decided_at_not_append_order(
     governs page order -- only `projected-at` (checked separately) clocks off it.
     """
     monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
-    led = Ledger("ledger/decisions.jsonl")
+    led = Ledger("ledger/events")
     # Appended first, but decided later.
     later = led.decide(
         "Adopt structured logging", "reduce grep-driven debugging", scope="org",
@@ -137,7 +137,7 @@ def test_ordering_by_decided_at_stays_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
-    led = Ledger("ledger/decisions.jsonl")
+    led = Ledger("ledger/events")
     led.decide("Adopt structured logging", "reduce grep-driven debugging", scope="org",
                 decided_at="2026-06-01T00:00:00Z")
     led.decide("Pin CI to ubuntu-22.04", "24.04 broke a transitive dep", scope="org",
@@ -152,7 +152,7 @@ def test_alternatives_stay_distinguishable_when_one_contains_a_comma(
 ) -> None:
     """Real seeded alternatives contain commas; the join must not blur the boundary."""
     monkeypatch.setenv("KONJO_STATE_DIR", str(tmp_path))
-    led = Ledger("ledger/decisions.jsonl")
+    led = Ledger("ledger/events")
     led.decide(
         "Decision content stays private",
         "cortex is private, skis is public",
